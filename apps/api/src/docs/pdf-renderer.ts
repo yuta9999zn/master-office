@@ -52,6 +52,20 @@ export class PdfRenderer implements OnApplicationShutdown {
     }
   }
 
+  /** One PNG per `.page` element (slides), rendered at 2× for crisp text. */
+  async screenshots(html: string, size: { w: number; h: number }): Promise<Buffer[]> {
+    const browser = await this.getBrowser();
+    const page = await browser.newPage({ viewport: { width: size.w, height: size.h }, deviceScaleFactor: 2 });
+    try {
+      await page.setContent(html, { waitUntil: 'load' });
+      const out: Buffer[] = [];
+      for (const el of await page.locator('.page').all()) out.push(await el.screenshot({ type: 'png' }));
+      return out;
+    } finally {
+      await page.close();
+    }
+  }
+
   async onApplicationShutdown() {
     const b = await this.browser?.catch(() => null);
     await b?.close();

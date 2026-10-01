@@ -8,8 +8,14 @@ import { parse } from '../common/validation';
 import { ResourcesService } from '../resources/resources.service';
 import { DocsService } from './docs.service';
 
-const exportQuery = z.object({ format: z.enum(['docx', 'pdf', 'html', 'txt', 'xlsx', 'csv']), sheet: z.string().max(64).optional(), inline: z.enum(['1', 'true']).optional() });
+const exportQuery = z.object({
+  format: z.enum(['docx', 'pdf', 'html', 'txt', 'xlsx', 'csv', 'pptx', 'png']),
+  sheet: z.string().max(64).optional(),
+  slide: z.coerce.number().int().min(1).max(10_000).optional(),
+  inline: z.enum(['1', 'true']).optional(),
+});
 const versionBody = z.object({ label: z.string().trim().max(120).nullish() });
+const rangeQuery = z.object({ range: z.string().regex(/^\$?[A-Za-z]{1,3}\$?\d{1,7}(:\$?[A-Za-z]{1,3}\$?\d{1,7})?$/), sheet: z.string().max(120).optional() });
 
 @Controller('resources')
 export class DocsController {
@@ -25,12 +31,20 @@ export class DocsController {
 
   @Get(':id/export')
   async export(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query() q: unknown, @Res() res: Response) {
-    const { format, inline, sheet } = parse(exportQuery, q);
-    const f = await this.docs.export(a, id, format, sheet);
+    const { format, inline, sheet, slide } = parse(exportQuery, q);
+    // ?slide is 1-based like PowerPoint's slide numbers.
+    const f = await this.docs.export(a, id, format, sheet, slide !== undefined ? slide - 1 : undefined);
     res.setHeader('Content-Type', f.mime);
     // inline=1 powers Print preview (the PDF opens in the browser viewer).
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
     res.send(f.body);
+  }
+
+  /** Values of a range in a spreadsheet (charts in Slides link to it). */
+  @Get(':id/sheet-range')
+  sheetRange(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query() q: unknown) {
+    const { range, sheet } = parse(rangeQuery, q);
+    return this.docs.sheetRange(a, id, range, sheet);
   }
 
   @Get(':id/links')

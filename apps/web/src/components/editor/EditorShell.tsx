@@ -41,6 +41,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { DocsWorkspace } from '../docs/DocsWorkspace';
 import { SheetsWorkspace } from '../sheets/SheetsWorkspace';
+import { SlidesWorkspace } from '../slides/SlidesWorkspace';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from './TitleBar';
 import { downloadUrl } from '@/lib/api';
 import { appById } from '@/lib/apps';
@@ -55,7 +56,7 @@ const PHASE: Record<EditorKind, { phase: number; engine: string }> = {
   docs: { phase: 2, engine: 'Tiptap / ProseMirror + Yjs' },
   wiki: { phase: 2, engine: 'Tiptap / ProseMirror + Yjs' },
   sheets: { phase: 3, engine: 'Univer + Yjs workbook binding' },
-  slides: { phase: 4, engine: 'element-tree canvas + Yjs' },
+  slides: { phase: 4, engine: 'element tree + Yjs (SlidesWorkspace)' },
   base: { phase: 7, engine: 'Postgres JSONB records + realtime views' },
 };
 
@@ -165,35 +166,6 @@ function Toolbar({ kind }: { kind: EditorKind }) {
 // ── Canvases (static previews of the target layout) ─────────────────────────
 
 
-function SlideCanvas({ r }: { r: ResourceDetail }) {
-  return (
-    <div className="flex h-full gap-4">
-      <div className="w-44 shrink-0 space-y-3 overflow-y-auto">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="flex gap-2">
-            <span className="w-3 text-[12px] text-muted">{n}</span>
-            <div className={cn('aspect-video flex-1 rounded-lg border bg-white p-2', n === 1 ? 'border-brand-600 ring-2 ring-brand-100' : 'border-line')}>
-              <div className="h-1.5 w-2/3 rounded bg-line-strong" />
-              <div className="mt-1.5 h-1 w-1/2 rounded bg-line" />
-            </div>
-          </div>
-        ))}
-        <div className="ml-5 flex h-9 items-center justify-center rounded-lg border border-dashed border-line-strong text-[13px] text-muted">+ New slide</div>
-      </div>
-      <div className="flex min-w-0 flex-1 items-center justify-center rounded-xl bg-canvas p-6">
-        <div className="relative aspect-video w-full max-w-[960px] overflow-hidden rounded-lg bg-white shadow-[0_4px_20px_-6px_rgba(15,23,42,0.2)]">
-          <div className="absolute -right-20 -top-20 size-80 rounded-full bg-gradient-to-br from-brand-100 to-violet-100" />
-          <div className="relative flex h-full flex-col justify-center px-[8%]">
-            {r.space && <div className="mb-4 text-[12px] font-semibold uppercase tracking-[0.25em] text-subtle">{r.space.name}</div>}
-            <div className="text-[clamp(22px,3.2vw,46px)] font-bold leading-tight tracking-tight text-ink">{r.name}</div>
-            <div className="mt-4 max-w-[70%] text-[15px] text-muted">Slide editor (element tree + Yjs), themes, layouts and PPTX import/export arrive in Phase 4.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Right panel ──────────────────────────────────────────────────────────────
 
 function SidePanel({ id, kind, onClose }: { id: string; kind: EditorKind; onClose: () => void }) {
@@ -255,6 +227,7 @@ export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
 
   if (kind === 'docs' || kind === 'wiki') return <DocsWorkspace key={id} r={r} kind={kind} />;
   if (kind === 'sheets') return <SheetsWorkspace key={id} r={r} />;
+  if (kind === 'slides') return <SlidesWorkspace key={id} r={r} />;
   const app = appById(kind)!;
   const editable = can(r.myRole, 'editor');
   const hasOriginal = !!r.mimeType;
@@ -270,9 +243,6 @@ export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
         onShare={() => setShare(true)}
         actions={
           <>
-            <IconButton label="Present" disabled={kind !== 'slides'}>
-              <Play size={18} />
-            </IconButton>
             <IconButton label="Comments & history" active={panel} onClick={() => setPanel(!panel)}>
               <MessageSquareText size={18} />
             </IconButton>
@@ -354,7 +324,7 @@ export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
       {/* Body */}
       <div className="flex min-h-0 flex-1 gap-3 p-5 pt-3">
         <div className="min-w-0 flex-1 overflow-auto">
-          {kind === 'slides' ? <SlideCanvas r={r} /> : kind === 'base' ? (
+          {kind === 'base' ? (
             <div className="card"><EmptyState title="Base — Phase 7">Tables, fields, records and views (grid, kanban, gallery, form) arrive with the Base module.</EmptyState></div>
           ) : null}
         </div>

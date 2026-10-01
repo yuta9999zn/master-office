@@ -4,6 +4,7 @@ import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } fro
 import { can } from '@workos/shared';
 import { COLLAB_FIELD, type JSONContent } from '@workos/doc-model';
 import { RESOURCES_MAP, SHEETS_MAP, WB_MAP, writeWorkbook, type PlainWorkbook } from '@workos/sheet-model';
+import { DECK_MAP, ORDER_ARRAY, SLIDES_MAP, writeDeck, type PlainDeck } from '@workos/slide-model';
 import * as Y from 'yjs';
 import { config } from '../config';
 import { DocStore, docName, jsonToYdoc, resourceIdFromDocName } from '../docs/doc-store';
@@ -99,6 +100,24 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
           for (const k of [...m.keys()]) m.delete(k);
         }
         writeWorkbook(doc, wb);
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  /** Replaces a whole presentation for everyone connected (import, version restore). */
+  async replaceDeck(resourceId: string, deck: PlainDeck, editor: { id: string; name: string }) {
+    const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });
+    try {
+      await conn.transact((doc) => {
+        for (const name of [DECK_MAP, SLIDES_MAP]) {
+          const m = doc.getMap(name);
+          for (const k of [...m.keys()]) m.delete(k);
+        }
+        const order = doc.getArray(ORDER_ARRAY);
+        order.delete(0, order.length);
+        writeDeck(doc, deck);
       });
     } finally {
       await conn.disconnect();

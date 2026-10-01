@@ -18,6 +18,9 @@
       ],
       "@workos/sheet-model": [
         "../../packages/sheet-model/src"
+      ],
+      "@workos/slide-model": [
+        "../../packages/slide-model/src"
       ]
     }
   },

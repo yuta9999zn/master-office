@@ -24,6 +24,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { StorageService } from '../storage/storage.service';
 import { COLLAB_TYPES, DocsService } from '../docs/docs.service';
 import { SheetsService } from '../sheets/sheets.service';
+import { SlidesService } from '../slides/slides.service';
 
 type Row = typeof resources.$inferSelect;
 
@@ -44,6 +45,7 @@ export class ResourcesService {
     private readonly storage: StorageService,
     private readonly docs: DocsService,
     private readonly sheets: SheetsService,
+    private readonly slides: SlidesService,
   ) {}
 
   // ── Serialization ──────────────────────────────────────────────────────────
@@ -264,6 +266,7 @@ export class ResourcesService {
       return (await this.toDtos(actor, [row], tx))[0];
     });
     if (dto.type === 'spreadsheet') await this.sheets.init(dto.id);
+    if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name);
     return dto;
   }
 
@@ -461,7 +464,7 @@ export class ResourcesService {
     const { row } = await this.perms.require(actor, id, 'viewer');
     // Native files download as Office files; uploads keep returning their original (current content: /export).
     if (!row.blobId && COLLAB_TYPES.includes(row.type)) {
-      const f = await this.docs.export(actor, id, row.type === 'spreadsheet' ? 'xlsx' : 'docx');
+      const f = await this.docs.export(actor, id, row.type === 'spreadsheet' ? 'xlsx' : row.type === 'presentation' ? 'pptx' : 'docx');
       return { body: f.body, name: f.name, mime: f.mime, size: f.body.length };
     }
     if (!row.blobId) {

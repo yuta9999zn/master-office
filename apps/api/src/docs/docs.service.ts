@@ -18,11 +18,15 @@ import * as Y from 'yjs';
 import { DocStore, jsonToYdoc, stateToJSON, ydocToJSON } from './doc-store';
 import { imageInfo, toDocx, type DocxImage } from './docx-export';
 import { PdfRenderer } from './pdf-renderer';
+import { cellValue } from '@workos/sheet-model';
 import { SheetsService, type SheetExportFormat } from '../sheets/sheets.service';
+import { deckImages, SlidesService, type SlideExportFormat } from '../slides/slides.service';
+import type { ImageLoader } from '../slides/pptx-export';
 
-export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet'];
-export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv';
+export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation'];
+export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png';
 const SHEET_FORMATS: ExportFormat[] = ['xlsx', 'csv', 'pdf', 'html'];
+const SLIDE_FORMATS: ExportFormat[] = ['pptx', 'pdf', 'png', 'html'];
 const TEXT_FORMATS: ExportFormat[] = ['docx', 'pdf', 'html', 'txt'];
 
 const EXPORT_MIME: Record<'docx' | 'pdf' | 'html' | 'txt', string> = {
@@ -56,6 +60,7 @@ export class DocsService {
     private readonly pdf: PdfRenderer,
     private readonly events: EventsService,
     private readonly sheets: SheetsService,
+    private readonly slides: SlidesService,
   ) {}
 
   private async requireDoc(actor: Actor, id: string, role: Parameters<PermissionsService['require']>[2]) {
@@ -67,7 +72,8 @@ export class DocsService {
   // ── Realtime ───────────────────────────────────────────────────────────────
 
   async collabToken(actor: Actor, id: string) {
-    const { role } = await this.requireDoc(actor, id, 'viewer');
+    const { role, row } = await this.requireDoc(actor, id, 'viewer');
+    if (row.type === 'presentation' && !row.blobId && !(await this.store.load(id))) await this.slides.init(id, row.name);
     const [u] = await this.db.select({ color: users.avatarColor }).from(users).where(eq(users.id, actor.id));
     return {
       token: signCollabToken({ uid: actor.id, name: actor.name, color: u?.color ?? '#2563eb', rid: id, ws: actor.workspaceId, role }),
@@ -88,6 +94,34 @@ export class DocsService {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, state);
     return { json: ydocToJSON(doc), pageSetup: pageSetupOf(doc.getMap(SETTINGS_MAP).toJSON()) };
+  }
+
+  /** Formatted-free values of A1:D5 in a spreadsheet the viewer can read. */
+  async sheetRange(actor: Actor, id: string, range: string, sheetName?: string) {
+    const { row } = await this.perms.require(actor, id, 'viewer');
+    if (row.type !== 'spreadsheet') throw new BadRequestException('Not a spreadsheet');
+    const wb = await this.sheets.workbook(id, row.name);
+    const sheet = sheetName ? wb.sheets.find((s) => s.meta.name.toLowerCase() === sheetName.toLowerCase()) : wb.sheets.find((s) => !s.meta.hidden) ?? wb.sheets[0];
+    if (!sheet) throw new NotFoundException(`Sheet "${sheetName}" not found`);
+    const ref = (a1: string) => {
+      const m = /^\$?([A-Za-z]+)\$?(\d+)$/.exec(a1)!;
+      const c = m[1].toUpperCase().split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+      return { r: Number(m[2]) - 1, c };
+    };
+    const [a, b = a] = range.split(':');
+    const p = ref(a);
+    const q = ref(b);
+    const r0 = Math.min(p.r, q.r);
+    const r1 = Math.min(Math.max(p.r, q.r), r0 + 199);
+    const c0 = Math.min(p.c, q.c);
+    const c1 = Math.min(Math.max(p.c, q.c), c0 + 49);
+    const values: (string | number | boolean | null)[][] = [];
+    for (let r = r0; r <= r1; r++) {
+      const line: (string | number | boolean | null)[] = [];
+      for (let c = c0; c <= c1; c++) line.push(cellValue(sheet.cells[r]?.[c]));
+      values.push(line);
+    }
+    return { name: row.name, sheet: sheet.meta.name, values };
   }
 
   // ── Assets (images inside documents) ──────────────────────────────────────
@@ -121,6 +155,22 @@ export class DocsService {
     return { stream: await this.storage.getStream(row.key), mime: row.mime ?? 'application/octet-stream', size: row.size };
   }
 
+  /** Bytes of an image a presentation references: its own assets or data: URLs (never arbitrary URLs). */
+  imageLoader(resourceId: string): ImageLoader {
+    return async (src) => {
+      const data = /^data:([\w/+.-]+);base64,(.*)$/s.exec(src);
+      if (data) return { mime: data[1], data: Buffer.from(data[2], 'base64') };
+      const m = src.match(ASSET_SRC);
+      if (!m || m[1] !== resourceId) return null;
+      const [row] = await this.db
+        .select({ key: blobs.storageKey, mime: blobs.mimeType })
+        .from(resourceAssets)
+        .innerJoin(blobs, eq(blobs.id, resourceAssets.blobId))
+        .where(and(eq(resourceAssets.resourceId, resourceId), eq(resourceAssets.blobId, m[2])));
+      return row ? { data: await this.storage.getBuffer(row.key), mime: row.mime ?? 'image/png' } : null;
+    };
+  }
+
   /** Loads the images a document embeds — only assets registered to that document. */
   private async loadImages(id: string, doc: JSONContent) {
     const wanted = [...collectImages(doc)]
@@ -142,8 +192,14 @@ export class DocsService {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string) {
+  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number) {
     const { row } = await this.requireDoc(actor, id, 'viewer');
+    if (row.type === 'presentation') {
+      if (!SLIDE_FORMATS.includes(format)) throw new BadRequestException(`Presentations export as ${SLIDE_FORMATS.join(', ')}`);
+      const f = await this.slides.export(id, row.name, format as SlideExportFormat, this.imageLoader(id), { author: actor.name, slide });
+      await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
+      return f;
+    }
     if (row.type === 'spreadsheet') {
       if (!SHEET_FORMATS.includes(format)) throw new BadRequestException(`Spreadsheets export as ${SHEET_FORMATS.join(', ')}`);
       const f = await this.sheets.export(id, row.name, format as SheetExportFormat, { author: actor.name, sheetId });
@@ -194,6 +250,24 @@ export class DocsService {
         .set({ metadata: sql`${resources.metadata} || ${JSON.stringify({ import: { source: row.name, at: new Date().toISOString(), ...report } })}::jsonb` })
         .where(eq(resources.id, id));
 
+    if (row.type === 'presentation') {
+      let buf = buffer;
+      if (!buf) {
+        if (!row.blobId) throw new BadRequestException('This presentation has no original file');
+        const [b] = await this.db.select().from(blobs).where(eq(blobs.id, row.blobId));
+        buf = await this.storage.getBuffer(b.storageKey);
+      }
+      try {
+        const report = await this.slides.importFile(id, buf, row.name, async (data, mime) => (await this.storeAsset(id, data, mime, actor.id)).url, { id: actor.id, name: actor.name });
+        await setImport(report as unknown as Record<string, unknown>);
+        return report;
+      } catch (e) {
+        const message = (e as Error).message;
+        this.log.error(`import ${id} failed: ${message}`);
+        await setImport({ status: /not supported|LibreOffice/.test(message) ? 'unsupported' : 'failed', message });
+        throw e instanceof BadRequestException ? e : new BadRequestException(`Could not read this presentation: ${message}`);
+      }
+    }
     if (row.type === 'spreadsheet') {
       let buf = buffer;
       if (!buf) {
@@ -270,6 +344,23 @@ export class DocsService {
     const state = await this.collab.currentState(fromId);
     if (!state?.length) return;
     const [src] = await this.db.select({ type: resources.type }).from(resources).where(eq(resources.id, fromId));
+    if (src?.type === 'presentation') {
+      // Fresh element ids; pictures are re-registered to the copy so it never depends on the original.
+      const deck = SlidesService.preview(state);
+      const prefix = `/api/resources/${fromId}/assets/`;
+      const move = (s: string) => (s.startsWith(prefix) ? `/api/resources/${toId}/assets/${s.slice(prefix.length)}` : s);
+      for (const s of deck.slides) {
+        if (s.meta.background?.type === 'image') s.meta.background = { ...s.meta.background, src: move(s.meta.background.src) };
+        for (const e of s.elements) if (e.src) e.src = move(e.src);
+      }
+      if (deckImages(deck).length) {
+        await this.db.execute(sql`INSERT INTO resource_assets (resource_id, blob_id, created_by)
+          SELECT ${toId}, blob_id, created_by FROM resource_assets WHERE resource_id = ${fromId} ON CONFLICT DO NOTHING`);
+      }
+      const { doc, state: fresh } = SlidesService.stateOf(deck);
+      await this.store.save(toId, fresh, doc, null);
+      return;
+    }
     if (src?.type === 'spreadsheet') {
       // Rebuilt (not byte-copied) so the copy gets fresh row/column ids and its own Yjs history.
       const { doc, state: fresh } = SheetsService.stateOf(SheetsService.preview(state));
@@ -321,6 +412,7 @@ export class DocsService {
     const state = await this.store.loadSnapshot(id, versionId);
     if (!state) throw new NotFoundException('Version not found');
     if (row.type === 'spreadsheet') return { workbook: SheetsService.preview(state) };
+    if (row.type === 'presentation') return { deck: SlidesService.preview(state) };
     return { content: stateToJSON(state) };
   }
 
@@ -331,6 +423,7 @@ export class DocsService {
     // Keep the current content as a version so a restore can always be undone.
     await this.store.snapshot(id, (await this.collab.currentState(id)) ?? new Uint8Array(), 'Before restore', actor.id);
     if (row.type === 'spreadsheet') await this.sheets.replace(id, SheetsService.preview(state), { id: actor.id, name: actor.name });
+    else if (row.type === 'presentation') await this.slides.replace(id, SlidesService.preview(state), { id: actor.id, name: actor.name });
     else await this.collab.replaceContent(id, stateToJSON(state), { id: actor.id, name: actor.name });
     await this.events.emit(this.db, actor, 'resource.version_restored', { resourceId: id, spaceId: row.spaceId }, { name: row.name, versionId });
   }

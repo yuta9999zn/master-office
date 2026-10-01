@@ -5,6 +5,7 @@ import { createDb } from './client';
 import * as s from './schema';
 import { SEED_DOCS, seedDocState } from './seed-docs';
 import { blankWorkbook, SEED_SHEETS, seedSheetState } from './seed-sheets';
+import { blankDeck, SEED_DECKS, seedDeckState } from './seed-slides';
 import { q4StrategyNote, seedNoteState, simpleNote } from './seed-notes';
 
 /**
@@ -307,6 +308,17 @@ async function main() {
     const { state, text } = seedSheetState((SEED_SHEETS[r.name] ?? (() => blankWorkbook(r.name)))());
     await db.insert(s.ydocStates).values({ resourceId: r.id, state });
     await db.update(s.resources).set({ sizeBytes: state.length, contentText: text }).where(sql`id = ${r.id}`);
+  }
+
+  // Presentations (Phase 4): every native presentation gets its deck; the Q4 strategy deck matches the reference screen.
+  const deckRows = (await db.execute<{ id: string; name: string }>(sql`SELECT id, name FROM resources WHERE type = 'presentation' AND blob_id IS NULL`)).rows;
+  for (const r of deckRows) {
+    const { state, text, slideCount } = seedDeckState((SEED_DECKS[r.name] ?? (() => blankDeck(r.name)))());
+    await db.insert(s.ydocStates).values({ resourceId: r.id, state });
+    await db
+      .update(s.resources)
+      .set({ sizeBytes: state.length, contentText: text, metadata: sql`${s.resources.metadata} || ${JSON.stringify({ slideCount })}::jsonb` })
+      .where(sql`id = ${r.id}`);
   }
 
   // Notes & Mind Map (Phase 2b), matching the reference screen.

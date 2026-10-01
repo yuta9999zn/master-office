@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { COLLAB_FIELD, docExtensions, linksOf, toPlainText, type JSONContent } from '@workos/doc-model';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { hasWorkbook, readWorkbook, workbookText } from '@workos/sheet-model';
+import { deckText, hasDeck, readDeck } from '@workos/slide-model';
 import * as Y from 'yjs';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
@@ -61,6 +62,10 @@ export class DocStore {
       const wb = readWorkbook(doc);
       text = workbookText(wb);
       stats = { sheetCount: wb.sheets.length };
+    } else if (hasDeck(doc)) {
+      const deck = readDeck(doc);
+      text = deckText(deck);
+      stats = { slideCount: deck.slides.length };
     } else {
       const json = ydocToJSON(doc);
       text = toPlainText(json);

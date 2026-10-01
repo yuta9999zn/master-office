@@ -13,6 +13,7 @@ import { PermissionsService } from './permissions/permissions.service';
 import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
 import { SheetsService } from './sheets/sheets.service';
+import { SlidesService } from './slides/slides.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
@@ -31,6 +32,7 @@ import { WorkspaceController } from './users/workspace.controller';
     CollabService,
     PdfRenderer,
     SheetsService,
+    SlidesService,
     DocsService,
     CommentsService,
     ResourcesService,
