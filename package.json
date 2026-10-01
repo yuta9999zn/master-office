@@ -1,0 +1,16 @@
+{
+  "name": "workos",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "db:migrate": "pnpm --filter @workos/api db:migrate",
+    "db:seed": "pnpm --filter @workos/api db:seed",
+    "dev": "pnpm -r --parallel --filter @workos/api --filter @workos/web dev",
+    "dev:api": "pnpm --filter @workos/api dev",
+    "dev:web": "pnpm --filter @workos/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm db:seed && pnpm --filter @workos/api test:smoke && pnpm --filter @workos/api test:docs && pnpm --filter @workos/api test:sheets && pnpm --filter @workos/web e2e"
+  }
+}

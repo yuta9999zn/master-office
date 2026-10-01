@@ -1,0 +1,35 @@
+name: workos
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workos
+      POSTGRES_PASSWORD: workos
+      POSTGRES_DB: workos
+    ports: ["5440:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workos"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports: ["6390:6379"]
+  # S3-compatible object storage for dev (SeaweedFS). Production: AWS S3 / MinIO.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: server -s3 -dir=/data -master.volumeSizeLimitMB=1024 -volume.max=100
+    ports: ["9000:8333"]
+    volumes: [s3data:/data]
+  # Phase 6 — start with: docker compose --profile search up -d
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: [search]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["9200:9200"]
+volumes:
+  pgdata:
+  s3data:

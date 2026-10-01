@@ -1,0 +1,50 @@
+{
+  "name": "@workos/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/apps/api/src/main.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "test:smoke": "node test/smoke.mjs",
+    "test:docs": "node test/docs.mjs && node test/docs-word.mjs && node test/notes.mjs",
+    "test:sheets": "node test/sheets.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1142.0",
+    "@aws-sdk/lib-storage": "^3.1142.0",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.45.3",
+    "multer": "^2.0.2",
+    "pg": "^8.16.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^3.25.0",
+    "@hocuspocus/server": "^4.7.0",
+    "@hocuspocus/extension-database": "^4.7.0",
+    "@hocuspocus/transformer": "^4.7.0",
+    "yjs": "^13.6.33",
+    "docx": "^9.8.1",
+    "mammoth": "^1.13.0",
+    "@tiptap/html": "^3.31.0",
+    "playwright": "^1.55.0",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3"
+  }
+}

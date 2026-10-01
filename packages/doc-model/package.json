@@ -1,0 +1,27 @@
+{
+  "name": "@workos/doc-model",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.31.0",
+    "@tiptap/pm": "^3.31.0",
+    "@tiptap/starter-kit": "^3.31.0",
+    "@tiptap/extension-text-style": "^3.31.0",
+    "@tiptap/extension-highlight": "^3.31.0",
+    "@tiptap/extension-text-align": "^3.31.0",
+    "@tiptap/extension-list": "^3.31.0",
+    "@tiptap/extension-table": "^3.31.0",
+    "@tiptap/extension-image": "^3.31.0",
+    "@tiptap/extension-mention": "^3.31.0",
+    "@tiptap/suggestion": "^3.31.0",
+    "@tiptap/extension-subscript": "^3.31.0",
+    "@tiptap/extension-superscript": "^3.31.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

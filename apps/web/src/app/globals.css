@@ -1,0 +1,144 @@
+@import 'tailwindcss';
+
+/* Master Office design tokens — from the brand sheet (logo.png) and reference screens. */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-brand-50: #eff5ff;
+  --color-brand-100: #dbe7fe;
+  --color-brand-200: #bfd4fe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb; /* Primary Blue */
+  --color-brand-700: #1d4ed8;
+  --color-violet-brand: #8b5cf6; /* Primary Purple */
+  --color-sky-brand: #38bdf8; /* Accent Blue */
+
+  --color-ink: #0f172a; /* Dark */
+  --color-ink-2: #334155;
+  --color-muted: #64748b;
+  --color-subtle: #94a3b8; /* Gray */
+  --color-line: #e6eaf0;
+  --color-line-strong: #d7dde6;
+  --color-canvas: #f5f7fb; /* app background */
+  --color-surface: #ffffff;
+  --color-hover: #f1f4f9;
+  --color-selected: #e8f0fe;
+
+  --radius-card: 12px;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 1px rgb(15 23 42 / 0.02);
+  --shadow-pop: 0 10px 30px -8px rgb(15 23 42 / 0.18), 0 2px 6px rgb(15 23 42 / 0.06);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cfd6e0 transparent;
+}
+
+::selection {
+  background: var(--color-brand-100);
+}
+
+@layer components {
+  .card {
+    @apply rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)];
+  }
+  .pop {
+    @apply rounded-[10px] border border-line bg-surface p-1 shadow-[var(--shadow-pop)];
+  }
+  .menu-item {
+    @apply flex h-8 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] text-ink-2 outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-hover data-[disabled]:opacity-40;
+  }
+  .input {
+    @apply h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] outline-none placeholder:text-subtle focus:border-brand-600 focus:ring-3 focus:ring-brand-100;
+  }
+  .tab {
+    @apply relative -mb-px flex h-10 items-center border-b-2 border-transparent px-1 text-[13px] font-medium text-muted transition-colors hover:text-ink data-[state=active]:border-brand-600 data-[state=active]:text-brand-600 aria-[current=page]:border-brand-600 aria-[current=page]:text-brand-600;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+.animate-pop {
+  animation: pop-in 120ms ease-out;
+}
+
+/* ── Document editor (Phase 2) ─────────────────────────────────────────────── */
+.mo-editor {
+  outline: none;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--color-ink);
+  min-height: 60vh;
+}
+.mo-editor > * + * { margin-top: 0.55em; }
+.mo-editor h1 { font-size: 1.9em; font-weight: 700; line-height: 1.25; margin-top: 1.1em; letter-spacing: -0.01em; }
+.mo-editor h2 { font-size: 1.45em; font-weight: 700; line-height: 1.3; margin-top: 1.1em; }
+.mo-editor h3 { font-size: 1.2em; font-weight: 650; margin-top: 0.9em; }
+.mo-editor h4 { font-size: 1.05em; font-weight: 650; margin-top: 0.8em; }
+.mo-editor a { color: var(--color-brand-600); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.mo-editor ul { list-style: disc; padding-left: 1.5em; }
+.mo-editor ol { list-style: decimal; padding-left: 1.6em; }
+.mo-editor li > p { margin: 0.15em 0; }
+.mo-editor ul[data-type='taskList'] { list-style: none; padding-left: 0.2em; }
+.mo-editor ul[data-type='taskList'] li { display: flex; gap: 0.55em; align-items: flex-start; }
+.mo-editor ul[data-type='taskList'] li > label { margin-top: 0.35em; user-select: none; }
+.mo-editor ul[data-type='taskList'] li > label input { width: 16px; height: 16px; accent-color: var(--color-brand-600); cursor: pointer; }
+.mo-editor ul[data-type='taskList'] li > div { flex: 1; }
+.mo-editor ul[data-type='taskList'] li[data-checked='true'] > div { color: var(--color-muted); text-decoration: line-through; }
+.mo-editor blockquote { border-left: 3px solid var(--color-line-strong); padding-left: 1em; color: var(--color-ink-2); }
+.mo-editor code { background: #f1f4f9; border-radius: 5px; padding: 0.1em 0.35em; font-size: 0.88em; font-family: ui-monospace, Consolas, monospace; }
+.mo-editor pre { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 0.9em 1.1em; font-family: ui-monospace, Consolas, monospace; font-size: 0.86em; }
+.mo-editor pre code { background: none; color: inherit; padding: 0; }
+.mo-editor hr { border: none; border-top: 1px solid var(--color-line); margin: 1.4em 0; }
+.mo-editor img { max-width: 100%; border-radius: 8px; }
+.mo-editor img.ProseMirror-selectednode { outline: 2px solid var(--color-brand-600); }
+.mo-editor .mo-callout { background: #eff5ff; border: 1px solid #dbe7fe; border-radius: 12px; padding: 0.7em 1.1em; }
+.mo-editor .mo-mention { color: var(--color-brand-600); background: var(--color-brand-50); border-radius: 5px; padding: 0 0.2em; font-weight: 500; }
+.mo-editor table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 0.8em 0; overflow: hidden; }
+.mo-editor th, .mo-editor td { border: 1px solid var(--color-line-strong); padding: 0.4em 0.7em; vertical-align: top; position: relative; }
+.mo-editor th { background: #eef4ff; font-weight: 600; text-align: left; }
+.mo-editor td > p, .mo-editor th > p { margin: 0; }
+.mo-editor .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgb(37 99 235 / 0.12); pointer-events: none; }
+.mo-editor .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: var(--color-brand-500); pointer-events: none; }
+.mo-editor.resize-cursor { cursor: col-resize; }
+.mo-editor p.is-editor-empty:first-child::before,
+.mo-editor .is-empty::before { content: attr(data-placeholder); color: var(--color-subtle); float: left; height: 0; pointer-events: none; }
+.mo-editor .mo-comment { background: rgb(250 204 21 / 0.28); border-bottom: 2px solid rgb(234 179 8 / 0.7); cursor: pointer; }
+.mo-editor .mo-comment.active { background: rgb(250 204 21 / 0.55); }
+.mo-editor .ProseMirror-gapcursor::after { border-top-color: var(--color-ink); }
+/* Remote carets (CollaborationCaret) */
+.collaboration-carets__caret { position: relative; margin: 0 -1px; border-left: 2px solid; border-right: 0; word-break: normal; pointer-events: none; }
+.collaboration-carets__label { position: absolute; top: -1.45em; left: -2px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; color: #fff; padding: 3px 6px; border-radius: 4px 4px 4px 0; user-select: none; }
+.collaboration-carets__selection { background-color: rgb(37 99 235 / 0.12); }
+
+/* ── Phase 2.1 ─────────────────────────────────────────────────────────────── */
+.mo-editor .mo-ins { color: #15803d; text-decoration: underline; text-decoration-color: var(--suggest-color, #15803d); text-decoration-thickness: 2px; background: rgb(22 163 74 / 0.07); }
+.mo-editor .mo-del { color: #b91c1c; text-decoration: line-through; text-decoration-color: var(--suggest-color, #b91c1c); background: rgb(220 38 38 / 0.06); }
+.mo-editor .mo-search-match { background: rgb(250 204 21 / 0.45); border-radius: 2px; }
+.mo-editor .mo-search-match.current { background: rgb(249 115 22 / 0.55); outline: 1px solid rgb(234 88 12); }
+.mo-editor .mo-style-title { font-size: 2.1em; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+.mo-editor .mo-style-subtitle { font-size: 1.25em; color: var(--color-muted); }
+.mo-editor sup, .mo-editor sub { font-size: 0.72em; }
+
+/* ── Phase 2b ──────────────────────────────────────────────────────────────── */
+.mo-editor .mo-folded { display: none; }
+.mo-editor h1, .mo-editor h2, .mo-editor h3, .mo-editor h4 { position: relative; }
+.mo-fold-toggle { position: absolute; left: -1.35em; top: 50%; transform: translateY(-50%); width: 1.1em; height: 1.1em; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--color-subtle); font-size: 0.6em; opacity: 0; transition: transform 120ms, opacity 120ms; cursor: pointer; }
+.mo-editor h1:hover .mo-fold-toggle, .mo-editor h2:hover .mo-fold-toggle, .mo-editor h3:hover .mo-fold-toggle, .mo-editor h4:hover .mo-fold-toggle, .mo-fold-toggle.folded { opacity: 1; }
+.mo-fold-toggle:hover { background: var(--color-hover); color: var(--color-ink); }
+.mo-fold-toggle.folded { transform: translateY(-50%) rotate(-90deg); }
+.mo-editor ul[data-type='taskList'] li > .mo-task-meta { margin-left: auto; }
+.mo-editor .mo-page-link-wrap a { text-decoration: none; }
