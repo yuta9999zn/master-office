@@ -75,8 +75,9 @@ export function hrefFor(r: Pick<Resource, 'id' | 'type' | 'metadata'>): string {
       return `/wiki/${r.id}`;
     case 'note':
       return `/notes/${r.id}`;
-    case 'base':
     case 'form':
+      return `/forms/${r.id}`;
+    case 'base':
       return `/base/${r.id}`;
     default:
       return `/preview/${r.id}`;

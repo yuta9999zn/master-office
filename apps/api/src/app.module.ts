@@ -14,6 +14,8 @@ import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
 import { SheetsService } from './sheets/sheets.service';
 import { SlidesService } from './slides/slides.service';
+import { FormsController } from './forms/forms.controller';
+import { FormsService } from './forms/forms.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
@@ -23,7 +25,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, CommentsController, SearchController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, CommentsController, SearchController, FormsController],
   providers: [
     PermissionsService,
     EventsService,
@@ -33,6 +35,7 @@ import { WorkspaceController } from './users/workspace.controller';
     PdfRenderer,
     SheetsService,
     SlidesService,
+    FormsService,
     DocsService,
     CommentsService,
     ResourcesService,

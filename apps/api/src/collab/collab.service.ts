@@ -106,6 +106,16 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  /** Runs a change on a document as a normal Yjs transaction, so connected editors receive it live. */
+  async transact(resourceId: string, editor: { id: string; name: string }, fn: (doc: Y.Doc) => void) {
+    const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });
+    try {
+      await conn.transact(fn);
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
   /** Replaces the entries of a top-level Y.Map (e.g. the VBA source of an imported .xlsm). */
   async replaceMap(resourceId: string, name: string, entries: Record<string, unknown>, editor: { id: string; name: string }) {
     const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });

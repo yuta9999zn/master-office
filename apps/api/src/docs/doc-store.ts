@@ -4,6 +4,7 @@ import { COLLAB_FIELD, docExtensions, linksOf, toPlainText, type JSONContent } f
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { hasWorkbook, readWorkbook, workbookText } from '@workos/sheet-model';
 import { deckText, hasDeck, readDeck } from '@workos/slide-model';
+import { formText, hasForm, readForm } from '@workos/form-model';
 import * as Y from 'yjs';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
@@ -62,6 +63,10 @@ export class DocStore {
       const wb = readWorkbook(doc);
       text = workbookText(wb);
       stats = { sheetCount: wb.sheets.length };
+    } else if (hasForm(doc)) {
+      const form = readForm(doc);
+      text = formText(form);
+      stats = { questionCount: form.items.filter((i) => i.type !== 'section').length };
     } else if (hasDeck(doc)) {
       const deck = readDeck(doc);
       text = deckText(deck);
@@ -80,14 +85,15 @@ export class DocStore {
       .update(resources)
       .set({
         updatedAt: sql`now()`,
-        ...(editor ? { updatedBy: editor.id } : {}),
+        // Only real users are recorded as the last editor (system writes must never fail the save).
+        ...(editor && /^[0-9a-f-]{36}$/i.test(editor.id) ? { updatedBy: editor.id } : {}),
         sizeBytes: buf.length,
         contentText: text.slice(0, 200_000),
         metadata: sql`${resources.metadata} || ${JSON.stringify(stats)}::jsonb`,
       })
       .where(eq(resources.id, resourceId))
       .returning({ workspaceId: resources.workspaceId, spaceId: resources.spaceId, name: resources.name, type: resources.type });
-    if (!row || !editor) return;
+    if (!row || !editor || !/^[0-9a-f-]{36}$/i.test(editor.id)) return;
 
     // One "edited" activity per person per document per window, not one per keystroke batch.
     const key = `${resourceId}:${editor.id}`;

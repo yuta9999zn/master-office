@@ -267,3 +267,23 @@ export const resourceLinks = pgTable(
   },
   (t) => [primaryKey({ columns: [t.sourceId, t.targetId] }), index('resource_links_target_idx').on(t.targetId)],
 );
+
+/** Answers to a form (Phase 8). The form itself lives in its Yjs document; responses are rows (reporting, CSV, Sheets). */
+export const formResponses = pgTable(
+  'form_responses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    respondentId: uuid('respondent_id').references(() => users.id, { onDelete: 'set null' }),
+    email: text('email'),
+    answers: jsonb('answers').$type<Record<string, unknown>>().notNull(),
+    score: jsonb('score').$type<{ points: number; max: number } | null>(),
+    editToken: text('edit_token').notNull(),
+    submittedAt: ts('submitted_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('form_responses_form_idx').on(t.formId, t.submittedAt)],
+);
+

@@ -21,6 +21,9 @@
       ],
       "@workos/slide-model": [
         "../../packages/slide-model/src"
+      ],
+      "@workos/form-model": [
+        "../../packages/form-model/src"
       ]
     }
   },

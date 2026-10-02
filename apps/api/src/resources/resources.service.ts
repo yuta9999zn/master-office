@@ -25,6 +25,7 @@ import { StorageService } from '../storage/storage.service';
 import { COLLAB_TYPES, DocsService } from '../docs/docs.service';
 import { SheetsService } from '../sheets/sheets.service';
 import { SlidesService } from '../slides/slides.service';
+import { FormsService } from '../forms/forms.service';
 
 type Row = typeof resources.$inferSelect;
 
@@ -46,6 +47,7 @@ export class ResourcesService {
     private readonly docs: DocsService,
     private readonly sheets: SheetsService,
     private readonly slides: SlidesService,
+    private readonly forms: FormsService,
   ) {}
 
   // ── Serialization ──────────────────────────────────────────────────────────
@@ -267,6 +269,7 @@ export class ResourcesService {
     });
     if (dto.type === 'spreadsheet') await this.sheets.init(dto.id);
     if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name);
+    if (dto.type === 'form') await this.forms.init(dto.id, dto.name);
     return dto;
   }
 

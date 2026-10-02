@@ -1,8 +1,14 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DEFAULT_PAGE_SETUP } from '@workos/doc-model';
 import {
+  cellKey,
   cellValue,
   colName,
+  newId,
+  SHEETS_MAP,
+  WB_MAP,
+  ySheet,
+  type Cell,
   emptySheet,
   formatValue,
   readWorkbook,
@@ -194,6 +200,37 @@ export class SheetsService {
   /** Replaces the whole workbook for everyone connected (import, version restore). */
   async replace(id: string, wb: PlainWorkbook, editor: { id: string; name: string }) {
     await this.collab.replaceWorkbook(id, wb, editor);
+  }
+
+  /** Appends rows below the last used row of the first sheet (form responses → linked spreadsheet). */
+  async appendRows(id: string, rows: (string | number)[][], editor: { id: string; name: string }, opts: { headerBold?: boolean } = {}) {
+    await this.collab.transact(id, editor, (doc) => {
+      const order = (doc.getMap(WB_MAP).get('sheetOrder') as string[] | undefined) ?? [];
+      const m = doc.getMap(SHEETS_MAP).get(order[0]) as Y.Map<unknown> | undefined;
+      if (!m) return;
+      const ys = ySheet(m);
+      const rowIds = ys.rows.toArray();
+      const colIds = ys.cols.toArray();
+      const used = new Set<string>();
+      ys.cells.forEach((_c, key) => used.add(key.slice(0, key.indexOf(':'))));
+      let start = 0;
+      rowIds.forEach((rid, i) => used.has(rid) && (start = i + 1));
+      const needRows = start + rows.length - rowIds.length;
+      if (needRows > 0) ys.rows.push(Array.from({ length: needRows }, newId));
+      const width = Math.max(...rows.map((r) => r.length), 0);
+      if (width > colIds.length) ys.cols.push(Array.from({ length: width - colIds.length }, newId));
+      const allRows = ys.rows.toArray();
+      const allCols = ys.cols.toArray();
+      rows.forEach((row, i) =>
+        row.forEach((v, j) => {
+          if (v === '' || v === null || v === undefined) return;
+          const cell: Cell = typeof v === 'number' ? { v, t: 2 } : { v: String(v), t: 1 };
+          if (opts.headerBold && start === 0 && i === 0) cell.s = { bl: 1, bg: { rgb: '#E8F0FE' } };
+          ys.cells.set(cellKey(allRows[start + i], allCols[j]), cell);
+        }),
+      );
+      if (opts.headerBold && start === 0) ys.map.set('meta', { ...ys.meta(), freeze: { row: 1, col: 0 } });
+    });
   }
 
   async export(id: string, name: string, format: SheetExportFormat, opts: { author?: string; sheetId?: string } = {}) {

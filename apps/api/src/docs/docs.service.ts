@@ -22,8 +22,9 @@ import { cellValue } from '@workos/sheet-model';
 import { SheetsService, type SheetExportFormat } from '../sheets/sheets.service';
 import { deckImages, SlidesService, type SlideExportFormat } from '../slides/slides.service';
 import type { ImageLoader } from '../slides/pptx-export';
+import { FORM_MAP, ITEMS_MAP, ORDER_ARRAY as FORM_ORDER, readForm as readFormFromDoc, writeForm, type PlainForm } from '@workos/form-model';
 
-export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation'];
+export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation', 'form'];
 export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png';
 const SHEET_FORMATS: ExportFormat[] = ['xlsx', 'csv', 'pdf', 'html'];
 const SLIDE_FORMATS: ExportFormat[] = ['pptx', 'pdf', 'png', 'html'];
@@ -42,6 +43,12 @@ function collectImages(doc: JSONContent, out = new Set<string>()): Set<string> {
   if (doc.type === 'image' && typeof doc.attrs?.src === 'string') out.add(doc.attrs.src);
   doc.content?.forEach((c) => collectImages(c, out));
   return out;
+}
+
+function readFormState(state: Uint8Array): PlainForm {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, state);
+  return readFormFromDoc(doc);
 }
 
 /** Strips a trailing Office extension so "Plan.docx" exports as "Plan.docx", not "Plan.docx.docx". */
@@ -194,6 +201,7 @@ export class DocsService {
 
   async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number) {
     const { row } = await this.requireDoc(actor, id, 'viewer');
+    if (row.type === 'form') throw new BadRequestException('Forms have no file format — download the responses as CSV (Responses tab) or link them to a spreadsheet');
     if (row.type === 'presentation') {
       if (!SLIDE_FORMATS.includes(format)) throw new BadRequestException(`Presentations export as ${SLIDE_FORMATS.join(', ')}`);
       const f = await this.slides.export(id, row.name, format as SlideExportFormat, this.imageLoader(id), { author: actor.name, slide });
@@ -344,6 +352,14 @@ export class DocsService {
     const state = await this.collab.currentState(fromId);
     if (!state?.length) return;
     const [src] = await this.db.select({ type: resources.type }).from(resources).where(eq(resources.id, fromId));
+    if (src?.type === 'form') {
+      // Rebuilt from the plain form: its own Yjs history, no linked response sheet (responses are not copied).
+      const form = readFormState(state);
+      const doc = new Y.Doc();
+      writeForm(doc, { ...form, settings: { ...form.settings, sheetId: null } });
+      await this.store.save(toId, Y.encodeStateAsUpdate(doc), doc, null);
+      return;
+    }
     if (src?.type === 'presentation') {
       // Fresh element ids; pictures are re-registered to the copy so it never depends on the original.
       const deck = SlidesService.preview(state);
@@ -418,6 +434,7 @@ export class DocsService {
     if (!state) throw new NotFoundException('Version not found');
     if (row.type === 'spreadsheet') return { workbook: SheetsService.preview(state) };
     if (row.type === 'presentation') return { deck: SlidesService.preview(state) };
+    if (row.type === 'form') return { form: readFormState(state) };
     return { content: stateToJSON(state) };
   }
 
@@ -429,6 +446,20 @@ export class DocsService {
     await this.store.snapshot(id, (await this.collab.currentState(id)) ?? new Uint8Array(), 'Before restore', actor.id);
     if (row.type === 'spreadsheet') await this.sheets.replace(id, SheetsService.preview(state), { id: actor.id, name: actor.name });
     else if (row.type === 'presentation') await this.slides.replace(id, SlidesService.preview(state), { id: actor.id, name: actor.name });
+    else if (row.type === 'form') {
+      const form = readFormState(state);
+      await this.collab.transact(id, { id: actor.id, name: actor.name }, (doc) => {
+        // Keep the current response-sheet link: restoring questions must not detach the sheet.
+        const sheetId = ((doc.getMap(FORM_MAP).get('settings') as PlainForm['settings'] | undefined)?.sheetId) ?? null;
+        for (const name of [FORM_MAP, ITEMS_MAP]) {
+          const m = doc.getMap(name);
+          for (const k of [...m.keys()]) m.delete(k);
+        }
+        const order = doc.getArray(FORM_ORDER);
+        order.delete(0, order.length);
+        writeForm(doc, { ...form, settings: { ...form.settings, sheetId } });
+      });
+    }
     else await this.collab.replaceContent(id, stateToJSON(state), { id: actor.id, name: actor.name });
     await this.events.emit(this.db, actor, 'resource.version_restored', { resourceId: id, spaceId: row.spaceId }, { name: row.name, versionId });
   }

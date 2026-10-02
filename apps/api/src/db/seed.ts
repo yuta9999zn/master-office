@@ -6,6 +6,8 @@ import * as s from './schema';
 import { SEED_DOCS, seedDocState } from './seed-docs';
 import { blankWorkbook, SEED_SHEETS, seedSheetState } from './seed-sheets';
 import { blankDeck, SEED_DECKS, seedDeckState } from './seed-slides';
+import { blankForm } from '@workos/form-model';
+import { SEED_FORMS, seedFormState, surveyResponses } from './seed-forms';
 import { q4StrategyNote, seedNoteState, simpleNote } from './seed-notes';
 
 /**
@@ -224,6 +226,7 @@ async function main() {
   await addBlob('Autumn Banner.svg', 'minh', images, art('#60a5fa', '#8b5cf6', 'Autumn Sale 2026'), 'image/svg+xml');
   await add('Lead Tracker', 'base', 'hana', 'Marketing');
   await add('Event Registration', 'form', 'hana', 'Marketing');
+  await add('Customer Satisfaction Survey', 'form', 'mika', 'Natural Beauty', { tags: ['Customers'] });
 
   // Operations / Branches
   const sop = await add('SOP', 'folder', 'mika', 'Operations');
@@ -319,6 +322,24 @@ async function main() {
       .update(s.resources)
       .set({ sizeBytes: state.length, contentText: text, metadata: sql`${s.resources.metadata} || ${JSON.stringify({ slideCount })}::jsonb` })
       .where(sql`id = ${r.id}`);
+  }
+
+  // Forms (Phase 8): every native form gets its definition; the survey also gets a few responses.
+  const formRows = (await db.execute<{ id: string; name: string }>(sql`SELECT id, name FROM resources WHERE type = 'form' AND blob_id IS NULL`)).rows;
+  for (const r of formRows) {
+    const form = (SEED_FORMS[r.name] ?? (() => blankForm(r.name)))();
+    const { state, text, questionCount } = seedFormState(form);
+    await db.insert(s.ydocStates).values({ resourceId: r.id, state });
+    await db
+      .update(s.resources)
+      .set({ sizeBytes: state.length, contentText: text, metadata: sql`${s.resources.metadata} || ${JSON.stringify({ questionCount })}::jsonb` })
+      .where(sql`id = ${r.id}`);
+    if (r.name === 'Customer Satisfaction Survey') {
+      const who = [u.hana, u.yuki, u.sora, u.mika, u.rina];
+      for (const [i, answers] of surveyResponses(form).entries()) {
+        await db.insert(s.formResponses).values({ formId: r.id, respondentId: who[i].id, email: null, answers, score: null, editToken: crypto.randomUUID().replace(/-/g, ''), submittedAt: new Date(Date.now() - (5 - i) * 86_400_000).toISOString() });
+      }
+    }
   }
 
   // Notes & Mind Map (Phase 2b), matching the reference screen.

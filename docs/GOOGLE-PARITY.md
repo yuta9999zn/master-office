@@ -62,7 +62,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
 | | **Motion panel (animations)**, Q&A khán giả, dictate notes, spelling, linked objects, publish to web / embed | ❌ |
 
-## 4. Google Forms → Master Forms (module mới — chưa có gì)
+## 4. Google Forms → Master Forms — ✅ xong 2026-10-03 (ARCHITECTURE §25); còn thiếu: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay
 
 | Khu vực | Tính năng cần có |
 |---|---|
@@ -87,7 +87,7 @@ Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewi
 |---|---|---|
 | 1 ✅ | **3.2a** | ⭐ Tab sheet phía trên (kiểu Lark) |
 | 2 ✅ | **3.2b** | ⭐ **Macro**: recorder, trình soạn script, chạy (menu + phím tắt), quản lý, sandbox Worker, API workbook; giữ & hiển thị VBA của .xlsm |
-| 3 | **8** | **Forms** (module mới, đầy đủ mục 4) + liên kết Sheets |
+| 3 ✅ | **8** | **Forms** (module mới, đầy đủ mục 4) + liên kết Sheets |
 | 4 | **3.1** | Sheets: chart, pivot, comment & note theo ô, protect ranges, named ranges, filter views, remove duplicates / trim, split text, table & alternating colors, checkbox, ảnh trong ô, text rotation, con trỏ người khác |
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets, bookmark, watermark, borders & shading, compare, Markdown copy/paste, pageless, chế độ Viewing |

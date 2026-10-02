@@ -37,6 +37,9 @@
       ],
       "@workos/slide-model": [
         "../../packages/slide-model/src/index.ts"
+      ],
+      "@workos/form-model": [
+        "../../packages/form-model/src/index.ts"
       ]
     }
   },

@@ -1,5 +1,6 @@
 import type { ResourceType } from '@workos/shared';
 import {
+  ClipboardList,
   Box,
   CalendarDays,
   ChartColumn,
@@ -53,9 +54,10 @@ export const APPS: AppDef[] = [
   { id: 'docs', label: 'Docs', tagline: 'Create together', href: '/docs', icon: FileText, from: '#60a5fa', to: '#2563eb', opens: ['document'], phase: 2, primary: true },
   { id: 'sheets', label: 'Sheets', tagline: 'Work with data', href: '/sheets', icon: Table2, from: '#34d399', to: '#059669', opens: ['spreadsheet'], phase: 3, primary: true },
   { id: 'slides', label: 'Slides', tagline: 'Turn ideas into stories', href: '/slides', icon: Play, from: '#fb923c', to: '#ea580c', opens: ['presentation'], phase: 4, primary: true },
+  { id: 'forms', label: 'Forms', tagline: 'Surveys, quizzes & sign-ups', href: '/forms', icon: ClipboardList, from: '#818cf8', to: '#4f46e5', opens: ['form'], phase: 8, primary: true },
   { id: 'drive', label: 'Drive', tagline: 'Store and share files', href: '/drive', icon: Cloud, from: '#38bdf8', to: '#0284c7', opens: ['folder', 'pdf', 'image', 'video', 'file'], phase: 1, primary: true },
   { id: 'spaces', label: 'Spaces', tagline: 'Team workspaces', href: '/spaces', icon: Box, from: '#a78bfa', to: '#7c3aed', phase: 1, primary: true },
-  { id: 'base', label: 'Base', tagline: 'Manage your data', href: '/base', icon: Database, from: '#a78bfa', to: '#6d28d9', opens: ['base', 'form'], phase: 7, primary: true },
+  { id: 'base', label: 'Base', tagline: 'Manage your data', href: '/base', icon: Database, from: '#a78bfa', to: '#6d28d9', opens: ['base'], phase: 7, primary: true },
   { id: 'meetings', label: 'Meetings', tagline: 'Video meetings', href: '/meetings', icon: Video, from: '#60a5fa', to: '#1d4ed8', phase: 7, primary: true },
   { id: 'tasks', label: 'Tasks', tagline: 'Track and get things done', href: '/tasks', icon: SquareCheckBig, from: '#818cf8', to: '#4f46e5', phase: 7, primary: true },
   { id: 'flow', label: 'Flow', tagline: 'Design workflows & diagrams', href: '/flow', icon: Workflow, from: '#818cf8', to: '#7c3aed', phase: 7, primary: true },

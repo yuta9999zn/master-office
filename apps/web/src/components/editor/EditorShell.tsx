@@ -42,6 +42,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { DocsWorkspace } from '../docs/DocsWorkspace';
 import { SheetsWorkspace } from '../sheets/SheetsWorkspace';
 import { SlidesWorkspace } from '../slides/SlidesWorkspace';
+import { FormsWorkspace } from '../forms/FormsWorkspace';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from './TitleBar';
 import { downloadUrl } from '@/lib/api';
 import { appById } from '@/lib/apps';
@@ -50,7 +51,7 @@ import { ShareDialog } from '../drive/dialogs';
 import { ActivityList } from '../drive/DetailsPanel';
 import { cn, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 
-export type EditorKind = 'docs' | 'sheets' | 'slides' | 'wiki' | 'base';
+export type EditorKind = 'docs' | 'sheets' | 'slides' | 'wiki' | 'base' | 'forms';
 
 const PHASE: Record<EditorKind, { phase: number; engine: string }> = {
   docs: { phase: 2, engine: 'Tiptap / ProseMirror + Yjs' },
@@ -58,6 +59,7 @@ const PHASE: Record<EditorKind, { phase: number; engine: string }> = {
   sheets: { phase: 3, engine: 'Univer + Yjs workbook binding' },
   slides: { phase: 4, engine: 'element tree + Yjs (SlidesWorkspace)' },
   base: { phase: 7, engine: 'Postgres JSONB records + realtime views' },
+  forms: { phase: 8, engine: 'Yjs form + Postgres responses (FormsWorkspace)' },
 };
 
 const MENUS: Record<EditorKind, string[]> = {
@@ -66,6 +68,7 @@ const MENUS: Record<EditorKind, string[]> = {
   sheets: ['File', 'Edit', 'View', 'Insert', 'Format', 'Data', 'Tools', 'Extensions', 'Help'],
   slides: ['File', 'Edit', 'View', 'Insert', 'Format', 'Slide', 'Arrange', 'Tools', 'Help'],
   base: ['File', 'Edit', 'View', 'Help'],
+  forms: [],
 };
 
 const EXPORTS: Record<EditorKind, string[]> = {
@@ -74,6 +77,7 @@ const EXPORTS: Record<EditorKind, string[]> = {
   sheets: ['Excel (.xlsx)', 'CSV (.csv)', 'PDF (.pdf)'],
   slides: ['PowerPoint (.pptx)', 'PDF (.pdf)', 'Images (.png)'],
   base: ['CSV (.csv)', 'Excel (.xlsx)'],
+  forms: [],
 };
 
 function Tool({ icon, label }: { icon: ReactNode; label: string }) {
@@ -228,6 +232,7 @@ export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
   if (kind === 'docs' || kind === 'wiki') return <DocsWorkspace key={id} r={r} kind={kind} />;
   if (kind === 'sheets') return <SheetsWorkspace key={id} r={r} />;
   if (kind === 'slides') return <SlidesWorkspace key={id} r={r} />;
+  if (kind === 'forms') return <FormsWorkspace key={id} r={r} />;
   const app = appById(kind)!;
   const editable = can(r.myRole, 'editor');
   const hasOriginal = !!r.mimeType;

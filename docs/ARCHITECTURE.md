@@ -394,6 +394,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | 3.1 | Chart, pivot, comment theo ô, con trỏ người khác trên lưới, xuất CF/validation/filter ra XLSX, import CF/validation từ XLSX, ảnh trong ô, .xls/.ods qua LibreOffice | |
 | **4** | Slides editor (canvas element tree + Yjs), theme/layout/background, bảng, biểu đồ (liên kết Sheets), comment theo đối tượng, speaker notes, slide sorter, trình chiếu + presenter view, PPTX import/export, PDF/PNG/HTML | **xong** — xem §23 |
 | 4.1 | Animation, nhóm đối tượng (group), section, crop ảnh, video, SmartArt → diagram, .ppt/.odp qua LibreOffice | |
+| **8** | **Forms** (kéo lên trước Phase 5 theo lộ trình Google parity): trình soạn cộng tác, 12 loại câu hỏi + tiêu đề/ảnh/video/section, rẽ nhánh, kiểm tra hợp lệ, quiz, cài đặt, trang trả lời `/f/:id`, tab Responses (tóm tắt / theo câu / từng người), liên kết Sheets, CSV | **xong** — xem §25 |
 | 5 | Chat (conversation, message, resource card, WS) + Notifications | |
 | 6 | Search (OpenSearch, outbox, indexer) + AI layer | |
 | 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | |
@@ -535,4 +536,22 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | .xlsm | `.xlsm` được nhận là bảng tính; `xl/vbaProject.bin` được đọc (CFB + giải nén MS-OVBA + bản ghi `dir`: tên module, stream, offset, codepage), dòng `Attribute VB_*` bị bỏ → map `vba` của tài liệu → panel Macros hiện **"Excel VBA (read-only)"** để người dùng viết lại thành JS. Báo cáo import ghi rõ. |
 | Giới hạn | Chưa có trigger (onEdit, theo lịch), chưa ghi tham chiếu tương đối, chưa nhập/xuất macro giữa các file, macro chạy ở trình duyệt người bấm (không chạy nền trên server); mỗi thay đổi của macro là một bước undo của Univer. |
 | Test | `apps/api/test/sheets.mjs` (+4: kết quả công thức tách khỏi công thức, export đọc kết quả, copy giữ macro, .xlsm giữ VBA) + `apps/web/e2e/macros-flow.mjs` (8 bước: ghi → lưu → phím tắt → người khác thấy → script vòng lặp/appendRow/công thức/log → lỗi giữ thay đổi trước đó → sandbox không có `fetch` → viewer bị khoá). |
+
+---
+
+## 25. Phase 8 — Forms: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | `packages/form-model`: định nghĩa form là **Y.Doc** (`Y.Map 'form'` title/description/theme/settings, `Y.Array 'itemOrder'`, `Y.Map 'items'` → mỗi mục một Y.Map, mỗi thuộc tính một key) → nhiều người soạn cùng lúc, có phiên bản, copy như mọi file. **Câu trả lời là dòng Postgres** (`form_responses`: answers jsonb, score, email, edit_token) → báo cáo, CSV, Sheets, không phình Y.Doc. |
+| Loại câu hỏi | Short answer, paragraph, multiple choice (+ "Other"), checkboxes, dropdown, file upload, linear scale, rating (sao/tim/like), multiple-choice grid, checkbox grid, date (+ giờ), time; khối tiêu đề-mô tả, ảnh, video (YouTube/Vimeo), **section**. |
+| Logic dùng chung | `validateAnswer` (bắt buộc, lựa chọn hợp lệ, số / text / độ dài / regex / số lựa chọn + thông báo tuỳ chỉnh, 1 câu trả lời mỗi cột của lưới), `pagesOf` + `nextPage` (rẽ nhánh theo lựa chọn hoặc "sau section"), `visitedPages`, `scoreOf` / `isCorrect`, `responseColumns` — **cùng mã** chạy ở trang trả lời và server; server bỏ câu trả lời ở trang bị rẽ nhánh bỏ qua. |
+| Ai được trả lời | Không cần share file: link là quyền. `access: org` → người trong workspace; `public` → bất kỳ ai có link. Thu thập email: tắt / xác thực (tài khoản đăng nhập) / người trả lời tự nhập. Giới hạn 1 lần (theo tài khoản), cho sửa sau khi gửi (edit token riêng), đóng tay hoặc theo hạn, thông báo khi đóng. |
+| Quiz | Điểm, đáp án (lựa chọn: đúng tập; chữ: bất kỳ đáp án nào, không phân biệt hoa-thường/khoảng trắng), phản hồi đúng/sai, công bố điểm ngay hoặc sau; **đáp án không bao giờ gửi tới người trả lời** (`publicForm`). |
+| File upload | `/forms/:id/uploads` lưu blob + đăng ký là asset của form → chỉ người xem/sửa form tải được (`/resources/:id/assets/:blob`); giới hạn dung lượng theo câu hỏi. |
+| Câu trả lời ↔ Sheets | "Link to Sheets" tạo bảng tính cạnh form, ghi header (Timestamp, Email, Score, mỗi câu / mỗi dòng lưới) + mọi câu trả lời; câu trả lời mới được **nối dòng realtime** (transaction Yjs trên sheet, người ghi là người trả lời hoặc chủ form). CSV UTF-8 BOM cùng cột. Tab Responses: tóm tắt (thanh %, histogram, bảng lưới, danh sách chữ, file), theo câu, từng người (xoá), điểm trung bình; cập nhật live qua stateless message. |
+| Phát hành | Trang `/f/:id` ngoài app shell, theme (màu, nền, font, ảnh header), thanh tiến độ, xáo trộn câu/lựa chọn, nháp lưu trên máy, link điền sẵn `?entry.<id>=…`, mã nhúng iframe, xem tóm tắt (nếu bật). |
+| Sửa lỗi kèm theo | `DocStore.save` chỉ ghi `updated_by`/activity khi người sửa là UUID thật — trước đó một lần ghi hệ thống làm lưu thất bại (dữ liệu chỉ còn trong RAM). |
+| Giới hạn | Chưa có QR code, nhập câu hỏi từ form khác, thông báo email khi có câu trả lời (chờ module Mail), chấm điểm tay câu tự luận, "chỉ 1 câu trả lời" cho form công khai (cần đăng nhập). |
+| Test | `apps/api/test/forms.mjs` (38 kiểm tra) + `apps/web/e2e/forms-flow.mjs` (9 bước: 2 người soạn, đổi loại, lựa chọn, bắt buộc, trả lời có lỗi → rẽ nhánh → gửi, Responses live, quiz, đóng form, Send, viewer). |
 
