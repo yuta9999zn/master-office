@@ -391,7 +391,8 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | 2.2 | Phần Word còn lại theo `docs/OFFICE-PARITY.md` §1 (footnote, cột, style tổ chức, so sánh phiên bản, bộ đọc OOXML giữ font/màu, .doc qua LibreOffice) | |
 | **3** | Sheets: Univer (ribbon kiểu Excel, công thức, filter, sort, conditional formatting, data validation, find & replace, hyperlink) + binding Yjs tự viết + XLSX/CSV/PDF/HTML import-export + phiên bản + bộ kiểm chứng công thức Excel | **xong** — xem §22 |
 | 3.1 | Chart, pivot, comment theo ô, con trỏ người khác trên lưới, xuất CF/validation/filter ra XLSX, import CF/validation từ XLSX, ảnh trong ô, .xls/.ods qua LibreOffice | |
-| 4 | Slides editor + PPTX import/export + PDF/PNG | |
+| **4** | Slides editor (canvas element tree + Yjs), theme/layout/background, bảng, biểu đồ (liên kết Sheets), comment theo đối tượng, speaker notes, slide sorter, trình chiếu + presenter view, PPTX import/export, PDF/PNG/HTML | **xong** — xem §23 |
+| 4.1 | Animation, nhóm đối tượng (group), section, crop ảnh, video, SmartArt → diagram, .ppt/.odp qua LibreOffice | |
 | 5 | Chat (conversation, message, resource card, WS) + Notifications | |
 | 6 | Search (OpenSearch, outbox, indexer) + AI layer | |
 | 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | |
@@ -498,3 +499,22 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Kiểm chứng công thức | `apps/web/e2e/formula-cases.mjs`: 132 công thức (toán, thống kê, logic, lỗi, text, tra cứu, ngày giờ, tài chính, mảng động, LET) với kết quả của Excel; e2e đọc giá trị thô từ engine và so sánh (sai số tương đối 1e-6). Hiện **132/132 khớp**. |
 | Giới hạn đã biết | Tham chiếu vùng trong CF/validation/filter lưu theo chỉ số (không theo id) → sửa cấu trúc đồng thời có thể lệch vùng; undo của mỗi người chỉ gồm thao tác của mình nhưng không được biến đổi theo thao tác từ xa; chưa có con trỏ/vùng chọn của người khác trên lưới; comment theo ô, chart, pivot → 3.1. |
 | Test | `apps/api/test/sheets.mjs` (33 kiểm tra: collab, chèn dòng đồng thời, quyền xem, XLSX/CSV/PDF/HTML, import XLSX/CSV/file hỏng, phiên bản, copy, tìm kiếm) + `apps/web/e2e/sheets-flow.mjs` (10 bước, 2 người + parity công thức). |
+
+---
+
+## 23. Phase 4 — Slides: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | `packages/slide-model`: `Y.Map 'deck'` (name, size, theme), `Y.Array 'slideOrder'`, `Y.Map 'slides'` → mỗi slide có `meta`, `notes: Y.Text`, `elements: Y.Map<id, Y.Map>`. **Mỗi đối tượng là một Y.Map riêng, mỗi thuộc tính một key** → hai người di chuyển / đổi màu cùng một đối tượng không ghi đè nhau (có test). Chữ trong text box/shape là `Y.XmlFragment` cùng encoding với y-prosemirror (gõ chung realtime, undo theo người). Bảng: `cells: Y.Map<"rowId:colId">` với id dòng/cột ổn định. Slide bị hai người di chuyển cùng lúc có thể xuất hiện hai lần trong `slideOrder` → người đọc bỏ trùng. |
+| Khởi tạo | Server tạo deck khi tạo mới / import / seed / copy (như Sheets). Presentation có từ trước Phase 4 được tạo deck ở lần mở đầu (`collab-token`). |
+| Render | **Một renderer HTML/SVG duy nhất** (`slideHtml`) cho canvas, thumbnail, trình chiếu, bản xem phiên bản và export PDF/PNG/HTML (Chromium) → file xuất giống hệt màn hình. Toạ độ là px ở 96 dpi (16:9 = 1280 × 720 = 13.333″ × 7.5″), cỡ chữ theo pt. Màu theme dạng token (`@accent1`, `@title`…) nên đổi theme là đối tượng đổi màu theo. Inter được ánh xạ sang bản tự host của next/font (`FONT_ALIASES`). |
+| Soạn thảo | Lớp "hit" trong suốt theo thứ tự z nhận chuột; kéo/đổi kích thước/xoay (cả khi đã xoay), căn theo đường gióng (Alt để tắt), quét chọn; sửa chữ bằng Tiptap gắn vào fragment của đối tượng; định dạng cả khung khi chưa mở editor (ghi thẳng vào Y.XmlText). Undo/redo: `Y.UndoManager` theo origin cục bộ + y-prosemirror. Hiện diện: awareness `slides {slide, sel, editing}` → khung màu + tên người khác. |
+| PPTX export | pptxgenjs: text box/shape/bảng/**biểu đồ native**/ảnh/ghi chú/slide ẩn là đối tượng PowerPoint thật (không phải ảnh chụp). `theme1.xml` được viết lại với bảng màu + font của deck (tên `Master Office: <id>` để import nhận lại đúng theme). Giản lược: nền gradient → màu đầu. |
+| PPTX import | Tự đọc OOXML (JSZip + xmldom): kích thước, theme (màu scheme + lumMod/lumOff, font), placeholder kế thừa từ layout/master, nhóm (biến đổi toạ độ con), shape (16 hình + đường/mũi tên), chữ (run, bullet lồng nhau, căn lề, link), ảnh (lưu thành asset), bảng, biểu đồ (bar/col/line/area/pie/doughnut từ cache), nền, ghi chú, slide ẩn, transition. Định dạng lặp trên mọi run được gom lên khung. Báo cáo: SmartArt, OLE, video/audio, animation, freeform → bỏ/giản lược. .ppt/.odp cần LibreOffice. |
+| Export khác | PDF (một trang mỗi slide, đúng kích thước), PNG 2× (một slide hoặc zip tất cả), HTML. Ảnh được nhúng data URL nên Chromium không cần gọi API. |
+| Biểu đồ ↔ Sheets | `GET /resources/:id/sheet-range?range=A1:D5&sheet=` (kiểm quyền xem) → "Use data from Sheets" / "Refresh from Sheets". |
+| Trình chiếu | Toàn màn hình, phím/chuột, fade/push/wipe, màn đen (B), laser (L), bỏ qua slide ẩn; presenter view là cửa sổ riêng (`/present/:id`) đồng bộ qua BroadcastChannel (slide hiện tại + kế, ghi chú, đồng hồ). |
+| Giới hạn đã biết | Chưa có group, animation, crop ảnh, video; con trỏ chữ của người khác chỉ hiện ở mức khung ("typing"); xoá slide đồng thời với chỉnh sửa trên slide đó → chỉnh sửa mất cùng slide. |
+| Test | `apps/api/test/slides.mjs` (47 kiểm tra: collab, sửa đồng thời, quyền xem, PPTX/PDF/PNG/HTML, import PPTX thật, file hỏng/.ppt, comment theo đối tượng, phiên bản, copy kèm ảnh, tìm kiếm, sheet-range) + `apps/web/e2e/slides-flow.mjs` (15 bước, 2 người + viewer). |
+

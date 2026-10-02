@@ -73,13 +73,14 @@ export function TextEditor({
         },
       },
       onCreate: ({ editor: ed }) => {
-        // Collaboration renders the shared content asynchronously; focus once it is there.
+        // Focus right away so the first keystrokes after the double-click are not lost; the shared content
+        // renders a tick later (y-prosemirror), then the caret goes to the end (or everything is selected).
+        ed.view.focus();
         setTimeout(() => {
           if (ed.isDestroyed) return;
-          if (selectAll) ed.commands.selectAll();
-          else ed.commands.focus('end');
-          ed.commands.focus();
-        }, 30);
+          if (selectAll) ed.chain().selectAll().focus().run();
+          else if (!ed.view.state.doc.textContent || ed.state.selection.from <= 1) ed.commands.focus('end');
+        }, 0);
       },
     },
     [frag],

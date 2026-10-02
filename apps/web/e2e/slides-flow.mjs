@@ -95,10 +95,15 @@ await step('undo removes the move, then the shape (Ctrl+Z)', claudia, async () =
   await until(claudia, (k) => document.querySelectorAll('[data-hit]').length === k - 1, n);
 });
 
-await step('bold on a selected text box formats the whole box', claudia, async () => {
+await step('bold on a selected text box toggles the whole box', claudia, async () => {
+  // The title placeholder is bold by default: Bold turns it off for the whole box, again turns it back on.
+  const titleBold = () => document.querySelector('[data-testid="slide-canvas"] .mo-el .mo-box')?.getAttribute('style')?.includes('font-weight:700');
   await claudia.locator('[data-hit]').first().click();
+  await until(claudia, titleBold);
   await claudia.getByRole('button', { name: 'Bold (Ctrl+B)' }).click();
-  await until(claudia, () => !!document.querySelector('[data-testid="slide-canvas"] .mo-box[style*="font-weight:700"], [data-testid="slide-canvas"] .mo-box[style*="font-weight: 700"]') || !document.querySelector('[data-testid="slide-canvas"] .mo-box'));
+  await until(claudia, (f) => !new Function(`return (${f})()`)(), titleBold.toString());
+  await claudia.getByRole('button', { name: 'Bold (Ctrl+B)' }).click();
+  await until(claudia, titleBold);
 });
 
 await step('speaker notes sync to the other editor', claudia, async () => {
@@ -120,7 +125,8 @@ await step('insert a chart and edit its data in the Format panel', claudia, asyn
   const cell = claudia.getByLabel('Share Social');
   await cell.fill('90');
   await cell.blur();
-  await until(claudia, () => [...document.querySelectorAll('[data-testid="slide-canvas"] text')].some((t) => t.textContent === '72%'));
+  // 90 / (90 + 25 + 15 + 20) = 60%
+  await until(claudia, () => [...document.querySelectorAll('[data-testid="slide-canvas"] text')].some((t) => t.textContent === '60%'));
 });
 
 await step('present: full-screen show, keyboard navigation, end with Esc', claudia, async () => {

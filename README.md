@@ -7,7 +7,7 @@
 
 ## Trạng thái
 
-**Phase 1–2 đã xong**: App Shell, Unified Resource Model, phân quyền, Spaces, Drive, **Docs editor cộng tác realtime** (comment, phiên bản, import/export DOCX/PDF). Bảng đối chiếu với Office: [`docs/OFFICE-PARITY.md`](docs/OFFICE-PARITY.md). Lộ trình các phase tiếp theo nằm ở §16 của tài liệu kiến trúc.
+**Phase 1–4 đã xong**: App Shell, Unified Resource Model, phân quyền, Spaces, Drive, **Docs** (Word parity, DOCX/PDF), **Notes & Mind Map**, **Sheets** (Univer, công thức như Excel, XLSX/CSV), **Slides** (soạn thảo cộng tác, theme, bảng, biểu đồ liên kết Sheets, trình chiếu + presenter view, PPTX/PDF/PNG) — tất cả realtime nhiều người. Bảng đối chiếu với Office: [`docs/OFFICE-PARITY.md`](docs/OFFICE-PARITY.md). Lộ trình các phase tiếp theo nằm ở §16 của tài liệu kiến trúc.
 
 ## Chạy môi trường dev
 
@@ -27,7 +27,7 @@ Mở http://localhost:3000. Người dùng mặc định là **Claudia Chen** (c
 
 ```bash
 pnpm typecheck
-pnpm test            # seed lại + API (smoke, docs, docs-word, notes, sheets) + e2e (drive, docs, docs-word, notes, sheets + 132 công thức Excel) — cần `pnpm dev` đang chạy
+pnpm test            # seed lại + API (smoke, docs, docs-word, notes, sheets, slides) + e2e (drive, docs, docs-word, notes, sheets + 132 công thức Excel, slides) — cần `pnpm dev` đang chạy
 ```
 
 Lần đầu chạy e2e cần cài trình duyệt: `pnpm --filter @workos/web exec playwright install chromium`.

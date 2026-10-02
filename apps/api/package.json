@@ -12,7 +12,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "test:smoke": "node test/smoke.mjs",
     "test:docs": "node test/docs.mjs && node test/docs-word.mjs && node test/notes.mjs",
-    "test:sheets": "node test/sheets.mjs"
+    "test:sheets": "node test/sheets.mjs",
+    "test:slides": "node test/slides.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",

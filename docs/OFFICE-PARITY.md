@@ -124,6 +124,8 @@ Trạng thái Phase 3 (✅ có, ◐ một phần, ⏳ Phase 3.1): ✅ ribbon ki�
 
 ---
 
+Trạng thái Phase 4 (✅ có, ◐ một phần, ⏳ 4.1): ✅ slide mới theo 6 layout, nhân bản, xoá, ẩn, kéo sắp xếp, font/cỡ/đậm/nghiêng/gạch/màu/highlight/danh sách/căn lề, arrange (thứ tự, căn, phân bố), text box, 16 shape + đường/mũi tên, ảnh (chèn/dán/kéo-thả/thay), bảng, biểu đồ 6 loại (dữ liệu liên kết Sheets), theme, bảng màu, font theme, kích thước slide + hướng, nền (màu/gradient/ảnh), transition fade/push/wipe, trình chiếu + presenter view + laser, comment trên đối tượng, speaker notes, slide sorter, nhập/xuất PPTX, PDF, PNG; ◐ section, outline view; ⏳ nhóm đối tượng, animation, crop ảnh, video, icon, SmartArt.
+
 ## 4. Tương thích file — mục tiêu kiểm thử
 
 - **Round-trip**: file tạo trong Master Office → export → mở bằng Office (và LibreOffice trong CI) → import lại → so sánh cấu trúc. Docs đã có test round-trip DOCX (text, danh sách, bảng).
