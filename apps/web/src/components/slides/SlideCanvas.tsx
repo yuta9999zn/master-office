@@ -90,8 +90,16 @@ export function SlideCanvas({
   useLayoutEffect(() => {
     const el = viewport.current;
     if (!el) return;
+    // Fit mode has no scrollbars (overflow hidden) and ignores sub-pixel changes: otherwise, at fractional
+    // display scales, a scrollbar appearing/disappearing changes the viewport, which changes the fit, which
+    // toggles the scrollbar again — the slide visibly shakes.
+    let last = { w: -1, h: -1 };
     const measure = () => {
-      const k = Math.max(0.1, Math.min((el.clientWidth - 64) / W, (el.clientHeight - 64) / H));
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (Math.abs(w - last.w) < 1 && Math.abs(h - last.h) < 1) return;
+      last = { w, h };
+      const k = Math.max(0.1, Math.floor(Math.min((w - 66) / W, (h - 66) / H) * 1000) / 1000);
       setFit(k);
     };
     measure();
@@ -280,7 +288,7 @@ export function SlideCanvas({
   return (
     <CM.Root>
       <CM.Trigger asChild>
-        <div ref={viewport} className="relative min-h-0 min-w-0 flex-1 overflow-auto" onPointerDown={startMarquee} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} data-testid="slide-viewport">
+        <div ref={viewport} className={cn('relative min-h-0 min-w-0 flex-1', zoom === 'fit' ? 'overflow-hidden' : 'overflow-auto')} onPointerDown={startMarquee} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} data-testid="slide-viewport">
           <div className="flex min-h-full min-w-full items-center justify-center p-8" style={{ width: W * k + 64, height: H * k + 64 }}>
             <div ref={page} className="relative shrink-0 rounded-[3px] bg-white shadow-[0_4px_24px_-6px_rgba(15,23,42,0.25)]" style={{ width: W * k, height: H * k }} data-testid="slide-canvas">
               <div className="absolute left-0 top-0" style={{ width: W, height: H, transform: `scale(${k})`, transformOrigin: '0 0' }}>

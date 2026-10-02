@@ -11,6 +11,8 @@ import { useMe, useResourceActions, useResourceMembers, useVersionActions, useVe
 import { ShareDialog } from '../drive/dialogs';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
+import { SheetTabs } from './SheetTabs';
+import type { GridHandle } from './UniverGrid';
 import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
 import { Button, cn, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
@@ -40,6 +42,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const titleRef = useRef<TitleBarHandle>(null);
   const activeSheet = useRef<string | null>(null);
+  const [grid, setGrid] = useState<GridHandle | null>(null);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
   const report = (r.metadata as { import?: ImportReport } | undefined)?.import;
   const exportUrl = (f: string) => `/api/resources/${r.id}/export?format=${f}${f === 'csv' && activeSheet.current ? `&sheet=${activeSheet.current}` : ''}`;
@@ -118,13 +121,15 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
       <ImportBanner report={report} canEdit={editable} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />
 
       <div className="flex min-h-0 flex-1 gap-3 p-5 pt-2">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
           {collab.error ? (
             <EmptyState icon={<AlertTriangle size={30} />} title="Can’t open this spreadsheet">
               {collab.error}
             </EmptyState>
           ) : collab.session ? (
             <>
+              <SheetTabs grid={grid} unitId={r.id} doc={collab.session.doc} editable={editable} />
+              <div className="relative min-h-0 flex-1">
               <UniverGrid
                 key={r.id}
                 unitId={r.id}
@@ -132,6 +137,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                 synced={collab.synced}
                 editable={editable}
                 onReady={(h) => {
+                  setGrid(h);
                   if (!h) return;
                   const wb = h.api.getWorkbook(r.id);
                   activeSheet.current = wb?.getActiveSheet()?.getSheetId() ?? null;
@@ -140,6 +146,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                   });
                 }}
               />
+              </div>
               {previewing && <VersionPreview resourceId={r.id} versionId={previewing} canEdit={editable} onClose={() => setPreviewing(null)} />}
             </>
           ) : (

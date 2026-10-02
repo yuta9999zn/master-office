@@ -91,7 +91,8 @@ export function UniverGrid({
               sheets: { disableForceStringMark: true },
               // Formulas are always recalculated on open, like Excel with "fullCalcOnLoad".
               formula: { initialFormulaComputing: 0 as never },
-              footer: { sheetBar: true, statisticBar: true, menus: true, zoomSlider: true } as never,
+              // Sheet tabs live above the grid (SheetTabs, Lark style), not in Univer's bottom bar.
+              footer: { sheetBar: false, statisticBar: true, menus: true, zoomSlider: true } as never,
             }),
             filter.UniverSheetsFilterPreset(),
             sort.UniverSheetsSortPreset(),
