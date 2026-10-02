@@ -13,7 +13,11 @@
 //                        rowMeta: Y.Map<rowId, { h?, hd? }>
 //                        colMeta: Y.Map<colId, { w?, hd? }>
 //                        merges: Y.Map<mergeId, { r0, r1, c0, c1 }>   (row/col ids)
+//                        values: Y.Map<"rowId:colId", { v, t }>      computed formula results, written back by clients
 //                      }
+// Formula results live apart from the cells so writing a result can never overwrite a formula someone
+// changed concurrently (e.g. a reference shifted by a row insert). Workbooks created before `values`
+// existed keep their results in `cells` (clients then fall back to writing there).
 //   Y.Map 'resources' plugin name → JSON string (filters, conditional formats, data validation, hyperlinks)
 import * as Y from 'yjs';
 
@@ -103,8 +107,11 @@ export function emptySheet(name = 'Sheet1', rows = DEFAULT_ROWS, cols = DEFAULT_
 
 export const isEmptyCell = (c: Cell | null | undefined) => !c || ((c.v === undefined || c.v === null || c.v === '') && !c.f && !c.s);
 
+export type FormulaResult = { v: string | number | boolean | null; t?: Cell['t'] };
+
 export interface YSheet {
   map: Y.Map<unknown>;
+  values: Y.Map<FormulaResult> | null;
   meta: () => SheetMeta;
   rows: Y.Array<string>;
   cols: Y.Array<string>;
@@ -117,6 +124,7 @@ export interface YSheet {
 export function ySheet(map: Y.Map<unknown>): YSheet {
   return {
     map,
+    values: (map.get('values') as Y.Map<FormulaResult> | undefined) ?? null,
     meta: () => (map.get('meta') as SheetMeta) ?? { name: 'Sheet' },
     rows: map.get('rows') as Y.Array<string>,
     cols: map.get('cols') as Y.Array<string>,
@@ -159,6 +167,7 @@ export function createYSheet(s: PlainSheet): Y.Map<unknown> {
   m.set('rowMeta', rowMeta);
   m.set('colMeta', colMeta);
   m.set('merges', merges);
+  m.set('values', new Y.Map<FormulaResult>());
   return m;
 }
 
@@ -197,7 +206,8 @@ export function readWorkbook(doc: Y.Doc): PlainWorkbook {
       const rIdx = ri.get(r);
       const cIdx = ci.get(c);
       if (rIdx === undefined || cIdx === undefined) return; // orphan of a deleted row/col
-      (cells[rIdx] ??= {})[cIdx] = cell;
+      const result = cell.f ? ys.values?.get(key) : undefined;
+      (cells[rIdx] ??= {})[cIdx] = result ? { ...cell, v: result.v, ...(result.t ? { t: result.t } : {}) } : cell;
     });
     const rowMeta: PlainSheet['rowMeta'] = {};
     ys.rowMeta.forEach((v, r) => ri.has(r) && (rowMeta[ri.get(r)!] = v));

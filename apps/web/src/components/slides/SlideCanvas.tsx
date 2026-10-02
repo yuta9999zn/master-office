@@ -155,7 +155,7 @@ export function SlideCanvas({
     if (!selection.includes(id)) setSelection(sel);
     if (!editable) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    store.checkpoint();
+    store.beginGesture();
     setDrag({ kind: 'move', start: toSlide(e), boxes: new Map(sel.map((s) => [s, boxOf(byId.get(s)!)])), moved: false });
   };
 
@@ -163,7 +163,7 @@ export function SlideCanvas({
     e.stopPropagation();
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    store.checkpoint();
+    store.beginGesture();
     if (handle === 'rot') setDrag({ kind: 'rotate', id: el.id, box: boxOf(el) });
     else if (handle === 'start' || handle === 'end') setDrag({ kind: 'line', id: el.id, end: handle, box: boxOf(el), flipH: !!el.flipH, flipV: !!el.flipV });
     else setDrag({ kind: 'resize', id: el.id, handle, box: boxOf(el), aspect: el.type === 'image' && handle.length === 2 });
@@ -254,7 +254,7 @@ export function SlideCanvas({
       cancelAnimationFrame(raf.current);
       flush();
     }
-    if (drag && drag.kind !== 'marquee') store.checkpoint();
+    if (drag && drag.kind !== 'marquee') store.endGesture();
     setDrag(null);
     setMarquee(null);
     setGuides({ x: [], y: [] });

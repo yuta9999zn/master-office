@@ -42,7 +42,8 @@ await step('open the seeded deck: thumbnails, canvas, status bar, panels', claud
   await until(claudia, () => document.querySelectorAll('[data-testid="slide-thumb"]').length === 6, null, 60000);
   if (!(await canvasText(claudia)).includes('Q4 Campaign')) throw new Error('title slide not rendered');
   if ((await counter(claudia)) !== 'Slide 1 of 6') throw new Error(await counter(claudia));
-  for (const t of ['Design', 'Layout', 'Theme', 'Comments']) await claudia.getByTestId('slides-panel').getByRole('button', { name: t, exact: true }).waitFor();
+  // "Comments" carries a count badge when the deck already has open comments.
+  for (const t of ['Design', 'Layout', 'Theme', 'Comments']) await claudia.getByTestId('slides-panel').getByRole('button', { name: new RegExp(`^${t}`) }).first().waitFor();
   await claudia.getByText('Color scheme').waitFor();
   if (!(await claudia.locator('[data-testid="slide-canvas"] svg rect').count())) throw new Error('chart not drawn');
 });

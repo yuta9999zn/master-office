@@ -28,6 +28,8 @@ import {
 import { useSyncExternalStore } from 'react';
 import * as Y from 'yjs';
 
+const CAPTURE_TIMEOUT = 500;
+
 /** Origin of every local edit (tracked by the undo manager; remote edits are not). */
 export const LOCAL = { local: true };
 
@@ -60,7 +62,7 @@ export class DeckStore {
     this.deck = doc.getMap(DECK_MAP);
     this.order = doc.getArray<string>(ORDER_ARRAY);
     this.slides = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
-    this.undo = new Y.UndoManager([this.deck, this.order, this.slides], { trackedOrigins: new Set<unknown>([LOCAL, ySyncPluginKey]), captureTimeout: 500 });
+    this.undo = new Y.UndoManager([this.deck, this.order, this.slides], { trackedOrigins: new Set<unknown>([LOCAL, ySyncPluginKey]), captureTimeout: CAPTURE_TIMEOUT });
     this.slides.observeDeep(this.onSlides);
     this.order.observe(this.onOther);
     this.deck.observe(this.onOther);
@@ -129,6 +131,19 @@ export class DeckStore {
   /** Ends the current undo step (each drag / command is undone separately). */
   checkpoint() {
     this.undo.stopCapturing();
+  }
+
+  /**
+   * A drag / resize / rotate is one undo step however long it takes: while the gesture lasts, changes are
+   * merged regardless of the capture timeout (a slow drag would otherwise need several Ctrl+Z).
+   */
+  beginGesture() {
+    this.undo.stopCapturing();
+    this.undo.captureTimeout = Number.POSITIVE_INFINITY;
+  }
+  endGesture() {
+    this.undo.stopCapturing();
+    this.undo.captureTimeout = CAPTURE_TIMEOUT;
   }
 
   // ── Lookups ────────────────────────────────────────────────────────────────

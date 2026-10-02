@@ -116,7 +116,10 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const titleRef = useRef<TitleBarHandle>(null);
 
   const store = useMemo(() => (collab.session ? new DeckStore(collab.session.doc) : null), [collab.session]);
-  useEffect(() => () => store?.destroy(), [store]);
+  useEffect(() => {
+    if (store) (window as unknown as { __moDeck?: DeckStore }).__moDeck = store; // e2e hooks
+    return () => store?.destroy();
+  }, [store]);
   const deck = useDeck(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
 

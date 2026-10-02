@@ -288,7 +288,7 @@ export function DesignTab({ store, deck, slide, editable, onUploadImage }: { sto
                 onClick={() => store.setTheme({ ...deck.theme, id: deck.theme.id === t.id ? t.id : `${deck.theme.id}`, colors: t.colors })}
                 className={cn('flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left hover:bg-hover', active ? 'border-brand-600 ring-1 ring-brand-600' : 'border-line')}
               >
-                <span className="w-6 text-[13px] font-semibold" style={{ color: t.colors.title, fontFamily: deck.theme.fonts.heading }}>
+                <span className="w-6 rounded text-center text-[13px] font-semibold" style={{ color: t.colors.title, background: t.colors.bg, fontFamily: deck.theme.fonts.heading }}>
                   Aa
                 </span>
                 <span className="flex flex-1 overflow-hidden rounded">

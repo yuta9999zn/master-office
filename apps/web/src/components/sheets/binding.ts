@@ -630,6 +630,14 @@ export class SheetBinding {
         if (!ys) continue;
         for (const [key, { v, t }] of cells) {
           const cur = ys.cells.get(key);
+          if (ys.values) {
+            // Only the result is written: a concurrent formula change (reference shift, retyping) is never undone.
+            if (!cur?.f) continue;
+            const prev = ys.values.get(key);
+            if (v === null || v === undefined) prev && ys.values.delete(key);
+            else if (prev?.v !== v || (t !== undefined && prev?.t !== t)) ys.values.set(key, { v, t: t ?? (typeof v === 'number' ? 2 : typeof v === 'boolean' ? 3 : 1) });
+            continue;
+          }
           if (!cur?.f || (cur.v === v && (t === undefined || cur.t === t))) continue;
           const next: Cell = { ...cur };
           if (v === null || v === undefined) {
@@ -709,6 +717,11 @@ export class SheetBinding {
             const c = m.colIdx.get(cid);
             if (r === undefined || c === undefined) continue;
             const cell = ys.cells.get(key);
+            const old = (e as Y.YMapEvent<Cell>).changes.keys.get(key)?.oldValue as Cell | undefined;
+            // A change that keeps the formula and style (a result written back by another client) never
+            // replaces what this client has: the local engine computes the value, and a formula shifted here
+            // in the meantime must survive.
+            if (cell?.f && old?.f === cell.f && sameJSON(old?.s ?? null, cell.s ?? null)) continue;
             if (cell?.f && fws) {
               // A result-only update of a formula this client already has: the local engine computes it.
               const raw = fws.getSheet().getCellRaw(r, c);

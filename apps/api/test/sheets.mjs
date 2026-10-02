@@ -126,6 +126,15 @@ check('cell text is searchable', hit?.id === salesId, hit);
 const created = (await call('POST', '/resources', { user: claudia, body: { name: 'Test sheet ' + Date.now(), type: 'spreadsheet' } })).data;
 const c = await connect(created.id, claudia);
 check('new spreadsheet is initialised by the server', sheetsOf(c.doc).length === 1 && sheetsOf(c.doc)[0].m.get('rows').length === 1000);
+// Formula results live in their own map: writing one never touches the formula (no lost reference shifts).
+const cs = sheetsOf(c.doc)[0];
+const fKey = `${cs.m.get('rows').get(0)}:${cs.m.get('cols').get(0)}`;
+setCell(cs, 0, 0, { f: '=6*7' });
+cs.m.get('values').set(fKey, { v: 42, t: 2 });
+await sleep(2600);
+check('formula results are stored apart from formulas', cellAt(cs, 0, 0)?.f === '=6*7' && cellAt(cs, 0, 0)?.v === undefined);
+const rHtml = await (await call('GET', `/resources/${created.id}/export?format=html`, { user: claudia, raw: true })).text();
+check('exports show results from the values map', rHtml.includes('>42<'));
 c.provider.destroy();
 
 // ── Import .xlsx ────────────────────────────────────────────────────────────
