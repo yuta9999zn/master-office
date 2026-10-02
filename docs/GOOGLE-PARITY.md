@@ -10,8 +10,8 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 
 | # | Yêu cầu | Ghi chú thiết kế |
 |---|---|---|
-| ⭐ 1 | **Macro** ("rất quan trọng") | Ghi macro (record) → script JavaScript; chạy lại bằng menu / phím tắt; trình soạn script; API `SpreadsheetApp`-like trên dữ liệu của workbook; chạy trong sandbox (Web Worker) với quyền của người dùng. File `.xlsm`: giữ nguyên dự án VBA, hiển thị mã nguồn VBA, không thực thi VBA (bảo mật + không có runtime); chuyển VBA → JS có trợ giúp của AI ở Phase 6. Trigger (onEdit, theo lịch) ở bước sau. |
-| ⭐ 2 | **Tab sheet ở phía trên** (giống Lark), không ở dưới như Google/Excel | Thanh tab riêng phía trên lưới: chuyển sheet, thêm, đổi tên, màu, ẩn/hiện, xoá, nhân bản, kéo sắp xếp. Ẩn footer tab mặc định của Univer. |
+| ⭐ 1 ✅ | **Macro** ("rất quan trọng") — **xong 2026-10-03** (ARCHITECTURE §24) | Ghi macro (record) → script JavaScript; chạy lại bằng menu / phím tắt; trình soạn script; API `SpreadsheetApp`-like trên dữ liệu của workbook; chạy trong sandbox (Web Worker) với quyền của người dùng. File `.xlsm`: giữ nguyên dự án VBA, hiển thị mã nguồn VBA, không thực thi VBA (bảo mật + không có runtime); chuyển VBA → JS có trợ giúp của AI ở Phase 6. Trigger (onEdit, theo lịch) ở bước sau. |
+| ⭐ 2 ✅ | **Tab sheet ở phía trên** (giống Lark), không ở dưới như Google/Excel — **xong 2026-10-03** | Thanh tab riêng phía trên lưới: chuyển sheet, thêm, đổi tên, màu, ẩn/hiện, xoá, nhân bản, kéo sắp xếp. Ẩn footer tab mặc định của Univer. |
 
 ---
 
@@ -42,7 +42,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | | **Chart**, **pivot table**, **image in cell / over cells**, drawing, **checkbox**, **dropdown** (◐ qua data validation), emoji, smart chips, **comment**, **note**, pre-built tables | ❌ |
 | Data | Sort sheet/range, filter, data validation | ✅ |
 | | **Filter views**, **group-by views**, **slicer**, **protect sheets & ranges**, **named ranges**, **named functions**, randomize range, **column stats**, **data cleanup (remove duplicates, trim whitespace)**, **split text to columns**, data extraction, data connectors | ❌ |
-| Tools / Extensions | **⭐ Macros (record, run, manage, import)**, **Apps Script (script editor)**, create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications, activity dashboard | ❌ |
+| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ❌ trigger, import macro từ file khác · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications, activity dashboard | ❌ |
 | View | Freeze, gridlines, zoom, formula bar, hidden sheets | ✅ |
 | | Show/hide formulas, protected ranges, group/outline rows & columns, **⭐ sheet tabs on top** | ❌ |
 | Cộng tác | Realtime, versions, export XLSX/CSV/PDF | ✅ · con trỏ người khác trên lưới ❌ |
@@ -85,8 +85,8 @@ Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewi
 
 | Thứ tự | Phase | Nội dung |
 |---|---|---|
-| 1 | **3.2a** | ⭐ Tab sheet phía trên (kiểu Lark) |
-| 2 | **3.2b** | ⭐ **Macro**: recorder, trình soạn script, chạy (menu + phím tắt), quản lý, sandbox Worker, API workbook; giữ & hiển thị VBA của .xlsm |
+| 1 ✅ | **3.2a** | ⭐ Tab sheet phía trên (kiểu Lark) |
+| 2 ✅ | **3.2b** | ⭐ **Macro**: recorder, trình soạn script, chạy (menu + phím tắt), quản lý, sandbox Worker, API workbook; giữ & hiển thị VBA của .xlsm |
 | 3 | **8** | **Forms** (module mới, đầy đủ mục 4) + liên kết Sheets |
 | 4 | **3.1** | Sheets: chart, pivot, comment & note theo ô, protect ranges, named ranges, filter views, remove duplicates / trim, split text, table & alternating colors, checkbox, ảnh trong ô, text rotation, con trỏ người khác |
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |

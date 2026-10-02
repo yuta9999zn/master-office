@@ -19,6 +19,8 @@ import { DocStore } from '../docs/doc-store';
 import { PdfRenderer } from '../docs/pdf-renderer';
 import { csvToSheet, sheetToCsv } from './csv';
 import { exportXlsx, importXlsx, type XlsxReport } from './xlsx';
+import JSZip from 'jszip';
+import { readVbaProject, type VbaModule } from './vba';
 
 export type SheetExportFormat = 'xlsx' | 'csv' | 'pdf' | 'html';
 
@@ -149,9 +151,12 @@ export class SheetsService {
     const ext = fileName.split('.').pop()?.toLowerCase();
     let wb: PlainWorkbook;
     let report: XlsxReport;
+    let vba: VbaModule[] = [];
     if (ext === 'xlsx' || ext === 'xlsm') {
       ({ wb, report } = await importXlsx(buf, fileName));
-      if (ext === 'xlsm') report.dropped.push('macros were removed (the file is stored as .xlsx)');
+      if (ext === 'xlsm') {
+        vba = await this.vbaOf(buf, report);
+      }
     } else if (ext === 'csv') {
       const sheet = csvToSheet(buf.toString('utf8'), sheetBaseName(fileName));
       wb = { name: sheetBaseName(fileName), sheets: [sheet] };
@@ -165,7 +170,25 @@ export class SheetsService {
       );
     }
     await this.replace(id, wb, { id: actor.id, name: actor.name });
+    await this.collab.replaceMap(id, 'vba', Object.fromEntries(vba.map((m, i) => [String(i).padStart(3, '0'), m])), { id: actor.id, name: actor.name });
     return { status: 'done', ...report };
+  }
+
+  /** VBA source of a macro-enabled workbook: kept read-only (Extensions → Macros), never executed. */
+  private async vbaOf(buf: Buffer, report: XlsxReport): Promise<VbaModule[]> {
+    try {
+      const bin = await (await JSZip.loadAsync(buf)).file('xl/vbaProject.bin')?.async('uint8array');
+      if (!bin) return [];
+      const modules = readVbaProject(bin);
+      const withCode = modules.filter((m) => m.code);
+      report.dropped = report.dropped.filter((d) => !/macros/i.test(d));
+      report.preserved.push(`VBA macros: ${withCode.length} module(s) kept as read-only source (Extensions → Macros)`);
+      report.degraded.push('VBA does not run in Master Office — rewrite it as a JavaScript macro (Extensions → Macros)');
+      return modules;
+    } catch (e) {
+      report.warnings.push(`VBA project could not be read: ${(e as Error).message}`);
+      return [];
+    }
   }
 
   /** Replaces the whole workbook for everyone connected (import, version restore). */

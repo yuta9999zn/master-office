@@ -364,7 +364,12 @@ export class DocsService {
     if (src?.type === 'spreadsheet') {
       // Rebuilt (not byte-copied) so the copy gets fresh row/column ids and its own Yjs history.
       const { doc, state: fresh } = SheetsService.stateOf(SheetsService.preview(state));
-      await this.store.save(toId, fresh, doc, null);
+      // Macros travel with the copy (they live in the doc's top-level `macros` map).
+      const src = new Y.Doc();
+      Y.applyUpdate(src, state);
+      const macros = src.getMap('macros').toJSON();
+      if (Object.keys(macros).length) doc.transact(() => Object.entries(macros).forEach(([k, v]) => doc.getMap('macros').set(k, v)));
+      await this.store.save(toId, Object.keys(macros).length ? Y.encodeStateAsUpdate(doc) : fresh, doc, null);
       return;
     }
     const json = stateToJSON(state);

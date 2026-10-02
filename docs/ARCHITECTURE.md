@@ -390,6 +390,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | **2.1** | Word parity: tìm/thay thế, thiết lập trang + print layout + print preview, header/footer + số trang, ngắt trang, mục lục, chế độ gợi ý sửa (xuất thành track changes của Word), chỉ số trên/dưới, giãn dòng, Title/Subtitle, đổi hoa-thường | **xong** — xem §20 |
 | 2.2 | Phần Word còn lại theo `docs/OFFICE-PARITY.md` §1 (footnote, cột, style tổ chức, so sánh phiên bản, bộ đọc OOXML giữ font/màu, .doc qua LibreOffice) | |
 | **3** | Sheets: Univer (ribbon kiểu Excel, công thức, filter, sort, conditional formatting, data validation, find & replace, hyperlink) + binding Yjs tự viết + XLSX/CSV/PDF/HTML import-export + phiên bản + bộ kiểm chứng công thức Excel | **xong** — xem §22 |
+| **3.2** | **Tab sheet phía trên (kiểu Lark)** + **Macro**: ghi macro → JavaScript, trình soạn script, chạy bằng menu / Ctrl+Alt+Shift+1–9, sandbox Web Worker, API kiểu Apps Script; .xlsm giữ mã VBA (chỉ đọc) | **xong** — xem §24 |
 | 3.1 | Chart, pivot, comment theo ô, con trỏ người khác trên lưới, xuất CF/validation/filter ra XLSX, import CF/validation từ XLSX, ảnh trong ô, .xls/.ods qua LibreOffice | |
 | **4** | Slides editor (canvas element tree + Yjs), theme/layout/background, bảng, biểu đồ (liên kết Sheets), comment theo đối tượng, speaker notes, slide sorter, trình chiếu + presenter view, PPTX import/export, PDF/PNG/HTML | **xong** — xem §23 |
 | 4.1 | Animation, nhóm đối tượng (group), section, crop ảnh, video, SmartArt → diagram, .ppt/.odp qua LibreOffice | |
@@ -517,4 +518,21 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Trình chiếu | Toàn màn hình, phím/chuột, fade/push/wipe, màn đen (B), laser (L), bỏ qua slide ẩn; presenter view là cửa sổ riêng (`/present/:id`) đồng bộ qua BroadcastChannel (slide hiện tại + kế, ghi chú, đồng hồ). |
 | Giới hạn đã biết | Chưa có group, animation, crop ảnh, video; con trỏ chữ của người khác chỉ hiện ở mức khung ("typing"); xoá slide đồng thời với chỉnh sửa trên slide đó → chỉnh sửa mất cùng slide. |
 | Test | `apps/api/test/slides.mjs` (47 kiểm tra: collab, sửa đồng thời, quyền xem, PPTX/PDF/PNG/HTML, import PPTX thật, file hỏng/.ppt, comment theo đối tượng, phiên bản, copy kèm ảnh, tìm kiếm, sheet-range) + `apps/web/e2e/slides-flow.mjs` (15 bước, 2 người + viewer). |
+
+---
+
+## 24. Phase 3.2 — Tab sheet phía trên & Macro: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Tab sheet | Theo yêu cầu người dùng (kiểu Lark): thanh `SheetTabs` **phía trên lưới**; footer sheet bar của Univer tắt. Mọi thao tác (chuyển, thêm, đổi tên bằng nhấp đúp, nhân bản, màu, ẩn/hiện, di chuyển, xoá, kéo sắp xếp, danh sách tất cả sheet) đi qua facade Univer → binding Yjs đồng bộ như mọi chỉnh sửa. |
+| Ngôn ngữ macro | **JavaScript** với API kiểu **Google Apps Script** (`SpreadsheetApp`, `Sheet`, `Range`, `Logger`, `Browser`, `Utilities`) — người dùng chọn (2026-10-03). Không chạy VBA. |
+| Lưu trữ | Trong Y.Doc của chính bảng tính: map top-level `macros` (`id → {name, fn, code, shortcut, updatedBy, updatedAt}`) → đồng bộ realtime, nằm trong lịch sử phiên bản, đi theo khi "Make a copy" (cloneContent chép map). Map top-level được định danh theo tên nên tạo lần đầu từ client là an toàn. |
+| Ghi macro | `MacroRecorder` nghe `CommandExecuted` của Univer và dịch thành dòng script tham chiếu tuyệt đối (A1). Lệnh định dạng (`set-style`) không mang vùng → recorder tự theo dõi vùng chọn (`set-selections`) và sheet đang mở. Lệnh chưa hỗ trợ được ghi thành `// Not recorded: …` (không lặng lẽ bỏ qua); undo/redo không ghi. |
+| Chạy | Bản chụp workbook (giá trị, công thức, style của vùng đã dùng; tối đa 400k ô) → **Web Worker riêng** (tạo từ `macroWorker.toString()`), trong đó `fetch`, `XMLHttpRequest`, `WebSocket`, `importScripts`, `indexedDB`, `navigator`… bị gỡ trước khi chạy mã người dùng; quá 30 s thì worker bị huỷ và không áp gì. Macro đọc thấy ngay những gì nó vừa ghi (mô hình trong bộ nhớ); kết quả công thức cập nhật sau khi chạy xong (như `flush()` của Apps Script). |
+| Áp thay đổi | Worker trả danh sách thao tác (`cells`, `style`, `clear`, `merge`, `insertRows`, `freeze`, `insertSheet`, `toast`…); luồng chính áp qua facade Univer → binding Yjs → mọi người thấy ngay. Lỗi giữa chừng: thay đổi trước lỗi vẫn được áp (giống Apps Script), lỗi hiện ở Output. |
+| Quyền | Chỉ editor ghi / sửa / chạy macro (viewer thấy danh sách nhưng nút bị khoá; binding cũng không ghi thay đổi của viewer). |
+| .xlsm | `.xlsm` được nhận là bảng tính; `xl/vbaProject.bin` được đọc (CFB + giải nén MS-OVBA + bản ghi `dir`: tên module, stream, offset, codepage), dòng `Attribute VB_*` bị bỏ → map `vba` của tài liệu → panel Macros hiện **"Excel VBA (read-only)"** để người dùng viết lại thành JS. Báo cáo import ghi rõ. |
+| Giới hạn | Chưa có trigger (onEdit, theo lịch), chưa ghi tham chiếu tương đối, chưa nhập/xuất macro giữa các file, macro chạy ở trình duyệt người bấm (không chạy nền trên server); mỗi thay đổi của macro là một bước undo của Univer. |
+| Test | `apps/api/test/sheets.mjs` (+4: kết quả công thức tách khỏi công thức, export đọc kết quả, copy giữ macro, .xlsm giữ VBA) + `apps/web/e2e/macros-flow.mjs` (8 bước: ghi → lưu → phím tắt → người khác thấy → script vòng lặp/appendRow/công thức/log → lỗi giữ thay đổi trước đó → sandbox không có `fetch` → viewer bị khoá). |
 

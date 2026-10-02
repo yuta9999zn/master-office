@@ -3,10 +3,11 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, Download, FolderOpen, History, MessageSquareText, PencilLine, Printer, RotateCcw, Share2, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Circle, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { toast } from 'sonner';
 import { useMe, useResourceActions, useResourceMembers, useVersionActions, useVersionContent } from '@/lib/queries';
 import { ShareDialog } from '../drive/dialogs';
 import { ImportBanner } from '../docs/DocsWorkspace';
@@ -15,7 +16,12 @@ import { SheetTabs } from './SheetTabs';
 import type { GridHandle } from './UniverGrid';
 import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
-import { Button, cn, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
+import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
+import { MacrosPanel, SHORTCUT_LABEL } from './macros/MacrosPanel';
+import { functionNameOf, MacroRecorder, recordedCode } from './macros/recorder';
+import { runMacro } from './macros/run';
+import type { MacroResult } from './macros/runtime';
+import { saveMacro, useMacros, type MacroDef } from './macros/store';
 
 // Univer touches the DOM at import time: load it on the client only.
 const UniverGrid = dynamic(() => import('./UniverGrid').then((m) => m.UniverGrid), {
@@ -38,13 +44,58 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
-  const [panel, setPanel] = useState<'History' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | null>(null);
+  const [recorder, setRecorder] = useState<MacroRecorder | null>(null);
+  const [recCount, setRecCount] = useState(0);
+  const [saveRecording, setSaveRecording] = useState<string[] | null>(null);
+  const [running, setRunning] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<(MacroResult & { macro: string }) | null>(null);
+  const [editingMacro, setEditingMacro] = useState<string | null>(null);
+  const macros = useMacros(collab.session?.doc ?? null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const titleRef = useRef<TitleBarHandle>(null);
   const activeSheet = useRef<string | null>(null);
   const [grid, setGrid] = useState<GridHandle | null>(null);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
   const report = (r.metadata as { import?: ImportReport } | undefined)?.import;
+  const run = async (m: MacroDef) => {
+    if (!grid || running) return;
+    setRunning(m.id);
+    try {
+      const res = await runMacro(grid.api, r.id, m.code, m.fn, (t) => toast(t));
+      setLastRun({ ...res, macro: m.id });
+      if (res.error) toast.error(`${m.name}: ${res.error}`);
+      else toast.success(`${m.name} finished`, { description: `${res.ops.length} change${res.ops.length === 1 ? '' : 's'} in ${Math.round(res.ms)} ms` });
+    } finally {
+      setRunning(null);
+    }
+  };
+  const startRecording = () => {
+    if (!grid || recorder) return;
+    const rec = new MacroRecorder(grid.api, r.id);
+    rec.start();
+    setRecorder(rec);
+    setRecCount(0);
+  };
+  // Live action count in the recording bar.
+  useEffect(() => {
+    if (!recorder) return;
+    const t = setInterval(() => setRecCount(recorder.count), 300);
+    return () => clearInterval(t);
+  }, [recorder]);
+  // Ctrl+Alt+Shift+1…9 runs the macro bound to that number (like Google Sheets).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.altKey && e.shiftKey) || !/^Digit[1-9]$/.test(e.code)) return;
+      const m = macros.find((x) => x.shortcut === Number(e.code.slice(5)));
+      if (!m || !editable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void run(m);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
   const exportUrl = (f: string) => `/api/resources/${r.id}/export?format=${f}${f === 'csv' && activeSheet.current ? `&sheet=${activeSheet.current}` : ''}`;
 
   return (
@@ -115,6 +166,33 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             </MenuItem>
           </MenuContent>
         </Menu>
+        <Menu>
+          <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Extensions</button>
+          </MenuTrigger>
+          {/* Keep focus off the trigger after closing so typing goes straight to the grid (e.g. right after "Record macro"). */}
+          <MenuContent className="w-72" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuLabel>Macros</MenuLabel>
+            {recorder ? (
+              <MenuItem icon={<Square />} onSelect={() => setSaveRecording(recorder.stop())}>
+                Stop recording
+              </MenuItem>
+            ) : (
+              <MenuItem icon={<Circle />} disabled={!editable || !grid} onSelect={startRecording}>
+                Record macro
+              </MenuItem>
+            )}
+            <MenuItem icon={<Code2 />} onSelect={() => (setEditingMacro(null), setPanel('Macros'))}>
+              Manage macros & scripts
+            </MenuItem>
+            {macros.length > 0 && <MenuSeparator />}
+            {macros.map((m) => (
+              <MenuItem key={m.id} icon={<Play />} disabled={!editable || !!running} shortcut={m.shortcut ? SHORTCUT_LABEL(m.shortcut) : undefined} onSelect={() => void run(m)}>
+                {m.name}
+              </MenuItem>
+            ))}
+          </MenuContent>
+        </Menu>
         {!editable && collab.session && <span className="ml-3 rounded-md bg-hover px-2 py-0.5 text-[12px] text-muted">View only</span>}
       </div>
 
@@ -128,6 +206,20 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             </EmptyState>
           ) : collab.session ? (
             <>
+              {recorder && (
+                <div className="flex shrink-0 items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-[13px] text-red-800" data-testid="macro-recording">
+                  <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+                  <span className="flex-1">
+                    Recording new macro… <b>{recCount}</b> action{recCount === 1 ? '' : 's'} so far. Work on the sheet as usual.
+                  </span>
+                  <Button size="sm" variant="primary" onClick={() => setSaveRecording(recorder.stop())} data-testid="macro-stop">
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => (recorder.stop(), setRecorder(null))}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
               <SheetTabs grid={grid} unitId={r.id} doc={collab.session.doc} editable={editable} />
               <div className="relative min-h-0 flex-1">
               <UniverGrid
@@ -157,23 +249,96 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
           )}
         </div>
         {panel && (
-          <aside className="flex w-[320px] shrink-0 flex-col rounded-xl border border-line bg-surface">
-            <div className="flex items-center border-b border-line px-4">
-              <span className="tab" aria-current="page">
-                History
-              </span>
+          <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
+            <div className="flex items-center gap-4 border-b border-line px-4">
+              {(['Macros', 'History'] as const).map((t) => (
+                <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
+                  {t}
+                </button>
+              ))}
               <button onClick={() => (setPanel(null), setPreviewing(null))} className="ml-auto rounded p-1 text-muted hover:bg-hover" aria-label="Close panel">
                 <X size={15} />
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              <HistoryPanel resourceId={r.id} canEdit={editable} previewing={previewing} onPreview={setPreviewing} />
+              {panel === 'History' ? (
+                <HistoryPanel resourceId={r.id} canEdit={editable} previewing={previewing} onPreview={setPreviewing} />
+              ) : collab.session ? (
+                <MacrosPanel
+                  doc={collab.session.doc}
+                  grid={grid}
+                  editable={editable}
+                  me={me?.user.name ?? 'Someone'}
+                  running={running}
+                  lastRun={lastRun}
+                  editingId={editingMacro}
+                  setEditingId={setEditingMacro}
+                  onRun={(m) => void run(m)}
+                  onRecord={startRecording}
+                />
+              ) : null}
             </div>
           </aside>
         )}
       </div>
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      <SaveMacroDialog
+        lines={saveRecording}
+        taken={macros}
+        onCancel={() => (setSaveRecording(null), setRecorder(null))}
+        onSave={(name, shortcut) => {
+          if (!collab.session || !saveRecording) return;
+          const fn = functionNameOf(name, macros.map((m) => m.fn));
+          const m: MacroDef = { id: crypto.randomUUID(), name, fn, code: recordedCode(fn, saveRecording, me?.user.name ?? 'someone'), shortcut, updatedBy: me?.user.name ?? 'Someone', updatedAt: new Date().toISOString() };
+          saveMacro(collab.session.doc, m);
+          setSaveRecording(null);
+          setRecorder(null);
+          toast.success(`Macro "${name}" saved`, { description: shortcut ? `Run it with ${SHORTCUT_LABEL(shortcut)}` : 'Run it from Extensions → Macros' });
+        }}
+      />
     </div>
+  );
+}
+
+function SaveMacroDialog({ lines, taken, onSave, onCancel }: { lines: string[] | null; taken: MacroDef[]; onSave: (name: string, shortcut: number | null) => void; onCancel: () => void }) {
+  const [name, setName] = useState('');
+  const free = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((n) => !taken.some((m) => m.shortcut === n));
+  const [shortcut, setShortcut] = useState<string>('');
+  useEffect(() => {
+    if (lines) {
+      setName(`Recorded macro ${taken.length + 1}`);
+      setShortcut(free[0] ? String(free[0]) : '');
+    }
+  }, [lines]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Dialog open={!!lines} onOpenChange={(o) => !o && onCancel()} title="Save new macro" description={`${(lines ?? []).filter((l) => !l.startsWith('//')).length} recorded action(s)`} width={460}>
+      <div className="space-y-3">
+        <label className="block text-[13px] text-ink-2">
+          Name
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="input mt-1 h-9" aria-label="Macro name" data-testid="macro-name" />
+        </label>
+        <label className="block text-[13px] text-ink-2">
+          Shortcut
+          <select value={shortcut} onChange={(e) => setShortcut(e.target.value)} className="input mt-1 h-9" aria-label="Macro shortcut">
+            <option value="">None</option>
+            {free.map((n) => (
+              <option key={n} value={n}>
+                {SHORTCUT_LABEL(n)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <pre className="max-h-40 overflow-auto rounded-lg bg-canvas p-2 font-mono text-[11px] text-ink-2">{(lines ?? []).join('\n') || '// Nothing was recorded'}</pre>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel}>
+            Discard
+          </Button>
+          <Button variant="primary" disabled={!name.trim()} onClick={() => onSave(name.trim(), shortcut ? Number(shortcut) : null)} data-testid="macro-save">
+            Save
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

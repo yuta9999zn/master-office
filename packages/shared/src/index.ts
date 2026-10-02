@@ -182,7 +182,7 @@ export interface SearchHit {
 export function resourceTypeFromFile(name: string, mime?: string | null): ResourceType {
   const ext = name.toLowerCase().split('.').pop() ?? '';
   if (['docx', 'doc', 'odt', 'rtf'].includes(ext)) return 'document';
-  if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) return 'spreadsheet';
+  if (['xlsx', 'xlsm', 'xls', 'csv', 'ods'].includes(ext)) return 'spreadsheet';
   if (['pptx', 'ppt', 'odp'].includes(ext)) return 'presentation';
   if (ext === 'pdf' || mime === 'application/pdf') return 'pdf';
   if (mime?.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
@@ -192,7 +192,7 @@ export function resourceTypeFromFile(name: string, mime?: string | null): Resour
 
 /** Office files are stored as their original blob until the converter (Phase 2–4) imports them. */
 export function isOfficeFile(name: string): boolean {
-  return /\.(docx?|xlsx?|pptx?|csv|od[tsp]|rtf)$/i.test(name);
+  return /\.(docx?|xlsx?|xlsm|pptx?|csv|od[tsp]|rtf)$/i.test(name);
 }
 
 export interface WorkspaceStats {

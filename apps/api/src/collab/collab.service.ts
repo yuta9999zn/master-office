@@ -106,6 +106,20 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  /** Replaces the entries of a top-level Y.Map (e.g. the VBA source of an imported .xlsm). */
+  async replaceMap(resourceId: string, name: string, entries: Record<string, unknown>, editor: { id: string; name: string }) {
+    const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });
+    try {
+      await conn.transact((doc) => {
+        const m = doc.getMap(name);
+        for (const k of [...m.keys()]) m.delete(k);
+        for (const [k, v] of Object.entries(entries)) m.set(k, v);
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
   /** Replaces a whole presentation for everyone connected (import, version restore). */
   async replaceDeck(resourceId: string, deck: PlainDeck, editor: { id: string; name: string }) {
     const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });

@@ -2,6 +2,7 @@
 // Requires the API (with collab on :4001) running and seeded data.   node apps/api/test/sheets.mjs
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import ExcelJS from 'exceljs';
+import CFB from 'cfb';
 import JSZip from 'jszip';
 import * as Y from 'yjs';
 
@@ -183,6 +184,49 @@ const es = sheetsOf(e.doc)[0];
 check('csv import: delimiter, quotes, numbers, booleans, formulas', cellAt(es, 1, 0)?.v === 'Tanaka, A' && cellAt(es, 1, 1)?.v === 91.5 && cellAt(es, 1, 2)?.v === true && cellAt(es, 3, 1)?.f === '=SUM(B2:B3)');
 e.provider.destroy();
 
+// ── Import .xlsm: the VBA source is kept read-only ───────────────────────────
+// A minimal but valid vbaProject.bin: CFB container, MS-OVBA compressed dir + module streams.
+const compress = (bytes) => {
+  const out = [1];
+  for (let off = 0; off < bytes.length; off += 4096) {
+    const chunk = bytes.subarray(off, off + 4096);
+    const body = [];
+    for (let i = 0; i < chunk.length; i += 8) {
+      body.push(0); // flag byte: 8 literal tokens
+      for (let j = i; j < Math.min(i + 8, chunk.length); j++) body.push(chunk[j]);
+    }
+    const header = 0x8000 | 0x3000 | (body.length + 2 - 3);
+    out.push(header & 0xff, header >> 8, ...body);
+  }
+  return Buffer.from(out);
+};
+const rec = (id, data) => {
+  const b = Buffer.alloc(6 + data.length);
+  b.writeUInt16LE(id, 0);
+  b.writeUInt32LE(data.length, 2);
+  Buffer.from(data).copy(b, 6);
+  return b;
+};
+const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
+const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
+const dirStream = Buffer.concat([rec(0x0003, u16(1252)), rec(0x0019, Buffer.from('Module1')), rec(0x001a, Buffer.from('Module1')), rec(0x0032, Buffer.from('Module1', 'utf16le')), rec(0x0031, u32(0)), rec(0x0021, []), rec(0x002b, [])]);
+const vbaSource = 'Attribute VB_Name = "Module1"\r\nSub Hello()\r\n    Range("A1").Value = "Hi from VBA"\r\nEnd Sub\r\n';
+const vbaCfb = CFB.utils.cfb_new();
+CFB.utils.cfb_add(vbaCfb, 'VBA/dir', compress(dirStream));
+CFB.utils.cfb_add(vbaCfb, 'VBA/Module1', compress(Buffer.from(vbaSource, 'latin1')));
+const w2 = new ExcelJS.Workbook();
+w2.addWorksheet('Data').getCell('A1').value = 'macro book';
+const xlsmBase = await JSZip.loadAsync(Buffer.from(await w2.xlsx.writeBuffer()));
+xlsmBase.file('xl/vbaProject.bin', CFB.write(vbaCfb, { type: 'buffer' }));
+const fm = new FormData();
+fm.append('file', new Blob([await xlsmBase.generateAsync({ type: 'nodebuffer' })]), 'Book with macros.xlsm');
+const upm = (await call('POST', '/resources/upload', { user: claudia, form: fm })).data;
+check('xlsm import keeps the VBA source as read-only (report says so)', upm.metadata?.import?.status === 'done' && upm.metadata.import.preserved.some((p) => /VBA macros: 1 module/.test(p)), upm.metadata?.import);
+const xm = await connect(upm.id, claudia);
+const vbaMod = [...xm.doc.getMap('vba').values()][0];
+check('VBA module name and source are readable, metadata lines dropped', vbaMod?.name === 'Module1' && vbaMod.code.includes('Range("A1").Value = "Hi from VBA"') && !vbaMod.code.includes('Attribute VB_'), vbaMod);
+xm.provider.destroy();
+
 const bad = new FormData();
 bad.append('file', new Blob([Buffer.from('not a zip')]), 'broken.xlsx');
 const badUp = (await call('POST', '/resources/upload', { user: claudia, form: bad })).data;
@@ -198,9 +242,12 @@ const rs = await call('POST', `/resources/${salesId}/versions/${v1.id}/restore`,
 await sleep(800);
 check('restore replaces the workbook for connected editors', rs.status === 204 && cellAt(sheetsOf(b.doc)[0], 1, 3)?.v === 'A. Tanaka', rs.status);
 
+a.doc.getMap('macros').set('m-test', { id: 'm-test', name: 'Copy me', fn: 'copyMe', code: 'function copyMe() {}', shortcut: null, updatedBy: 'test', updatedAt: new Date().toISOString() });
+await sleep(2600);
 const copy = (await call('POST', `/resources/${salesId}/copy`, { user: claudia, body: {} })).data;
 const cp = await connect(copy.id, claudia);
 check('copy has the same sheets and data', sheetsOf(cp.doc).length === 6 && cellAt(sheetsOf(cp.doc)[0], 1, 3)?.v === 'A. Tanaka');
+check('copy keeps the macros', cp.doc.getMap('macros').get('m-test')?.name === 'Copy me');
 cp.provider.destroy();
 
 a.provider.destroy();
