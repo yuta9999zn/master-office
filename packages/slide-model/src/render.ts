@@ -1,7 +1,7 @@
 // Slide → HTML. One renderer for the editor canvas, thumbnails, presenting, version previews and the server's
 // PDF / PNG / HTML export — so an exported slide is pixel-for-pixel what people saw in the editor.
 // Coordinates are slide px (1280 × 720 for 16:9); callers scale the whole slide with a CSS transform.
-import type { Background, ChartSpec, DeckSize, ElementStyle, Geometry, PlainDeck, PlainElement, PlainSlide, TextNode, Theme } from './index';
+import type { Background, ChartSpec, DeckSize, ElementStyle, Geometry, PlainDeck, PlainElement, PlainSlide, SlideNumbers, TextNode, Theme } from './index';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -24,6 +24,7 @@ export const SLIDE_CSS = `
 .mo-slide table.mo-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
 .mo-slide table.mo-table td { padding: 0.35em 0.6em; vertical-align: middle; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; }
 .mo-ph-prompt { color: #94A3B8; }
+.mo-slide-no { position: absolute; font-size: 14px; line-height: 1; pointer-events: none; }
 .mo-editing .ProseMirror { outline: none; }
 @keyframes mo-appear { from { visibility: hidden } to { visibility: visible } }
 @keyframes mo-disappear { from { visibility: visible } to { visibility: hidden } }
@@ -467,7 +468,15 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
   if (el.type === 'image' && el.src) {
     const src = opts.resolveSrc ? opts.resolveSrc(el.src) : el.src;
     const flip = el.flipH || el.flipV ? `;transform:scale(${el.flipH ? -1 : 1},${el.flipV ? -1 : 1})` : '';
-    inner = `<img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="width:100%;height:100%;object-fit:fill;display:block${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}">`;
+    const filter = imageFilter(s);
+    const c = el.crop;
+    if (c && (c.l || c.t || c.r || c.b)) {
+      // The frame shows the uncropped part: the full picture is scaled up and shifted inside a clipping box.
+      const kw = 1 / Math.max(0.01, 1 - c.l - c.r);
+      const kh = 1 / Math.max(0.01, 1 - c.t - c.b);
+      inner = `<div style="width:100%;height:100%;overflow:hidden;position:relative${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}"><img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="position:absolute;max-width:none;left:${f(-c.l * kw * 100)}%;top:${f(-c.t * kh * 100)}%;width:${f(kw * 100)}%;height:${f(kh * 100)}%;display:block${filter}"></div>`;
+    } else
+      inner = `<img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="width:100%;height:100%;object-fit:fill;display:block${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}${filter}">`;
   } else if (el.type === 'chart' && el.chart) {
     inner = chartSvg(el.chart, el.w, el.h, theme, s.fontFamily);
   } else if (el.type === 'table' && el.table) {
@@ -484,14 +493,29 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
   return `<div class="mo-el" data-el="${esc(el.id)}" style="${wrap.join(';')}">${inner}</div>`;
 }
 
+/** CSS filter for picture adjustments (brightness / contrast -100…100, recolour presets). */
+export function imageFilter(s: ElementStyle): string {
+  const parts: string[] = [];
+  if (s.brightness) parts.push(`brightness(${f(1 + s.brightness / 100)})`);
+  if (s.contrast) parts.push(`contrast(${f(1 + s.contrast / 100)})`);
+  if (s.recolor === 'grayscale') parts.push('grayscale(1)');
+  else if (s.recolor === 'sepia') parts.push('sepia(0.85)');
+  else if (s.recolor === 'washout') parts.push('brightness(1.35) contrast(0.55) saturate(0.6)');
+  return parts.length ? `;filter:${parts.join(' ')}` : '';
+}
+
 export const PLACEHOLDER_PROMPT: Record<string, string> = { title: 'Click to add title', subtitle: 'Click to add subtitle', body: 'Click to add text', body2: 'Click to add text' };
 
 /** One slide as an absolutely-sized div (size.w × size.h px). */
-export function slideHtml(slide: PlainSlide, deck: { size: DeckSize; theme: Theme }, opts: RenderOptions = {}): string {
+export function slideHtml(slide: PlainSlide, deck: { size: DeckSize; theme: Theme; numbers?: SlideNumbers }, opts: RenderOptions = {}): string {
   const els = [...slide.elements].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
+  const showNo = deck.numbers?.show && slide.no && !(deck.numbers.skipTitle && slide.meta.layout === 'title');
+  const no = showNo
+    ? `<div class="mo-slide-no" style="right:${f(deck.size.w * 0.035)}px;bottom:${f(deck.size.h * 0.04)}px;color:${esc(deck.theme.colors.muted)};font-family:${esc(fontStack(deck.theme.fonts.body))}" data-testid="slide-number">${slide.no}</div>`
+    : '';
   return `<div class="mo-slide" style="width:${deck.size.w}px;height:${deck.size.h}px;${esc(backgroundCss(slide.meta.background, deck.theme, opts.resolveSrc))}">${els
     .map((e) => elementHtml(e, deck.theme, opts))
-    .join('')}</div>`;
+    .join('')}${no}</div>`;
 }
 
 /** Whole deck as a printable HTML page — one slide per page (PDF export, HTML export, PNG rendering). */

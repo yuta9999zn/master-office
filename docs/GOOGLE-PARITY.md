@@ -53,14 +53,14 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Menu Google | Tính năng | MO |
 |---|---|---|
 | Insert | Image, text box, shapes (16), table, chart (◐ native; from Sheets ✅ liên kết), new slide, comment, line, arrow | ✅ |
-| | Video, audio, **diagram** (grid, hierarchy, timeline, process, relationship, cycle), **word art**, shape sets (arrows, callouts, equation), **elbow / curved connectors** (bám vào shape), curve, polyline, scribble, special characters, **animation**, link tới slide khác, **slide numbers**, **templates / building blocks**, placeholder | ❌ |
+| | Video, audio, **diagram** (grid, hierarchy, timeline, process, relationship, cycle), **word art**, shape sets (arrows, callouts, equation), **elbow / curved connectors** (bám vào shape), curve, polyline, scribble, special characters, link tới slide khác, **templates / building blocks**, placeholder | ❌ |
 | Slide | New, duplicate, delete, skip (hide), move, change background, apply layout (6/11), transition, change theme | ✅ |
 | | Thêm layout (main point, big number, caption, one column…), **edit theme (theme builder: master + layouts)**, import slides từ bản trình chiếu khác | ❌ |
 | Arrange | Order, align, distribute, center on page | ✅ |
 | | Group / ungroup | ✅ |
 | | Rotate 90° / flip menu | ◐ flip |
 | Format | Text, align, bullets, table, borders & lines | ✅ |
-| | **Format options** (drop shadow ◐, reflection, text fitting/autofit, indent), line & paragraph spacing chi tiết, **image: crop, mask, adjustments (transparency, brightness, contrast, recolor)** | ❌ |
+| | **Format options** (drop shadow ◐, reflection, text fitting/autofit, indent), line & paragraph spacing chi tiết, image: crop ✅, adjustments (transparency, brightness, contrast, recolor) ✅, mask ❌ | ❌ |
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
 | | Motion panel (animations) ✅ · Q&A khán giả, dictate notes, spelling, linked objects, publish to web / embed | ❌ |
 

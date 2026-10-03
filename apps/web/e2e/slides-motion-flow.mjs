@@ -144,6 +144,48 @@ await step('slide show: animated shapes wait for the click, back hides them agai
   await claudia.keyboard.press('Escape');
 });
 
+await step('picture: crop from the Format panel keeps the scale; brightness and recolour apply', claudia, async () => {
+  // A 40×20 picture (left half red, right half blue).
+  const src = await claudia.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 40;
+    c.height = 20;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ef4444';
+    g.fillRect(0, 0, 20, 20);
+    g.fillStyle = '#3b82f6';
+    g.fillRect(20, 0, 20, 20);
+    return c.toDataURL('image/png');
+  });
+  const [img] = await claudia.evaluate((s) => window.__moDeck.addElements(window.__moDeck.snapshot.slides[0].id, [{ id: 'x', type: 'image', x: 200, y: 120, w: 400, h: 200, z: 0, src: s }]), src);
+  const p = await center(claudia, img);
+  await claudia.mouse.click(p.x, p.y);
+  await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Format', exact: true }).click();
+  const left = claudia.getByLabel('Crop left');
+  await left.fill('25');
+  await left.press('Enter');
+  await until(mika, (id) => {
+    const e = window.__moDeck.snapshot.slides[0].elements.find((x) => x.id === id);
+    return e?.crop?.l === 0.25 && Math.abs(e.w - 300) < 1 && Math.abs(e.x - 300) < 1;
+  }, img);
+  await claudia.getByLabel('Picture brightness').fill('40');
+  await claudia.getByLabel('Recolor').selectOption('grayscale');
+  await until(mika, (id) => {
+    const el = document.querySelector(`[data-testid="slide-canvas"] [data-el="${id}"] img`);
+    return !!el && /brightness\(1\.4\)/.test(el.style.filter) && /grayscale/.test(el.style.filter);
+  }, img);
+});
+
+await step('slide numbers: shown on every slide (title slides optional), synced', claudia, async () => {
+  await claudia.keyboard.press('Escape');
+  await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Design', exact: true }).click();
+  await claudia.getByLabel('Show slide numbers').check();
+  await claudia.getByLabel('Skip title slides').uncheck();
+  await until(mika, () => document.querySelector('[data-testid="slide-canvas"] [data-testid="slide-number"]')?.textContent === '1');
+  await claudia.getByLabel('Skip title slides').check();
+  await until(mika, () => !document.querySelector('[data-testid="slide-canvas"] [data-testid="slide-number"]'));
+});
+
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');
 if (errors.length) fails++;
 console.log(fails ? `${fails} failed` : 'all passed');

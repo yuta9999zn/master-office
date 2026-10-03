@@ -607,3 +607,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Trình chiếu | Mỗi click chạy bước kế tiếp, hết bước mới sang slide; lùi = bỏ bước gần nhất (không chạy hiệu ứng), lùi sang slide trước hiện trạng thái cuối. Cửa sổ người thuyết trình hiển thị đúng bước hiện tại. |
 | Giới hạn | Animation & nhóm chưa xuất ra PPTX (pptxgenjs không hỗ trợ) và chưa nhập từ PPTX; một animation mỗi đối tượng; chưa có motion path. |
 | Test | `apps/web/e2e/slides-motion-flow.mjs` (5 bước, 2 người): nhóm → co giãn → vào nhóm → bỏ nhóm → animation → trình chiếu từng click. |
+
+## 31. Phase 4.1 — Slides: cắt & chỉnh ảnh, số trang: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Crop | Khoá `crop` = `{l,t,r,b}` (tỉ lệ cắt mỗi cạnh của ảnh gốc). Đổi crop giữ nguyên tỉ lệ và vị trí ảnh trên slide: khung co/giãn theo phần nhìn thấy (`DeckStore.setCrop`). Render: ảnh đầy đủ phóng to + dịch trong khung `overflow:hidden`. PPTX: xuất bằng crop của pptxgenjs (→ `a:srcRect`), nhập đọc `a:srcRect` (trước đây chỉ báo "degraded"). |
+| Chỉnh ảnh | `style.brightness` / `contrast` (−100…100) và `recolor` (grayscale, sepia, washout) → CSS filter dùng chung cho editor, trình chiếu, PDF/PNG. PPTX chưa mang được (báo trong export report). |
+| Số trang | Thiết lập cả bộ `deck.numbers = {show, skipTitle}` (Insert → Slide numbers, tab Design). Số thứ tự `slide.no` tính khi đọc deck (không lưu) — DeckStore chỉ tạo object mới cho slide đổi số nên thumbnail khác không vẽ lại. PPTX: trường số trang native (`sldNum`). |
+| Test | `slides-motion-flow.mjs` thêm 2 bước: crop 25% trái → khung 400→300 px, x 200→300, người kia thấy; brightness + grayscale; bật số trang, bỏ qua slide tiêu đề. Kiểm tra vòng PPTX export→import giữ crop. |

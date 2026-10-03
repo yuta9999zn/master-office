@@ -337,6 +337,11 @@ export function DesignTab({ store, deck, slide, editable, onUploadImage }: { sto
         </div>
       </Section>
 
+      <Section title="Slide numbers">
+        <Toggle on={!!deck.numbers?.show} onChange={(v) => store.setNumbers(v ? { show: true, skipTitle: deck.numbers?.skipTitle ?? true } : null)} label="Show slide numbers" />
+        {deck.numbers?.show && <Toggle on={deck.numbers.skipTitle !== false} onChange={(v) => store.setNumbers({ show: true, skipTitle: v })} label="Skip title slides" />}
+      </Section>
+
       <Section title="Transition">
         <Row label="Effect">
           <Select<Transition>
@@ -641,6 +646,74 @@ export function FormatTab({
             <span className="w-9 text-right">{Math.round((S.opacity ?? 1) * 100)}%</span>
           </Row>
           <Toggle on={!!S.shadow} onChange={(v) => style({ shadow: v || undefined })} label="Shadow" />
+        </Section>
+      )}
+      {one && el.type === 'image' && (
+        <Section
+          title="Crop"
+          action={
+            el.crop ? (
+              <button className="text-[12px] text-brand-700 hover:underline" onClick={() => store.setCrop(slide.id, el.id, null)}>
+                Reset crop
+              </button>
+            ) : undefined
+          }
+        >
+          <div className="grid grid-cols-2 gap-2" data-testid="crop-fields">
+            {(
+              [
+                ['l', 'Left'],
+                ['r', 'Right'],
+                ['t', 'Top'],
+                ['b', 'Bottom'],
+              ] as const
+            ).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-1.5 text-[12px] text-muted">
+                <span className="w-12">{label}</span>
+                <NumberField
+                  label={`Crop ${label.toLowerCase()}`}
+                  value={Math.round((el.crop?.[k] ?? 0) * 1000) / 10}
+                  min={0}
+                  max={90}
+                  step={1}
+                  suffix="%"
+                  onCommit={(v) => store.setCrop(slide.id, el.id, { l: 0, t: 0, r: 0, b: 0, ...el.crop, [k]: v / 100 })}
+                />
+              </label>
+            ))}
+          </div>
+        </Section>
+      )}
+      {one && el.type === 'image' && (
+        <Section
+          title="Adjustments"
+          action={
+            S.brightness || S.contrast || S.recolor ? (
+              <button className="text-[12px] text-brand-700 hover:underline" onClick={() => style({ brightness: undefined, contrast: undefined, recolor: undefined })}>
+                Reset
+              </button>
+            ) : undefined
+          }
+        >
+          <Row label="Brightness">
+            <input type="range" min={-100} max={100} value={S.brightness ?? 0} onChange={(e) => style({ brightness: Number(e.target.value) || undefined })} className="flex-1 accent-brand-600" aria-label="Picture brightness" />
+          </Row>
+          <Row label="Contrast">
+            <input type="range" min={-100} max={100} value={S.contrast ?? 0} onChange={(e) => style({ contrast: Number(e.target.value) || undefined })} className="flex-1 accent-brand-600" aria-label="Picture contrast" />
+          </Row>
+          <Row label="Recolor">
+            <Select<'none' | 'grayscale' | 'sepia' | 'washout'>
+              label="Recolor"
+              value={S.recolor ?? 'none'}
+              options={[
+                { value: 'none', label: 'No recolor' },
+                { value: 'grayscale', label: 'Grayscale' },
+                { value: 'sepia', label: 'Sepia' },
+                { value: 'washout', label: 'Washout' },
+              ]}
+              onChange={(v) => style({ recolor: v === 'none' ? undefined : v })}
+            />
+          </Row>
         </Section>
       )}
 

@@ -514,8 +514,25 @@ async function walkTree(tree: El, ctx: Ctx, out: PlainElement[], tf: Transform, 
       }
       const src = await ctx.storeImage(Buffer.from(await file.async('uint8array')), mime);
       const box = tf(xf);
-      if (path(node, 'blipFill', 'srcRect') && kids(path(node, 'blipFill', 'srcRect')).length === 0 && path(node, 'blipFill', 'srcRect')!.attributes.length) ctx.note('degraded', 'picture cropping → full picture stretched to the frame');
-      out.push({ id: newId(), type: 'image', x: box.x, y: box.y, w: box.w, h: box.h, z, src, ...(xf.rot ? { rot: xf.rot } : {}), ...(xf.flipH ? { flipH: true } : {}), ...(xf.flipV ? { flipV: true } : {}), alt: attr(path(node, 'nvPicPr', 'cNvPr'), 'descr') ?? undefined });
+      // <a:srcRect l t r b> are thousandths of a percent cut off each side (negative = padding, ignored).
+      const sr = path(node, 'blipFill', 'srcRect');
+      const cut = (k: string) => Math.min(0.95, Math.max(0, Math.round(Number(attr(sr, k) ?? 0) / 100) / 1000));
+      const crop = sr ? { l: cut('l'), t: cut('t'), r: cut('r'), b: cut('b') } : null;
+      out.push({
+        id: newId(),
+        type: 'image',
+        x: box.x,
+        y: box.y,
+        w: box.w,
+        h: box.h,
+        z,
+        src,
+        ...(crop && (crop.l || crop.t || crop.r || crop.b) && crop.l + crop.r < 0.95 && crop.t + crop.b < 0.95 ? { crop } : {}),
+        ...(xf.rot ? { rot: xf.rot } : {}),
+        ...(xf.flipH ? { flipH: true } : {}),
+        ...(xf.flipV ? { flipV: true } : {}),
+        alt: attr(path(node, 'nvPicPr', 'cNvPr'), 'descr') ?? undefined,
+      });
       ctx.images++;
       continue;
     }

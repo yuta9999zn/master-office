@@ -1,6 +1,6 @@
 'use client';
 
-import { FONT_ALIASES, SLIDE_CSS, slideHtml, type DeckSize, type PlainSlide, type RenderOptions, type Theme } from '@workos/slide-model';
+import { FONT_ALIASES, SLIDE_CSS, slideHtml, type DeckSize, type PlainSlide, type RenderOptions, type Theme, type SlideNumbers } from '@workos/slide-model';
 import { memo, useMemo, type CSSProperties } from 'react';
 
 // The app ships Inter through next/font (hashed family name, exposed as --font-inter on <html>).
@@ -33,13 +33,13 @@ export const SlideView = memo(function SlideView({
   style,
 }: {
   slide: PlainSlide;
-  deck: { size: DeckSize; theme: Theme };
+  deck: { size: DeckSize; theme: Theme; numbers?: SlideNumbers };
   width: number;
   opts?: RenderOptions;
   className?: string;
   style?: CSSProperties;
 }) {
-  const html = useMemo(() => slideHtml(slide, deck, opts), [slide, deck.size, deck.theme, opts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const html = useMemo(() => slideHtml(slide, deck, opts), [slide, deck.size, deck.theme, deck.numbers, opts]); // eslint-disable-line react-hooks/exhaustive-deps
   const k = width / deck.size.w;
   return (
     <div className={className} style={{ width, height: deck.size.h * k, position: 'relative', overflow: 'hidden', ...style }}>

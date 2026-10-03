@@ -17,6 +17,7 @@ import {
   regroup,
   slideIds,
   SLIDES_MAP,
+  type Crop,
   type DeckSize,
   type ElementAnim,
   type ElementStyle,
@@ -24,6 +25,7 @@ import {
   type PlainElement,
   type PlainSlide,
   type SlideMeta,
+  type SlideNumbers,
   type TableSpec,
   type Theme,
 } from '@workos/slide-model';
@@ -40,6 +42,7 @@ export interface DeckSnapshot {
   size: DeckSize;
   theme: Theme;
   slides: PlainSlide[];
+  numbers?: SlideNumbers;
   ready: boolean;
 }
 
@@ -96,10 +99,11 @@ export class DeckStore {
 
   private recompute() {
     const ids = slideIds(this.doc);
-    const slides = ids.map((id) => {
+    const slides = ids.map((id, i) => {
       let s = this.all || this.dirty.has(id) ? undefined : this.cache.get(id);
-      if (!s) {
-        s = readSlide(id, this.slides.get(id)!);
+      // The slide number is part of what is drawn: a moved slide becomes a new object (others keep theirs).
+      if (!s || s.no !== i + 1) {
+        s = { ...(s ?? readSlide(id, this.slides.get(id)!)), no: i + 1 };
         this.cache.set(id, s);
       }
       return s;
@@ -112,6 +116,7 @@ export class DeckStore {
       size: (this.deck.get('size') as DeckSize) ?? DEFAULT_SIZE,
       theme: (this.deck.get('theme') as Theme) ?? DEFAULT_THEME,
       slides,
+      numbers: this.deck.get('numbers') as SlideNumbers | undefined,
       ready: this.deck.has('size'),
     };
   }
@@ -445,6 +450,37 @@ export class DeckStore {
   }
 
   // ── Deck ───────────────────────────────────────────────────────────────────
+
+  setNumbers(numbers: SlideNumbers | null) {
+    this.tx(() => (numbers ? this.deck.set('numbers', numbers) : this.deck.delete('numbers')));
+  }
+
+  /**
+   * Crops a picture: the frame grows or shrinks with the visible part, so the picture keeps its scale and position
+   * on the slide (like dragging Google Slides' crop handles).
+   */
+  setCrop(slideId: string, id: string, crop: Crop | null) {
+    const e = this.slide(slideId)?.elements.find((x) => x.id === id);
+    const m = this.el(slideId, id);
+    if (!e || !m) return;
+    const old = e.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+    const next = crop ?? { l: 0, t: 0, r: 0, b: 0 };
+    const clamp = (v: number) => Math.min(0.95, Math.max(0, v));
+    const c = { l: clamp(next.l), t: clamp(next.t), r: clamp(next.r), b: clamp(next.b) };
+    if (c.l + c.r > 0.95) c.r = 0.95 - c.l;
+    if (c.t + c.b > 0.95) c.b = 0.95 - c.t;
+    const fw = e.w / Math.max(0.05, 1 - old.l - old.r);
+    const fh = e.h / Math.max(0.05, 1 - old.t - old.b);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    this.tx(() => {
+      m.set('x', r2(e.x + (c.l - old.l) * fw));
+      m.set('y', r2(e.y + (c.t - old.t) * fh));
+      m.set('w', r2(fw * (1 - c.l - c.r)));
+      m.set('h', r2(fh * (1 - c.t - c.b)));
+      if (c.l || c.t || c.r || c.b) m.set('crop', { l: r2(c.l * 1000) / 1000, t: r2(c.t * 1000) / 1000, r: r2(c.r * 1000) / 1000, b: r2(c.b * 1000) / 1000 });
+      else m.delete('crop');
+    });
+  }
 
   setTheme(theme: Theme) {
     this.tx(() => this.deck.set('theme', theme));

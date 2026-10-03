@@ -4,7 +4,7 @@
 //
 // Yjs layout (created by the server when a presentation is created, imported, seeded or copied; clients never
 // lazily create the top-level containers):
-//   Y.Map   'deck'        name, size {w,h}, theme (Theme JSON)
+//   Y.Map   'deck'        name, size {w,h}, theme (Theme JSON), numbers (SlideNumbers)
 //   Y.Array 'slideOrder'  slideId[]  (a slide moved by two people at once may appear twice: readers dedupe)
 //   Y.Map   'slides'      slideId → Y.Map {
 //                            meta:     SlideMeta (layout, background, hidden, transition)
@@ -84,6 +84,10 @@ export interface ElementStyle {
   radius?: number; // roundRect corner radius (px)
   opacity?: number; // 0..1
   shadow?: boolean;
+  // Pictures: adjustments (-100…100, 0 = unchanged) and recolouring
+  brightness?: number;
+  contrast?: number;
+  recolor?: 'grayscale' | 'sepia' | 'washout';
   // Default text formatting of the box (runs may override)
   fontSize?: number; // pt
   fontFamily?: string;
@@ -146,6 +150,21 @@ export interface PlainElement {
   /** Elements sharing a group id are selected, moved and resized together (one level, like Google Slides). */
   group?: string;
   anim?: ElementAnim;
+  /** Picture crop: fraction of the source image cut off each side (0…1). */
+  crop?: Crop;
+}
+
+export interface Crop {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+
+/** "Insert → Slide numbers" (deck-wide, like Google Slides). */
+export interface SlideNumbers {
+  show: boolean;
+  skipTitle?: boolean;
 }
 
 // ── Animations ───────────────────────────────────────────────────────────────
@@ -259,6 +278,8 @@ export interface PlainSlide {
   meta: SlideMeta;
   notes: string;
   elements: PlainElement[];
+  /** Position in the deck (1-based), filled in when the deck is read; not stored. */
+  no?: number;
 }
 
 export interface DeckSize {
@@ -271,6 +292,7 @@ export interface PlainDeck {
   size: DeckSize;
   theme: Theme;
   slides: PlainSlide[];
+  numbers?: SlideNumbers;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -442,7 +464,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */
@@ -497,6 +519,7 @@ export function writeDeck(doc: Y.Doc, deck: PlainDeck) {
     meta.set('name', deck.name);
     meta.set('size', deck.size);
     meta.set('theme', deck.theme);
+    if (deck.numbers) meta.set('numbers', deck.numbers);
     const slides = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
     for (const s of deck.slides) {
       const y = createYSlide(s);
@@ -567,7 +590,8 @@ export function readDeck(doc: Y.Doc): PlainDeck {
     name: (meta.get('name') as string) ?? 'Presentation',
     size: (meta.get('size') as DeckSize) ?? DEFAULT_SIZE,
     theme: (meta.get('theme') as Theme) ?? DEFAULT_THEME,
-    slides: slideIds(doc).map((id) => readSlide(id, slides.get(id)!)),
+    slides: slideIds(doc).map((id, i) => ({ ...readSlide(id, slides.get(id)!), no: i + 1 })),
+    numbers: (meta.get('numbers') as SlideNumbers | undefined) ?? undefined,
   };
 }
 

@@ -66,6 +66,7 @@ import {
   Undo2,
   X,
   Group as GroupIcon,
+  Hash,
   Sparkles,
   Ungroup as UngroupIcon,
 } from 'lucide-react';
@@ -800,6 +801,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             </MenuItem>
             <MenuItem icon={<ImageIcon />} disabled={!editable} onSelect={() => imageInput.current?.click()}>
               Picture…
+            </MenuItem>
+            <MenuItem icon={<Hash />} disabled={!editable} onSelect={() => setTab('Design')}>
+              Slide numbers…
             </MenuItem>
             <MenuItem icon={<Table />} disabled={!editable} onSelect={() => insertTable(3, 3)}>
               Table (3 × 3)

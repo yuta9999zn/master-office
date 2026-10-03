@@ -170,6 +170,8 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
       if (img) slide.background = { data: `${img.mime};base64,${img.data.toString('base64')}` };
     }
     if (s.meta.hidden) slide.hidden = true;
+    if (deck.numbers?.show && !(deck.numbers.skipTitle && s.meta.layout === 'title'))
+      slide.slideNumber = { x: inch(deck.size.w * 0.9), y: inch(deck.size.h * 0.9), w: inch(deck.size.w * 0.065), h: inch(deck.size.h * 0.06), fontSize: 11, color: hex(theme.colors.muted)?.color ?? '94A3B8', align: 'right' } as never;
     if (s.notes) slide.addNotes(s.notes);
 
     for (const el of [...s.elements].sort((a, b) => a.z - b.z)) {
@@ -179,7 +181,19 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
           degrade('some images could not be loaded');
           continue;
         }
-        slide.addImage({ data: `${img.mime};base64,${img.data.toString('base64')}`, ...boxProps(el), ...(el.alt ? { altText: el.alt } : {}), ...(el.style?.opacity !== undefined ? { transparency: Math.round((1 - el.style.opacity) * 100) } : {}) });
+        // Cropped pictures: the full picture's size, and the visible part as pptxgenjs' crop rectangle (→ a:srcRect).
+        const c = el.crop;
+        const cropped = c && (c.l || c.t || c.r || c.b);
+        const fw = cropped ? el.w / Math.max(0.05, 1 - c.l - c.r) : el.w;
+        const fh = cropped ? el.h / Math.max(0.05, 1 - c.t - c.b) : el.h;
+        slide.addImage({
+          data: `${img.mime};base64,${img.data.toString('base64')}`,
+          ...boxProps(el),
+          ...(cropped ? { w: inch(fw), h: inch(fh), sizing: { type: 'crop' as const, x: inch(c.l * fw), y: inch(c.t * fh), w: inch(el.w), h: inch(el.h) } } : {}),
+          ...(el.alt ? { altText: el.alt } : {}),
+          ...(el.style?.opacity !== undefined ? { transparency: Math.round((1 - el.style.opacity) * 100) } : {}),
+        });
+        if (el.style?.brightness || el.style?.contrast || el.style?.recolor) degrade('picture brightness / contrast / recolour → original picture');
         report.images++;
       } else if (el.type === 'table' && el.table) {
         const t = el.table;
