@@ -282,3 +282,4 @@ export function workbookText(wb: PlainWorkbook, limit = 200_000): string {
   return parts.join(' ');
 }
 export * from './format';
+export * from './charts';

@@ -16,6 +16,7 @@ import { hasWorkbook } from '@workos/sheet-model';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { SheetBinding, type UniverAPI } from './binding';
+import { CHART_COMPONENT, chartContexts, SheetChart } from './charts/SheetChart';
 
 export interface GridHandle {
   api: UniverAPI;
@@ -133,6 +134,9 @@ export function UniverGrid({
           ],
         });
         const injector = univer.__getInjector();
+        // Charts are DOM drawings: the component must exist before the workbook (and its drawings) load.
+        chartContexts.set(unitId, { doc, api: univerAPI });
+        univerAPI.registerComponent(CHART_COMPONENT, SheetChart as never, { framework: 'react' } as never);
         const binding = new SheetBinding(univerAPI, doc, unitId, {
           editable,
           resources: injector.get(presets.IResourceManagerService),
@@ -155,6 +159,7 @@ export function UniverGrid({
         cleanup = () => {
           onReady?.(null);
           binding.destroy();
+          chartContexts.delete(unitId);
           univer.dispose();
           delete (window as unknown as { __moSheet?: GridHandle }).__moSheet;
         };

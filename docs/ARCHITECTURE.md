@@ -555,3 +555,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Giới hạn | Chưa có QR code, nhập câu hỏi từ form khác, thông báo email khi có câu trả lời (chờ module Mail), chấm điểm tay câu tự luận, "chỉ 1 câu trả lời" cho form công khai (cần đăng nhập). |
 | Test | `apps/api/test/forms.mjs` (38 kiểm tra) + `apps/web/e2e/forms-flow.mjs` (9 bước: 2 người soạn, đổi loại, lựa chọn, bắt buộc, trả lời có lỗi → rẽ nhánh → gửi, Responses live, quiz, đóng form, Send, viewer). |
 
+
+## 26. Phase 3.1 — Sheets: ghi chú, bình luận, ảnh, bảng & biểu đồ
+
+| Vấn đề | Quyết định |
+|---|---|
+| Note / comment / ảnh / table | Dùng preset OSS của Univer 1.0.3 (note, thread-comment, drawing, table); trạng thái plugin đồng bộ như mọi resource (`Y.Map 'resources'`). Người dùng Univer mang tiền tố `Owner_` / `Reader_` vì quyền cục bộ của Univer suy ra từ id; quyền thật vẫn do Master Office kiểm. |
+| Không dựng lại lưới | Thay đổi resource từ xa chỉ nạp lại **plugin đổi thật** (`onUnLoad` / `onLoad`), người đang gõ không bị gián đoạn. Ngoại lệ dựng lại cả workbook: **protection** (permission point gắn với workbook) và **drawing** (ảnh / biểu đồ chỉ được vẽ khi workbook nạp). |
+| Biểu đồ | Tự làm (chart của Univer là bản Pro). Định nghĩa trong `Y.Map 'charts'` (`packages/sheet-model/src/charts.ts`): loại (column, bar, line, area, pie, doughnut), vùng dữ liệu theo **id dòng/cột** (chèn/xoá dòng nơi khác không làm lệch), tiêu đề, header, đổi hàng/cột, legend, nhãn. Vị trí là **DOM drawing** của Univer (kéo, đổi cỡ, đồng bộ, undo như ảnh); component React vẽ bằng `chartSvg` dùng chung với Slides, cập nhật khi dữ liệu / công thức đổi. Insert → Chart lấy vùng chọn (hoặc vùng dữ liệu), nhấp đúp mở panel Chart. |
+| Giới hạn | Biểu đồ chưa xuất ra XLSX / PDF; chưa có scatter, combo, trục phụ, trendline. |
+| Test | `apps/web/e2e/sheets-flow.mjs`: note & comment đồng bộ không dựng lại lưới; chèn biểu đồ → người kia thấy → đổi loại → xoá. |

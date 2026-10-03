@@ -684,7 +684,8 @@ export class SheetBinding {
         return !hook || (res.get(name) ?? '') !== (hook.toJson(this.unitId) ?? '');
       });
       // Permission points are rebuilt with the workbook: unloading them alone breaks Univer's permission service.
-      if (changed.some((n) => /PROTECTION/.test(n) || !hooks.some((h) => h.pluginName === n))) return false;
+      // Drawings (images, charts) are only rendered when the workbook loads: reloading the model alone draws nothing.
+      if (changed.some((n) => /PROTECTION|DRAWING/.test(n) || !hooks.some((h) => h.pluginName === n))) return false;
       for (const name of changed) {
         const hook = hooks.find((h) => h.pluginName === name)!;
         hook.onUnLoad(this.unitId);

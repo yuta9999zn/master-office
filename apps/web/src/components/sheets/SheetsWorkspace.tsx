@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, Circle, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, Circle, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -13,6 +13,8 @@ import { ShareDialog } from '../drive/dialogs';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
 import { SheetTabs } from './SheetTabs';
+import { ChartEditor } from './charts/ChartEditor';
+import { insertChart } from './charts/chart-actions';
 import type { GridHandle } from './UniverGrid';
 import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
@@ -45,7 +47,8 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
-  const [panel, setPanel] = useState<'History' | 'Macros' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | null>(null);
+  const [chartId, setChartId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MacroRecorder | null>(null);
   const [recCount, setRecCount] = useState(0);
   const [saveRecording, setSaveRecording] = useState<string[] | null>(null);
@@ -78,6 +81,16 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     setRecorder(rec);
     setRecCount(0);
   };
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      const d = (e as CustomEvent<{ chartId: string; unitId: string }>).detail;
+      if (d.unitId !== r.id) return;
+      setChartId(d.chartId);
+      setPanel('Chart');
+    };
+    window.addEventListener('mo-chart-edit', onEdit);
+    return () => window.removeEventListener('mo-chart-edit', onEdit);
+  }, [r.id]);
   // Live action count in the recording bar.
   useEffect(() => {
     if (!recorder) return;
@@ -169,6 +182,26 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         </Menu>
         <Menu>
           <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Insert</button>
+          </MenuTrigger>
+          <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuItem
+              icon={<BarChart3 />}
+              disabled={!editable || !grid}
+              onSelect={() => {
+                if (!grid || !collab.session) return;
+                const id = insertChart(grid.api, collab.session.doc, r.id);
+                if (!id) return void toast.error('Select the data for the chart first');
+                setChartId(id);
+                setPanel('Chart');
+              }}
+            >
+              Chart
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+        <Menu>
+          <MenuTrigger asChild>
             <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Extensions</button>
           </MenuTrigger>
           {/* Keep focus off the trigger after closing so typing goes straight to the grid (e.g. right after "Record macro"). */}
@@ -254,7 +287,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         {panel && (
           <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
             <div className="flex items-center gap-4 border-b border-line px-4">
-              {(['Macros', 'History'] as const).map((t) => (
+              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : [])] as const).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                 </button>
@@ -264,7 +297,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'History' ? (
+              {panel === 'Chart' && chartId && grid && collab.session ? (
+                <ChartEditor doc={collab.session.doc} api={grid.api} unitId={r.id} chartId={chartId} editable={editable} onClose={() => (setChartId(null), setPanel(null))} />
+              ) : panel === 'History' ? (
                 <HistoryPanel resourceId={r.id} canEdit={editable} previewing={previewing} onPreview={setPreviewing} />
               ) : collab.session ? (
                 <MacrosPanel

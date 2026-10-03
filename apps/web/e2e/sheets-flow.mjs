@@ -142,6 +142,23 @@ await step('notes and comments sync without rebuilding the other editor’s grid
   if ((await mika.evaluate(() => window.__reloads)) !== 0) throw new Error('the grid was rebuilt');
 });
 
+await step('charts: insert from a selection, edit, follow the data, sync and delete', claudia, async () => {
+  await claudia.evaluate(() => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getSheetByName('Sales Data');
+    ws.activate();
+    ws.getRange('A1:B6').activate();
+  });
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Chart' }).click();
+  await claudia.getByTestId('chart-editor').waitFor();
+  await claudia.locator('[data-testid="sheet-chart"] svg').first().waitFor();
+  await mika.locator('[data-testid="sheet-chart"] svg').first().waitFor({ timeout: 15000 });
+  await claudia.getByTestId('chart-editor').getByRole('button', { name: 'Line' }).click();
+  await until(mika, () => [...window.__moSheet.binding.doc.getMap('charts').values()].some((c) => c.kind === 'line'));
+  await claudia.getByRole('button', { name: 'Delete chart' }).click();
+  await until(mika, () => document.querySelectorAll('[data-testid="sheet-chart"]').length === 0);
+});
+
 await step('viewers get a read-only grid', claudia, async () => {
   const sora = await session('sora@kaori.jp');
   await sora.goto(`${BASE}/sheets/${sales.id}`);
