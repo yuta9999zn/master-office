@@ -228,6 +228,29 @@ class DocxWriter {
         return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing, ...boxOf(n) })];
       case 'heading':
         return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_4, children: this.runs(n.content), alignment, spacing, ...boxOf(n) })];
+      case 'columns': {
+        // Word columns belong to sections; a borderless one-row table keeps the side-by-side layout in place.
+        const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+        const cols = n.content ?? [];
+        return [
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+            rows: [
+              new TableRow({
+                children: cols.map(
+                  (col) =>
+                    new TableCell({
+                      width: { size: Math.floor(100 / Math.max(1, cols.length)), type: WidthType.PERCENTAGE },
+                      margins: { left: 120, right: 120 },
+                      children: this.cellBlocks(col.content).length ? this.cellBlocks(col.content) : [new Paragraph('')],
+                    }),
+                ),
+              }),
+            ],
+          }),
+        ];
+      }
       case 'pageBreak':
         return [new Paragraph({ children: [new PageBreak()] })];
       case 'tableOfContents': {

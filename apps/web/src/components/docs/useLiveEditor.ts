@@ -5,7 +5,8 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import { useEditor, type Editor } from '@tiptap/react';
-import { COLLAB_FIELD } from '@workos/doc-model';
+import { COLLAB_FIELD, looksLikeMarkdown, markdownToHtml } from '@workos/doc-model';
+import { markdownPasteEnabled } from './columns';
 import type { CommentThread } from '@workos/shared';
 import { useCallback, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
@@ -99,6 +100,12 @@ export function useLiveEditor(o: LiveEditorOptions) {
         attributes: { class: 'mo-editor', 'data-testid': o.testId ?? 'doc-editor', spellcheck: 'true' },
         handlePaste: (_view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
+          // Plain text that reads as Markdown (headings, lists, tables…) is pasted formatted (Tools → Detect Markdown).
+          const text = event.clipboardData?.getData('text/plain') ?? '';
+          if (!files.length && !event.clipboardData?.getData('text/html') && opts.current.canEdit && markdownPasteEnabled() && looksLikeMarkdown(text)) {
+            editorRef.current?.chain().insertContent(markdownToHtml(text)).run();
+            return true;
+          }
           if (!files.some((f) => f.type.startsWith('image/')) || !opts.current.canEdit) return false;
           void uploadImages(editorRef.current!, files);
           return true;

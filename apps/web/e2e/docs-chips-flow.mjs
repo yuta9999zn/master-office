@@ -217,6 +217,41 @@ await step('document tabs: a second tab has its own text and comments; export an
   if (!copyHtml.includes('Appendix text only here') || !copyHtml.includes('class="watermark"')) throw new Error('copy lost a tab or the page setup');
 });
 
+await step('two columns: the paragraph moves to the left column, text typed on the right syncs', claudia, async () => {
+  await claudia.getByTestId('doc-tab').first().click();
+  await editorOf(claudia).locator('p', { hasText: 'Meet at' }).click({ position: { x: 3, y: 8 } });
+  await menu(claudia, 'Format', 'Two columns');
+  const cols = editorOf(claudia).locator('.mo-columns').first();
+  await cols.locator('.mo-column').nth(1).click();
+  await claudia.keyboard.type('Right side');
+  await until(mika, () => {
+    const c = document.querySelector('[data-testid="doc-editor"] .mo-columns');
+    const parts = c ? [...c.querySelectorAll(':scope > .mo-column')].map((x) => x.textContent) : [];
+    return parts.length === 2 && parts[0].includes('Meet at') && parts[1].includes('Right side') && getComputedStyle(c).display === 'grid';
+  });
+});
+
+await step('Markdown: pasted Markdown becomes formatting; Copy as Markdown', claudia, async () => {
+  await editorOf(claudia).locator('h2', { hasText: 'Budget' }).click();
+  await claudia.keyboard.press('End');
+  await claudia.keyboard.press('Enter');
+  // Paste plain text the way the clipboard delivers it.
+  await editorOf(claudia).evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '## Imported plan\n\n- first **bold** item\n- second item\n\n| A | B |\n| --- | --- |\n| 1 | 2 |');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await editorOf(mika).locator('h2', { hasText: 'Imported plan' }).waitFor({ timeout: 10000 });
+  await editorOf(mika).locator('li strong', { hasText: 'bold' }).waitFor();
+  await editorOf(mika).locator('table td', { hasText: '2' }).waitFor();
+  await claudia.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  await editorOf(claudia).locator('h2', { hasText: 'Imported plan' }).click({ clickCount: 3 });
+  await menu(claudia, 'Edit', 'Copy as Markdown');
+  await claudia.locator('[data-sonner-toast]', { hasText: 'copied as Markdown' }).waitFor();
+  const md = await claudia.evaluate(() => navigator.clipboard.readText());
+  if (!md.includes('## Imported plan')) throw new Error(`clipboard: ${md}`);
+});
+
 await step('DOCX and HTML export carry chips, the bookmark and the internal link', claudia, async () => {
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const docx = await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`);
@@ -232,6 +267,7 @@ await step('DOCX and HTML export carry chips, the bookmark and the internal link
   const docXml = await zip.file('word/document.xml').async('string');
   if (!/<w:pBdr>/.test(docXml) || !/<w:shd [^>]*w:fill="FEF9C3"/i.test(docXml)) throw new Error('docx borders / shading');
   if (!html.includes('class="watermark"')) throw new Error('html watermark');
+  if (!html.includes('class="columns"') || !html.includes('Right side')) throw new Error('html columns');
 });
 
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');

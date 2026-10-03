@@ -26,7 +26,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | View | Mode Editing / Suggesting | ✅ |
 | | Mode **Viewing**, comments show/hide, **Document tabs & outline sidebar**, text width, **pageless format**, ruler, non-printing characters, equation toolbar, full screen | ◐ outline · ❌ còn lại |
 | Insert | Image (upload/URL/Drive), table, link, horizontal line, page break, TOC, header/footer, page numbers, comment | ✅ |
-| | Image từ camera/Drive picker, **cover image**, building blocks ✅ (meeting notes, email draft, roadmap, decision log), smart chips (date ✅, people ✅, file ✅, place ✅, dropdown ✅, calendar event ❌, placeholder ❌), eSignature, **drawing**, **chart (bar/column/line/pie, từ Sheets — liên kết)**, emoji / special characters, equation ✅, document tabs ✅, **column break & section breaks**, bookmark ✅, watermark ✅, footnote ✅ | ❌ |
+| | Image từ camera/Drive picker, **cover image**, building blocks ✅ (meeting notes, email draft, roadmap, decision log), smart chips (date ✅, people ✅, file ✅, place ✅, dropdown ✅, calendar event ❌, placeholder ❌), eSignature, **drawing**, **chart (bar/column/line/pie, từ Sheets — liên kết)**, emoji / special characters, equation ✅, document tabs ✅, columns ✅ · column / section break ❌, bookmark ✅, watermark ✅, footnote ✅ | ❌ |
 | Format | Bold/italic/underline/strike, super/subscript, size, capitalization, paragraph styles (Normal, Title, Subtitle, H1–H4), align, line spacing, bullets & numbering, clear formatting | ✅ |
 | | Small caps, H5–H6, **paragraph styles options (update style to match, save as default)**, borders & shading ✅, indentation options (first line, hanging), **columns**, page orientation per section, RTL text, keep with next / prevent single lines | ❌ |
 | Tools | Word count, review suggested edits | ✅ |
@@ -92,5 +92,5 @@ Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewi
 | 3 ✅ | **8** | **Forms** (module mới, đầy đủ mục 4) + liên kết Sheets |
 | 4 | **3.1** | Sheets: chart, pivot, comment & note theo ô, protect ranges, named ranges, filter views, remove duplicates / trim, split text, table & alternating colors, checkbox, ảnh trong ô, text rotation, con trỏ người khác |
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |
-| 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets, bookmark, watermark, borders & shading, compare, Markdown copy/paste, pageless, chế độ Viewing |
+| 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets, bookmark, watermark, borders & shading, compare, Markdown copy/paste ✅, pageless, chế độ Viewing |
 | 7 | **chung** | Spelling, translate, publish/embed, activity dashboard, templates gallery |

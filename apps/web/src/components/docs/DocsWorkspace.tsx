@@ -3,6 +3,7 @@
 import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, WatermarkDialog } from './DocFormatDialogs';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
+import { copyAsMarkdown, markdownPasteEnabled, pasteMarkdown, setColumns, setMarkdownPaste } from './columns';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { DEFAULT_TAB, expandTokens, paperSize, tabField, watermarkSvg, type JSONContent } from '@workos/doc-model';
 import type { ImportReport, ResourceDetail, ResourceType } from '@workos/shared';
@@ -154,6 +155,8 @@ function DocBody({
   const [viewing, setViewing] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
   const [bordersOpen, setBordersOpen] = useState(false);
+  const [mdPaste, setMdPaste] = useState(true);
+  useEffect(() => setMdPaste(markdownPasteEnabled()), []);
   const [zoom, setZoom] = useState(100);
   const { pageSetup, update: updatePageSetup } = useDocSettings(session.doc);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -315,6 +318,11 @@ function DocBody({
             Redo
           </MenuItem>
           <MenuSeparator />
+          <MenuItem onSelect={() => void copyAsMarkdown(editor)}>Copy as Markdown</MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => void pasteMarkdown(editor)}>
+            Paste from Markdown
+          </MenuItem>
+          <MenuSeparator />
           <MenuItem shortcut="Ctrl+A" onSelect={() => c().selectAll().run()}>
             Select all
           </MenuItem>
@@ -456,6 +464,12 @@ function DocBody({
           <MenuItem disabled={!canEdit} onSelect={() => setBordersOpen(true)}>
             Borders and shading…
           </MenuItem>
+          <MenuLabel>Columns</MenuLabel>
+          {([1, 2, 3] as const).map((n) => (
+            <MenuItem key={n} disabled={!canEdit} onSelect={() => setColumns(editor, n)}>
+              {n === 1 ? 'One column' : n === 2 ? 'Two columns' : 'Three columns'}
+            </MenuItem>
+          ))}
           <MenuSeparator />
           <MenuItem disabled={!canEdit} onSelect={() => c().unsetAllMarks().clearNodes().run()}>
             Clear formatting
@@ -468,6 +482,9 @@ function DocBody({
       items: (
         <>
           <MenuItem onSelect={() => toast.info(`${words.w} words · ${words.c} characters`)}>Word count</MenuItem>
+          <MenuItem onSelect={() => (setMdPaste(!mdPaste), setMarkdownPaste(!mdPaste))}>
+            {mdPaste ? '✓ ' : ''}Automatically detect Markdown
+          </MenuItem>
           <MenuItem icon={<Sparkles />} onSelect={() => setPanel('AI Assistant')}>
             AI Assistant
           </MenuItem>

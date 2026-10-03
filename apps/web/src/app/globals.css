@@ -152,3 +152,9 @@ body {
 .mo-viewing .mo-del { display: none; }
 .mo-viewing .mo-ins { background: none; color: inherit; text-decoration: none; }
 .mo-pageless .mo-page-break { display: none; }
+
+/* Columns (Docs 2.2): side-by-side blocks; the column outlines only show while editing. */
+.mo-editor .mo-columns { display: grid; gap: 28px; margin: 0.6em 0; }
+.mo-editor .mo-column { min-width: 0; border-radius: 4px; outline: 1px dashed transparent; outline-offset: 4px; }
+.mo-editor[contenteditable='true'] .mo-column { outline-color: #e2e8f0; }
+.mo-editor .mo-column > :first-child { margin-top: 0; }

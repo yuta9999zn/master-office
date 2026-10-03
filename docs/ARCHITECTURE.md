@@ -699,3 +699,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Sửa lỗi kèm theo | Đếm từ đọc storage của editor vừa bị huỷ khi đổi tab ("Cannot read properties of undefined (reading 'words')"). |
 | Giới hạn | Chưa có tab con, emoji cho tab, kéo thả để sắp xếp; tab đầu không xoá được. |
 | Test | `docs-chips-flow.mjs`: tab "Appendix" có chữ và bình luận riêng (không lẫn với tab đầu ở máy người kia); HTML export có cả hai tab; bản sao giữ tab và watermark. |
+
+## 40. Phase 2.2 — Docs: chia cột & Markdown: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Cột | Node khối `columns` (2–3 `column`, mỗi cột chứa khối thường) — Google Docs đặt cột theo section, ở đây là một khối đặt được ở bất kỳ đâu. Format → One / Two / Three columns, / → 2 columns / 3 columns: các khối đang chọn vào cột đầu; đổi số cột giữ nội dung (cột bị bỏ dồn vào cột cuối); "One column" trả về văn bản thường. Editor: CSS grid, viền cột chỉ hiện khi sửa. HTML / PDF: grid; DOCX: bảng một hàng không viền (cột Word gắn với section nên không đặt giữa trang được). |
+| Markdown ra | `toMarkdown` (`packages/doc-model/src/columns-md.ts`): heading, đậm / nghiêng / gạch / code / link, danh sách, việc cần làm, trích dẫn, code block, bảng, ảnh, phương trình `$…$`, chip thành chữ; đề xuất xoá bị bỏ. Edit → Copy as Markdown: vùng chọn (dùng `doc.cut` để giữ khối bao quanh) hoặc cả tài liệu. |
+| Markdown vào | `markdownToHtml` → schema của editor. Dán chữ thường trông như Markdown (`looksLikeMarkdown`: heading, ≥ 2 dòng danh sách / bảng / link…) tự thành định dạng; tắt ở Tools → Automatically detect Markdown (lưu trên máy). Edit → Paste from Markdown để dán chủ động. Đã kiểm tra vòng Markdown → tài liệu → Markdown giữ nguyên. |
+| Test | `docs-chips-flow.mjs` +2 bước: Two columns (người kia thấy 2 cột, chữ gõ ở cột phải); dán Markdown → heading, chữ đậm trong danh sách, bảng ở máy người kia; Copy as Markdown → clipboard có `## …`; HTML export có cột. |

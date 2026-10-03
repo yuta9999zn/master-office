@@ -18,6 +18,8 @@ export * from './chips';
 import { Equation, equationHtml, Footnote, footnotesOf } from './notes-math';
 export * from './notes-math';
 export * from './tabs';
+import { Column, Columns } from './columns-md';
+export * from './columns-md';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';
@@ -437,6 +439,8 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     Bookmark,
     Footnote,
     Equation,
+    Columns,
+    Column,
   ];
 }
 
@@ -646,6 +650,10 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return `<span class="equation">${equationHtml(String(n.attrs?.latex ?? ''), 'mathml')}</span>`;
       case 'resourceEmbed':
         return `<div class="embed">📎 ${esc(String(n.attrs?.name ?? 'Linked file'))}</div>`;
+      case 'columns':
+        return `<div class="columns" style="grid-template-columns:repeat(${(n.content ?? []).length},minmax(0,1fr))">${inner()}</div>`;
+      case 'column':
+        return `<div class="column">${inner()}</div>`;
       case 'table':
         return `<table>${inner()}</table>`;
       case 'tableRow':
@@ -682,6 +690,7 @@ export const EXPORT_CSS = `
   .task-list { list-style: none; padding-left: 4px; } .task-item { display: flex; gap: 8px; } .task-item p { margin: 0; } .due { color: #64748b; font-size: 9pt; }
   .mention { color: #2563eb; background: #eff5ff; border-radius: 4px; padding: 0 3px; }
   .page-link { color: #2563eb; text-decoration: underline; } .status { font-weight: 600; }
+  .columns { display: grid; gap: 2em; margin: 1em 0; } .column > :first-child { margin-top: 0; }
   sup.fn a { text-decoration: none; color: #2563eb; } .footnotes { margin-top: 2em; border-top: 1px solid #cbd5e1; padding-top: 0.5em; font-size: 0.85em; color: #334155; } .footnotes ol { padding-left: 1.4em; }
   .chip { display: inline-block; border-radius: 999px; padding: 0 0.5em; background: #f1f5f9; color: #334155; font-size: 0.92em; text-decoration: none; }
   .embed { border: 1px solid #e6eaf0; border-radius: 10px; padding: 10px 14px; margin: 8px 0; }

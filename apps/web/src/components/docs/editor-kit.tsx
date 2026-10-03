@@ -10,6 +10,8 @@ import type { ResourceType, SearchHit, UserSummary } from '@workos/shared';
 import {
   BookOpen,
   Bookmark,
+  Columns2,
+  Columns3,
   Footprints,
   Sigma,
   CalendarDays,
@@ -51,6 +53,7 @@ import { hrefFor } from '@/lib/resources';
 import { Avatar, cn, FileIcon } from '../ui/primitives';
 import { BookmarkWithView, DateChipWithView, DropdownChipWithView, PlaceChipWithView } from './chips';
 import { EquationWithView, FootnoteShortcut, FootnoteWithView, insertFootnote } from './notes-math';
+import { setColumns } from './columns';
 import { ResourceEmbedWithView } from './EmbedView';
 import { PageBreakWithView, TableOfContentsWithView } from './NodeViews';
 import { popupRender, type PopupItem } from './suggest-popup';
@@ -358,6 +361,8 @@ function slashItems(h: SlashHandlers): SlashItem[] {
     { id: 'date', group: 'Smart chips', title: 'Date', subtitle: 'Or type @date', icon: <CalendarDays />, run: (e, r) => c(e, r).insertContent([{ type: 'dateChip', attrs: { date: isoDay(), format: 'short' } }, { type: 'text', text: ' ' }]).run() },
     { id: 'dropdown', group: 'Smart chips', title: 'Dropdown', subtitle: 'Status, priority…', icon: <ChevronDownCircle />, run: (e, r) => c(e, r).insertContent([{ type: 'dropdownChip', attrs: { options: DROPDOWN_PRESETS[0].options, value: null } }, { type: 'text', text: ' ' }]).run() },
     { id: 'place', group: 'Smart chips', title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin />, run: (e, r) => c(e, r).insertContent([{ type: 'placeChip', attrs: { name: 'Place' } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'columns2', group: 'Basic', title: '2 columns', icon: <Columns2 />, run: (e, r) => (c(e, r).run(), setColumns(e, 2)) },
+    { id: 'columns3', group: 'Basic', title: '3 columns', icon: <Columns3 />, run: (e, r) => (c(e, r).run(), setColumns(e, 3)) },
     { id: 'footnote', group: 'Insert', title: 'Footnote', subtitle: 'Ctrl+Alt+F', icon: <Footprints />, run: (e, r) => (c(e, r).run(), insertFootnote(e)) },
     { id: 'equation', group: 'Insert', title: 'Equation', subtitle: 'LaTeX', icon: <Sigma />, run: (e, r) => c(e, r).insertContent({ type: 'equation', attrs: { latex: '' } }).run() },
     { id: 'bookmark', group: 'Insert', title: 'Bookmark', subtitle: 'A place links can jump to', icon: <Bookmark />, run: (e, r) => c(e, r).insertContent({ type: 'bookmark', attrs: { id: Math.random().toString(36).slice(2, 10) } }).run() },
