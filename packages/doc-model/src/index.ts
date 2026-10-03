@@ -13,6 +13,8 @@ import { TextStyleKit } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 
 export type { JSONContent };
+import { Bookmark, DateChip, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DropdownOption } from './chips';
+export * from './chips';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';
@@ -368,6 +370,10 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     Deletion,
     ResourceLink,
     StatusPill,
+    DateChip,
+    DropdownChip,
+    PlaceChip,
+    Bookmark,
   ];
 }
 
@@ -386,6 +392,10 @@ export function toPlainText(doc: JSONContent | null | undefined): string {
     if (n.type === 'image') return n.attrs?.alt ? `[${n.attrs.alt}]` : '';
     if (n.type === 'resourceLink') return n.attrs?.name ?? '';
     if (n.type === 'status') return `● ${n.attrs?.label ?? ''}`;
+    if (n.type === 'dateChip') return formatChipDate(n.attrs?.date, n.attrs?.format);
+    if (n.type === 'dropdownChip') return n.attrs?.value ?? '';
+    if (n.type === 'placeChip') return n.attrs?.name ?? '';
+    if (n.type === 'bookmark') return '';
     if (n.type === 'resourceEmbed') return `[${n.attrs?.name ?? 'file'}]`;
     if (n.type === 'pageBreak' || n.type === 'tableOfContents') return '';
     const inner = (n.content ?? []).map((c) => walk(c, depth + 1));
@@ -549,6 +559,16 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return `<span class="page-link">${esc(String(n.attrs?.name ?? ''))}</span>`;
       case 'status':
         return `<span class="status" style="color:${STATUS_COLORS[n.attrs?.color ?? 'green'] ?? '#16a34a'}">● ${esc(String(n.attrs?.label ?? ''))}</span>`;
+      case 'dateChip':
+        return `<span class="chip">${esc(formatChipDate(n.attrs?.date, n.attrs?.format))}</span>`;
+      case 'dropdownChip': {
+        const opt = ((n.attrs?.options ?? []) as DropdownOption[]).find((o) => o.label === n.attrs?.value);
+        return n.attrs?.value ? `<span class="chip" style="color:${esc(opt?.color ?? '#334155')};background:${esc(opt?.color ?? '#334155')}1a">${esc(String(n.attrs.value))}</span>` : '';
+      }
+      case 'placeChip':
+        return `<a class="chip" href="${esc(placeUrl(String(n.attrs?.name ?? '')))}">📍 ${esc(String(n.attrs?.name ?? ''))}</a>`;
+      case 'bookmark':
+        return `<a id="bm-${esc(String(n.attrs?.id ?? ''))}"></a>`;
       case 'resourceEmbed':
         return `<div class="embed">📎 ${esc(String(n.attrs?.name ?? 'Linked file'))}</div>`;
       case 'table':
@@ -583,6 +603,7 @@ export const EXPORT_CSS = `
   .task-list { list-style: none; padding-left: 4px; } .task-item { display: flex; gap: 8px; } .task-item p { margin: 0; } .due { color: #64748b; font-size: 9pt; }
   .mention { color: #2563eb; background: #eff5ff; border-radius: 4px; padding: 0 3px; }
   .page-link { color: #2563eb; text-decoration: underline; } .status { font-weight: 600; }
+  .chip { display: inline-block; border-radius: 999px; padding: 0 0.5em; background: #f1f5f9; color: #334155; font-size: 0.92em; text-decoration: none; }
   .embed { border: 1px solid #e6eaf0; border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
   .page-break { break-after: page; page-break-after: always; height: 0; }
   .toc { margin: 12px 0 20px; } .toc-title { font-weight: 700; margin-bottom: 6px; } .toc ul { list-style: none; padding: 0; margin: 0; }

@@ -656,3 +656,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Template | `packages/slide-model/src/templates.ts`: Pitch deck, Project status, Marketing plan, Workshop, Team meeting — mỗi cái là theme + các slide đã điền (layout, sơ đồ, bảng, biểu đồ). `POST /resources {type:'presentation', template}` → server dựng deck bằng `templateDeck`. Trang Slides có hàng "Start a new presentation" (Blank + template, ảnh xem trước dựng sau khi mount để tránh lệch hydration do id ngẫu nhiên). |
 | Theme builder | Tab Theme → "Customize theme": màu nền, tiêu đề, chữ, muted, 6 accent, font tiêu đề / nội dung. Sửa là ghi theme `id: 'custom'` của bài (đồng bộ như mọi thay đổi theme); mọi màu tham chiếu `@accentN`, `@title`… đổi theo. |
 | Test | `slides-motion-flow.mjs`: tạo từ template Workshop (6 slide, theme Forest) → layout Big number → accent 1 tuỳ chỉnh, người kia thấy. |
+
+## 36. Phase 2.2 — Docs: smart chip, building block, bookmark: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Smart chip | Node inline (atom) trong `packages/doc-model/src/chips.ts`: `dateChip` (ngày + định dạng ngắn / dài / ISO), `dropdownChip` (danh sách lựa chọn có màu của riêng chip + giá trị; preset Project status / Review status / Priority), `placeChip` (tên → mở Google Maps). Chèn bằng **@** (`@today`, `@tomorrow`, `@date`, `@dropdown`, `@place` — hiện trước danh sách người) hoặc **/**. Node view: bấm để đổi ngày / chọn giá trị / sửa lựa chọn / đổi tên địa điểm. |
+| Building block | Menu / → "Building blocks": Meeting notes, Email draft, Project roadmap, Decision log — nội dung có sẵn chip ngày và dropdown. |
+| Bookmark & link nội bộ | Node `bookmark` (anchor vô hình, hiện cờ nhỏ trong editor). Hộp thoại Link (Ctrl+K, hoặc / → "Link to heading or bookmark") liệt kê heading và bookmark; chọn heading thì tự đặt bookmark ở đầu heading. Link `#bm-<id>`: Ctrl/⌘-click (khi sửa) hoặc click (khi xem) cuộn tới đó. |
+| Xuất | HTML: chip là `span.chip` (dropdown theo màu, place là link Maps), bookmark `<a id="bm-…">`. DOCX: chip thành chữ (dropdown / status có màu), place thành hyperlink, bookmark thành bookmark Word, `#bm-…` thành hyperlink nội bộ. Sửa luôn: status pill và page link trước đây bị mất khi xuất DOCX. |
+| Sửa lỗi kèm theo | `PopupList` (menu / và [[) trả về kết quả `scrollIntoView` từ `useEffect` — Chromium mới trả về Promise, React coi là cleanup và báo "destroy is not a function". |
+| Test | `apps/web/e2e/docs-chips-flow.mjs` (6 bước, 2 người): @today, /dropdown, @place, building block, link tới heading (link nằm đúng chỗ con trỏ), DOCX/HTML export. |

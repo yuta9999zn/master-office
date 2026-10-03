@@ -3,13 +3,35 @@
 import type { MentionOptions } from '@tiptap/extension-mention';
 import { ReactRenderer } from '@tiptap/react';
 import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
+import { DROPDOWN_PRESETS, isoDay, type JSONContent } from '@workos/doc-model';
 import type { UserSummary } from '@workos/shared';
+import { CalendarDays, ChevronDownCircle, MapPin } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { Avatar, cn } from '../ui/primitives';
 
+/** "@" also inserts smart chips (Google Docs): @date, @today, @tomorrow, @dropdown, @place. */
+interface ChipItem {
+  chip: string;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  node: () => JSONContent;
+}
+const CHIPS: (ChipItem & { keys: string[] })[] = [
+  { chip: 'today', keys: ['today', 'date'], title: 'Today', subtitle: 'Date', icon: <CalendarDays size={16} />, node: () => ({ type: 'dateChip', attrs: { date: isoDay(), format: 'short' } }) },
+  { chip: 'tomorrow', keys: ['tomorrow', 'date'], title: 'Tomorrow', subtitle: 'Date', icon: <CalendarDays size={16} />, node: () => ({ type: 'dateChip', attrs: { date: isoDay(1), format: 'short' } }) },
+  { chip: 'yesterday', keys: ['yesterday'], title: 'Yesterday', subtitle: 'Date', icon: <CalendarDays size={16} />, node: () => ({ type: 'dateChip', attrs: { date: isoDay(-1), format: 'short' } }) },
+  ...DROPDOWN_PRESETS.map((p, i) => ({ chip: `dropdown-${i}`, keys: ['dropdown', p.name.toLowerCase()], title: p.name, subtitle: 'Dropdown', icon: <ChevronDownCircle size={16} />, node: () => ({ type: 'dropdownChip', attrs: { options: p.options, value: null } }) })),
+  { chip: 'place', keys: ['place', 'location', 'map'], title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin size={16} />, node: () => ({ type: 'placeChip', attrs: { name: 'Place' } }) },
+];
+const chipsFor = (q: string) => (q.length >= 2 ? CHIPS.filter((c) => c.keys.some((k) => k.startsWith(q.toLowerCase()))) : []);
+
+type Item = UserSummary | ChipItem;
+const isChip = (i: Item): i is ChipItem => 'chip' in i;
+
 interface ListProps {
-  items: UserSummary[];
-  command: (item: { id: string; label: string }) => void;
+  items: Item[];
+  command: (item: { id: string; label: string; chip?: ChipItem }) => void;
 }
 export interface ListHandle {
   onKeyDown: (p: SuggestionKeyDownProps) => boolean;
@@ -18,7 +40,12 @@ export interface ListHandle {
 const MentionList = forwardRef<ListHandle, ListProps>(function MentionList({ items, command }, ref) {
   const [index, setIndex] = useState(0);
   useEffect(() => setIndex(0), [items]);
-  const pick = (i: number) => items[i] && command({ id: items[i].id, label: items[i].name });
+  const pick = (i: number) => {
+    const it = items[i];
+    if (!it) return;
+    if (isChip(it)) command({ id: `chip:${it.chip}`, label: it.title, chip: it });
+    else command({ id: it.id, label: it.name });
+  };
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {
       if (event.key === 'ArrowDown') setIndex((i) => (i + 1) % Math.max(items.length, 1));
@@ -33,17 +60,18 @@ const MentionList = forwardRef<ListHandle, ListProps>(function MentionList({ ite
       {items.length ? (
         items.map((u, i) => (
           <button
-            key={u.id}
+            key={isChip(u) ? u.chip : u.id}
             onMouseDown={(e) => {
               e.preventDefault();
               pick(i);
             }}
             className={cn('menu-item w-full', i === index && 'bg-hover')}
+            data-testid={isChip(u) ? `chip-${u.chip}` : undefined}
           >
-            <Avatar user={u} size={22} />
+            {isChip(u) ? <span className="flex size-[22px] items-center justify-center text-muted">{u.icon}</span> : <Avatar user={u} size={22} />}
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13px] text-ink">{u.name}</span>
-              <span className="block truncate text-[11px] text-muted">{u.title}</span>
+              <span className="block truncate text-[13px] text-ink">{isChip(u) ? u.title : u.name}</span>
+              <span className="block truncate text-[11px] text-muted">{isChip(u) ? u.subtitle : u.title}</span>
             </span>
           </button>
         ))
@@ -58,10 +86,17 @@ const MentionList = forwardRef<ListHandle, ListProps>(function MentionList({ ite
 export function mentionSuggestion(getUsers: () => UserSummary[]): Partial<MentionOptions> {
   return {
     suggestion: {
-      items: ({ query }) =>
-        getUsers()
+      items: ({ query }) => [
+        ...chipsFor(query),
+        ...getUsers()
           .filter((u) => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().startsWith(query.toLowerCase()))
           .slice(0, 6),
+      ] as never,
+      command: ({ editor, range, props }) => {
+        const p = props as unknown as { id: string; label: string; chip?: ChipItem };
+        const node = p.chip ? p.chip.node() : { type: 'mention', attrs: { id: p.id, label: p.label } };
+        editor.chain().focus().insertContentAt(range, [node, { type: 'text', text: ' ' }]).run();
+      },
       render: () => {
         let renderer: ReactRenderer<ListHandle, ListProps> | null = null;
         let host: HTMLDivElement | null = null;

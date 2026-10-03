@@ -663,11 +663,47 @@ function VersionPreview({ resourceId, versionId, canEdit, onClose }: { resourceI
 
 // ── Dialogs ──────────────────────────────────────────────────────────────────
 
+/** Headings and bookmarks a link can point to inside the document. */
+function linkTargets(editor: Editor) {
+  const out: { kind: 'heading' | 'bookmark'; pos: number; label: string; level?: number; bookmark?: string }[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name === 'heading' && n.textContent.trim()) {
+      let bookmark: string | undefined;
+      n.forEach((c) => {
+        if (c.type.name === 'bookmark' && !bookmark) bookmark = c.attrs.id as string;
+      });
+      out.push({ kind: 'heading', pos, label: n.textContent.trim(), level: n.attrs.level as number, bookmark });
+      return false;
+    }
+    if (n.type.name === 'bookmark') {
+      const $p = editor.state.doc.resolve(pos);
+      out.push({ kind: 'bookmark', pos, label: $p.parent.textContent.trim().slice(0, 60) || 'Bookmark', bookmark: n.attrs.id as string });
+    }
+    return true;
+  });
+  return out;
+}
+
 function LinkDialog({ editor, open, onClose }: { editor: Editor; open: boolean; onClose: () => void }) {
   const [url, setUrl] = useState('');
+  const [targets, setTargets] = useState<ReturnType<typeof linkTargets>>([]);
   useEffect(() => {
-    if (open) setUrl((editor.getAttributes('link').href as string | undefined) ?? '');
+    if (!open) return;
+    setUrl((editor.getAttributes('link').href as string | undefined) ?? '');
+    setTargets(linkTargets(editor));
   }, [open, editor]);
+  /** Links to a heading (a bookmark is added at its start if it has none) or to a bookmark. */
+  const linkTo = (target: ReturnType<typeof linkTargets>[number]) => {
+    const id = target.bookmark ?? Math.random().toString(36).slice(2, 10);
+    const href = `#bm-${id}`;
+    const chain = editor.chain().focus();
+    // Keep the cursor where the link goes (inserting content elsewhere would move the selection there).
+    if (!target.bookmark) chain.insertContentAt(target.pos + 1, { type: 'bookmark', attrs: { id } }, { updateSelection: false });
+    if (editor.state.selection.empty && !editor.isActive('link')) chain.insertContent({ type: 'text', text: target.label, marks: [{ type: 'link', attrs: { href } }] });
+    else chain.extendMarkRange('link').setLink({ href });
+    chain.run();
+    onClose();
+  };
   const apply = () => {
     const href = url.trim() && !/^(https?:|mailto:|\/)/i.test(url.trim()) ? `https://${url.trim()}` : url.trim();
     const chain = editor.chain().focus().extendMarkRange('link');
@@ -703,6 +739,21 @@ function LinkDialog({ editor, open, onClose }: { editor: Editor; open: boolean; 
       }
     >
       <input className="input" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
+      {targets.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-subtle">Headings and bookmarks</div>
+          <div className="max-h-56 overflow-y-auto rounded-lg border border-line" data-testid="link-targets">
+            {targets.map((t) => (
+              <button key={`${t.kind}-${t.pos}`} onClick={() => linkTo(t)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover">
+                <span className="w-16 shrink-0 text-[11px] text-muted">{t.kind === 'heading' ? `Heading ${t.level}` : 'Bookmark'}</span>
+                <span className="truncate text-ink" style={{ paddingLeft: t.level ? (t.level - 1) * 10 : 0 }}>
+                  {t.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }

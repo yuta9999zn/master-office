@@ -5,11 +5,19 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
 import Suggestion from '@tiptap/suggestion';
-import { docExtensions, ResourceLink, StatusPill, STATUS_COLORS, TaskItemWithMeta } from '@workos/doc-model';
+import { docExtensions, DROPDOWN_PRESETS, isoDay, ResourceLink, StatusPill, STATUS_COLORS, TaskItemWithMeta, type JSONContent } from '@workos/doc-model';
 import type { ResourceType, SearchHit, UserSummary } from '@workos/shared';
 import {
   BookOpen,
+  Bookmark,
   CalendarDays,
+  ChevronDownCircle,
+  Link as LinkIcon,
+  Mail,
+  MapPin,
+  Milestone,
+  NotebookPen,
+  Scale,
   CheckSquare,
   CircleDot,
   Code2,
@@ -34,10 +42,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { DropdownMenu as DM, Popover } from 'radix-ui';
+import type { ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { useResource, useUsers } from '@/lib/queries';
 import { hrefFor } from '@/lib/resources';
 import { Avatar, cn, FileIcon } from '../ui/primitives';
+import { BookmarkWithView, DateChipWithView, DropdownChipWithView, PlaceChipWithView } from './chips';
 import { ResourceEmbedWithView } from './EmbedView';
 import { PageBreakWithView, TableOfContentsWithView } from './NodeViews';
 import { popupRender, type PopupItem } from './suggest-popup';
@@ -245,7 +255,74 @@ export const PageLinks = Extension.create({
 export interface SlashHandlers {
   image: () => void;
   embed: () => void;
+  /** Opens the "link to a heading or bookmark" picker. */
+  linkTo: () => void;
 }
+
+// ── Building blocks (Google Docs: Insert → Building blocks) ──────────────────
+
+const t = (text: string, marks?: JSONContent['marks']): JSONContent => ({ type: 'text', text, ...(marks ? { marks } : {}) });
+const p = (...content: JSONContent[]): JSONContent => ({ type: 'paragraph', ...(content.length ? { content } : {}) });
+const h = (level: number, text: string): JSONContent => ({ type: 'heading', attrs: { level }, content: [t(text)] });
+const date = (offset = 0): JSONContent => ({ type: 'dateChip', attrs: { date: isoDay(offset), format: 'short' } });
+const drop = (preset: number, value: string | null = null): JSONContent => ({ type: 'dropdownChip', attrs: { options: DROPDOWN_PRESETS[preset].options, value } });
+const bold = [{ type: 'bold' }];
+const cell = (content: JSONContent[], header = false): JSONContent => ({ type: header ? 'tableHeader' : 'tableCell', content: [p(...content)] });
+const table = (head: string[], rows: JSONContent[][][]): JSONContent => ({
+  type: 'table',
+  content: [{ type: 'tableRow', content: head.map((x) => cell([t(x)], true)) }, ...rows.map((r) => ({ type: 'tableRow', content: r.map((c) => cell(c)) }))],
+});
+
+export const BUILDING_BLOCKS: { id: string; title: string; icon: ReactNode; content: () => JSONContent[] }[] = [
+  {
+    id: 'meeting',
+    title: 'Meeting notes',
+    icon: <NotebookPen />,
+    content: () => [
+      p(date(), t(' | '), t('Meeting title', bold)),
+      p(t('Attendees: ', bold), t('@ to mention people')),
+      h(3, 'Notes'),
+      { type: 'bulletList', content: [{ type: 'listItem', content: [p()] }] },
+      h(3, 'Action items'),
+      { type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [p()] }] },
+    ],
+  },
+  {
+    id: 'email',
+    title: 'Email draft',
+    icon: <Mail />,
+    content: () => [table(['To', 'Cc', 'Subject'], [[[], [], []]]), p(t('Hi,')), p(), p(t('Thanks,'))],
+  },
+  {
+    id: 'roadmap',
+    title: 'Project roadmap',
+    icon: <Milestone />,
+    content: () => [
+      table(
+        ['Milestone', 'Owner', 'Due', 'Status'],
+        [
+          [[t('Kick-off')], [], [date(7)], [drop(0, 'Not started')]],
+          [[t('First release')], [], [date(30)], [drop(0, 'Not started')]],
+          [[t('Launch')], [], [date(60)], [drop(0, 'Not started')]],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 'decisions',
+    title: 'Decision log',
+    icon: <Scale />,
+    content: () => [
+      table(
+        ['Decision', 'Date', 'Owner', 'Status'],
+        [
+          [[t('What was decided')], [date()], [], [drop(1, 'Draft')]],
+          [[], [], [], [drop(1)]],
+        ],
+      ),
+    ],
+  },
+];
 
 interface SlashItem extends PopupItem {
   run: (editor: Editor, range: Range) => void;
@@ -275,6 +352,12 @@ function slashItems(h: SlashHandlers): SlashItem[] {
     { id: 'pagebreak', group: 'Insert', title: 'Page break', icon: <Scissors />, run: (e, r) => c(e, r).insertContent({ type: 'pageBreak' }).run() },
     { id: 'wiki', group: 'Insert', title: 'Knowledge callout', icon: <BookOpen />, run: (e, r) => c(e, r).wrapIn('callout').insertContent('Knowledge: ').run() },
     { id: 'doc', group: 'Insert', title: 'Embed a document', icon: <FileText />, run: (e, r) => (c(e, r).run(), h.embed()) },
+    { id: 'date', group: 'Smart chips', title: 'Date', subtitle: 'Or type @date', icon: <CalendarDays />, run: (e, r) => c(e, r).insertContent([{ type: 'dateChip', attrs: { date: isoDay(), format: 'short' } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'dropdown', group: 'Smart chips', title: 'Dropdown', subtitle: 'Status, priority…', icon: <ChevronDownCircle />, run: (e, r) => c(e, r).insertContent([{ type: 'dropdownChip', attrs: { options: DROPDOWN_PRESETS[0].options, value: null } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'place', group: 'Smart chips', title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin />, run: (e, r) => c(e, r).insertContent([{ type: 'placeChip', attrs: { name: 'Place' } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'bookmark', group: 'Insert', title: 'Bookmark', subtitle: 'A place links can jump to', icon: <Bookmark />, run: (e, r) => c(e, r).insertContent({ type: 'bookmark', attrs: { id: Math.random().toString(36).slice(2, 10) } }).run() },
+    { id: 'linkto', group: 'Insert', title: 'Link to heading or bookmark', icon: <LinkIcon />, run: (e, r) => (c(e, r).run(), h.linkTo()) },
+    ...BUILDING_BLOCKS.map((b) => ({ id: `bb-${b.id}`, group: 'Building blocks', title: b.title, icon: b.icon, run: (e: Editor, r: Range) => c(e, r).insertContent(b.content()).run() })),
   ];
 }
 
@@ -283,7 +366,7 @@ const slashKey = new PluginKey('mo-slash');
 export const SlashCommands = Extension.create<{ handlers: SlashHandlers }>({
   name: 'slashCommands',
   addOptions() {
-    return { handlers: { image: () => undefined, embed: () => undefined } };
+    return { handlers: { image: () => undefined, embed: () => undefined, linkTo: () => undefined } };
   },
   addProseMirrorPlugins() {
     const all = slashItems(this.options.handlers);
@@ -373,7 +456,44 @@ export const CollapsibleHeadings = Extension.create({
 
 // ── Schema for the browser ───────────────────────────────────────────────────
 
-const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink'];
+const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'bookmark'];
+
+// ── Internal links ("#bm-<id>") ──────────────────────────────────────────────
+
+/** Position of a bookmark in the document. */
+export function bookmarkPos(state: EditorState, id: string): number | null {
+  let found: number | null = null;
+  state.doc.descendants((n, pos) => {
+    if (found !== null) return false;
+    if (n.type.name === 'bookmark' && n.attrs.id === id) found = pos;
+    return true;
+  });
+  return found;
+}
+
+/** Following a link to a bookmark scrolls to it (Ctrl/⌘-click while editing, plain click when reading). */
+export const InternalLinks = Extension.create({
+  name: 'internalLinks',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleClick: (view, _pos, event) => {
+            const a = (event.target as HTMLElement).closest('a');
+            const href = a?.getAttribute('href') ?? '';
+            if (!href.startsWith('#bm-') || (view.editable && !(event.ctrlKey || event.metaKey))) return false;
+            const at = bookmarkPos(view.state, href.slice(4));
+            if (at === null) return false;
+            const dom = view.nodeDOM(at) as HTMLElement | null;
+            dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            event.preventDefault();
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
 
 /** Schema extensions with React node views swapped in for the interactive nodes. */
 export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
@@ -385,5 +505,10 @@ export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
     TaskItemWithView.configure({ nested: true }),
     StatusWithView,
     ResourceLinkWithView,
+    DateChipWithView,
+    DropdownChipWithView,
+    PlaceChipWithView,
+    BookmarkWithView,
+    InternalLinks,
   ];
 }

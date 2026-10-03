@@ -27,7 +27,10 @@ const PopupList = forwardRef<PopupHandle, Props>(function PopupList({ items, com
   const [index, setIndex] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => setIndex(0), [items]);
-  useEffect(() => list.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' }), [index]);
+  useEffect(() => {
+    // Braces matter: newer browsers return a Promise from scrollIntoView, which React would take for a cleanup.
+    list.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [index]);
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {
       if (event.key === 'ArrowDown') setIndex((i) => (i + 1) % Math.max(items.length, 1));

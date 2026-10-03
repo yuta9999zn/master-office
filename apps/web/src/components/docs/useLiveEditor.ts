@@ -76,7 +76,7 @@ export function useLiveEditor(o: LiveEditorOptions) {
         SearchReplace,
         PageLinks,
         CollapsibleHeadings,
-        ...(canEdit ? [SlashCommands.configure({ handlers: { image: () => opts.current.onImage(), embed: () => opts.current.onEmbed() } })] : []),
+        ...(canEdit ? [SlashCommands.configure({ handlers: { image: () => opts.current.onImage(), embed: () => opts.current.onEmbed(), linkTo: () => opts.current.onLink() } })] : []),
         SuggestChanges.configure({ user: { id: me.id, name: me.name, color: me.avatarColor } }),
         CommentAnchors.configure({
           getThreads: () => opts.current.threadsRef.current,

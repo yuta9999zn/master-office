@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_SETUP, headingsOf, PAPER, type JSONContent, type PageSetup } from '@workos/doc-model';
+import { DEFAULT_PAGE_SETUP, formatChipDate, headingsOf, PAPER, placeUrl, STATUS_COLORS, type DropdownOption, type JSONContent, type PageSetup } from '@workos/doc-model';
 import {
   AlignmentType,
   DeletedTextRun,
@@ -22,6 +22,8 @@ import {
   TableCell,
   TableRow,
   TextRun,
+  Bookmark as DocxBookmark,
+  InternalHyperlink,
   WidthType,
   type IRunOptions,
   type ParagraphChild,
@@ -90,6 +92,18 @@ class DocxWriter {
         if (img) out.push(img);
         continue;
       }
+      if (n.type === 'bookmark') {
+        out.push(new DocxBookmark({ id: `bm-${n.attrs?.id ?? ''}`, children: [] }));
+        continue;
+      }
+      // Chips, status pills and page links read as their text (dropdown values in their colour).
+      if (n.type === 'dateChip' || n.type === 'dropdownChip' || n.type === 'placeChip' || n.type === 'status' || n.type === 'resourceLink') {
+        const text = n.type === 'dateChip' ? formatChipDate(n.attrs?.date, n.attrs?.format) : n.type === 'dropdownChip' ? String(n.attrs?.value ?? '') : n.type === 'placeChip' ? String(n.attrs?.name ?? '') : n.type === 'status' ? `● ${n.attrs?.label ?? ''}` : String(n.attrs?.name ?? '');
+        const color = n.type === 'dropdownChip' ? hex(((n.attrs?.options ?? []) as DropdownOption[]).find((o) => o.label === n.attrs?.value)?.color) : n.type === 'status' ? hex(STATUS_COLORS[n.attrs?.color ?? 'green']) : undefined;
+        if (text && n.type === 'placeChip') out.push(new ExternalHyperlink({ link: placeUrl(text), children: [new TextRun({ ...base, text, style: 'Hyperlink' })] }));
+        else if (text) out.push(new TextRun({ ...base, text, ...(color ? { color, bold: n.type !== 'resourceLink' } : {}) }));
+        continue;
+      }
       if (n.type !== 'text') continue;
       const opts: Record<string, unknown> = { ...base, text: n.text ?? '' };
       let link: string | undefined;
@@ -140,7 +154,8 @@ class DocxWriter {
         // Real Word track changes: the reviewer can Accept / Reject them in Word.
         const rev = { ...(opts as IRunOptions), id: this.revisionId++, author: revision.author, date: revision.date };
         out.push(revision.kind === 'insertion' ? new InsertedTextRun(rev) : new DeletedTextRun(rev));
-      } else if (link) out.push(new ExternalHyperlink({ link, children: [new TextRun({ ...(opts as IRunOptions), style: 'Hyperlink' })] }));
+      } else if (link?.startsWith('#')) out.push(new InternalHyperlink({ anchor: link.slice(1), children: [new TextRun({ ...(opts as IRunOptions), style: 'Hyperlink' })] }));
+      else if (link) out.push(new ExternalHyperlink({ link, children: [new TextRun({ ...(opts as IRunOptions), style: 'Hyperlink' })] }));
       else out.push(new TextRun(opts as IRunOptions));
     }
     return out;
