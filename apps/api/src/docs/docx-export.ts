@@ -23,6 +23,7 @@ import {
   TableRow,
   TextRun,
   Bookmark as DocxBookmark,
+  FootnoteReferenceRun,
   InternalHyperlink,
   WidthType,
   type IRunOptions,
@@ -70,6 +71,9 @@ function halfPoints(size: unknown): number | undefined {
 
 class DocxWriter {
   private orderedInstance = 0;
+  /** Word footnotes, numbered in document order. */
+  readonly footnotes: Record<number, { children: Paragraph[] }> = {};
+  private footnoteNo = 0;
   private revisionId = 1;
   constructor(
     private readonly images: Map<string, DocxImage>,
@@ -94,6 +98,17 @@ class DocxWriter {
       }
       if (n.type === 'bookmark') {
         out.push(new DocxBookmark({ id: `bm-${n.attrs?.id ?? ''}`, children: [] }));
+        continue;
+      }
+      if (n.type === 'footnote') {
+        const no = ++this.footnoteNo;
+        this.footnotes[no] = { children: [new Paragraph({ children: [new TextRun(String(n.attrs?.text ?? ''))] })] };
+        out.push(new FootnoteReferenceRun(no));
+        continue;
+      }
+      if (n.type === 'equation') {
+        // Word equations (OMML) cannot be produced from LaTeX here: the source is kept, set like math.
+        out.push(new TextRun({ ...base, text: String(n.attrs?.latex ?? ''), font: 'Cambria Math', italics: true }));
         continue;
       }
       // Chips, status pills and page links read as their text (dropdown values in their colour).
@@ -365,6 +380,7 @@ export async function toDocx(
   const body = w.blocks(doc.content);
   const document = new Document({
     title,
+    footnotes: w.footnotes,
     creator: meta.author ?? 'Master Office',
     description: 'Exported from Master Office',
     styles: {

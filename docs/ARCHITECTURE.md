@@ -667,3 +667,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Xuất | HTML: chip là `span.chip` (dropdown theo màu, place là link Maps), bookmark `<a id="bm-…">`. DOCX: chip thành chữ (dropdown / status có màu), place thành hyperlink, bookmark thành bookmark Word, `#bm-…` thành hyperlink nội bộ. Sửa luôn: status pill và page link trước đây bị mất khi xuất DOCX. |
 | Sửa lỗi kèm theo | `PopupList` (menu / và [[) trả về kết quả `scrollIntoView` từ `useEffect` — Chromium mới trả về Promise, React coi là cleanup và báo "destroy is not a function". |
 | Test | `apps/web/e2e/docs-chips-flow.mjs` (6 bước, 2 người): @today, /dropdown, @place, building block, link tới heading (link nằm đúng chỗ con trỏ), DOCX/HTML export. |
+
+## 37. Phase 2.2 — Docs: chú thích cuối trang & phương trình: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Footnote | Node inline `footnote` mang nội dung chú thích (`text`); **số không lưu** — editor đánh số bằng CSS counter, xuất file đếm theo thứ tự, nên chèn / xoá / di chuyển chú thích tự đánh lại số. Ctrl+Alt+F (như Google Docs), Insert → Footnote, / → Footnote: chèn rồi đưa con trỏ xuống ô chú thích ngay (render đồng bộ bằng `flushSync` để không mất phím gõ đầu). Danh sách chú thích sửa trực tiếp dưới tài liệu; bấm số trong bài để nhảy tới. Nội dung chú thích có trong tìm kiếm. |
+| Phương trình | Node inline `equation` (LaTeX), dàn trang bằng **KaTeX** (thêm vào `doc-model`). Editor: popover gõ LaTeX, nút ký hiệu (x², phân số, căn, Σ, ∫, chữ Hy Lạp…), xem trước trực tiếp. Xuất HTML / PDF: MathML (không cần CSS / font). |
+| Xuất | HTML: `<sup class="fn">` + mục `footnotes` cuối bài có link qua lại. DOCX: **footnote thật của Word** (`footnotes.xml`); phương trình là mã LaTeX đặt font Cambria Math (chưa chuyển được sang OMML). |
+| Test | `docs-chips-flow.mjs` +2 bước: hai footnote chèn ngược thứ tự → đánh số theo vị trí, chữ không lọt vào thân bài; phương trình LaTeX → KaTeX ở máy người kia; HTML có `<math>` và mục footnotes, DOCX có `footnotes.xml`. |

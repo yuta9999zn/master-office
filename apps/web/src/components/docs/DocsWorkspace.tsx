@@ -1,5 +1,6 @@
 'use client';
 
+import { FootnotesList, insertFootnote } from './notes-math';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { expandTokens, paperSize, type JSONContent } from '@workos/doc-model';
 import type { ImportReport, ResourceDetail, ResourceType } from '@workos/shared';
@@ -356,6 +357,12 @@ function DocBody({
           <MenuItem disabled={!canEdit} onSelect={() => c().insertContent({ type: 'tableOfContents' }).run()}>
             Table of contents
           </MenuItem>
+          <MenuItem disabled={!canEdit} shortcut="Ctrl+Alt+F" onSelect={() => insertFootnote(editor)}>
+            Footnote
+          </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => c().insertContent({ type: 'equation', attrs: { latex: '' } }).run()}>
+            Equation
+          </MenuItem>
           <MenuSeparator />
           <MenuItem disabled={!canComment} shortcut="Ctrl+Alt+M" onSelect={() => startComment(editor)}>
             Comment
@@ -506,6 +513,7 @@ function DocBody({
                 {r.name}
               </h1>
               <EditorContent editor={editor} />
+              <FootnotesList editor={editor} />
               <div className="mt-16 text-right text-[12px] text-subtle" data-testid="word-count">
                 {words.w} words
               </div>

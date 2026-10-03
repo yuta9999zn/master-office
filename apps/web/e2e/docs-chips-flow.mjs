@@ -30,6 +30,7 @@ const step = async (name, page, fn) => {
   }
 };
 
+const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 200 });
 const claudia = await session('claudia@kaori.jp');
 const mika = await session('mika@kaori.jp');
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
@@ -106,6 +107,40 @@ await step('link to a heading: bookmark added there, link points at it', claudia
   if (!/^#bm-\w+$/.test(href)) throw new Error(href);
 });
 
+await step('footnotes: Ctrl+Alt+F jumps to the note; numbers follow document order', claudia, async () => {
+  await editorOf(claudia).locator('p', { hasText: 'Due' }).click({ position: { x: 3, y: 8 } }); // clear of the date chip
+  await claudia.keyboard.press('End');
+  await claudia.keyboard.press('Control+Alt+f');
+  await claudia.keyboard.type('Second note'); // typing goes to the footnote, not the text
+  // A footnote earlier in the text (start of the document) becomes number 1.
+  await editorOf(claudia).locator('p', { hasText: 'Due' }).click({ position: { x: 3, y: 8 } }); // clear of the date chip
+  await claudia.keyboard.press('Control+Home');
+  await claudia.keyboard.press('Control+Alt+f');
+  await claudia.keyboard.type('First note');
+  try {
+    await until(mika, () => JSON.stringify([...document.querySelectorAll('[data-testid="footnote-text"]')].map((t) => t.value)) === '["First note","Second note"]');
+  } catch (e) {
+    for (const [n, pg] of [['claudia', claudia], ['mika', mika]]) console.log('DBG', n, JSON.stringify(await pg.evaluate(() => ({ notes: [...document.querySelectorAll('[data-testid="footnote-text"]')].map((t) => t.value), body: document.querySelector('[data-testid="doc-editor"]')?.innerText.slice(0, 60) }))));
+    throw e;
+  }
+  const body = await editorOf(mika).locator('p', { hasText: 'Due' }).innerText();
+  if (/note|Sec|Fir/.test(body)) throw new Error(`note text landed in the body: ${body}`);
+  // The references are numbered 1, 2 in the text (CSS counter): check what is painted.
+  const first = await editorOf(mika).getByTestId('footnote-ref').first().boundingBox();
+  const second = await editorOf(mika).getByTestId('footnote-ref').nth(1).boundingBox();
+  if (!first || !second || first.width < 3 || second.width < 3) throw new Error('footnote numbers are not shown');
+});
+
+await step('equation: typed as LaTeX, typeset for both editors', claudia, async () => {
+  await editorOf(claudia).locator('p', { hasText: 'Meet at' }).click();
+  await claudia.keyboard.press('End');
+  await claudia.keyboard.type(' /equation');
+  await claudia.keyboard.press('Enter');
+  await claudia.getByLabel('Equation (LaTeX)').fill('E = mc^{2}');
+  await claudia.getByTestId('equation-done').click();
+  await editorOf(mika).getByTestId('equation').locator('.katex').waitFor({ timeout: 10000 });
+});
+
 await step('DOCX and HTML export carry chips, the bookmark and the internal link', claudia, async () => {
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const docx = await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`);
@@ -114,6 +149,10 @@ await step('DOCX and HTML export carry chips, the bookmark and the internal link
   if (!/<w:bookmarkStart[^>]*w:name="bm-\w+"/.test(xml) || !/<w:hyperlink[^>]*w:anchor="bm-\w+"/.test(xml)) throw new Error('docx bookmark / internal link');
   const html = await (await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=html`)).text();
   if (!/id="bm-\w+"/.test(html) || !/href="#bm-\w+"/.test(html) || !html.includes('Shibuya Station')) throw new Error('html export');
+  if (!html.includes('<section class="footnotes">') || !html.includes('First note') || !html.includes('<math')) throw new Error('html footnotes / equation');
+  const zip = await JSZip.loadAsync(await (await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body());
+  const notesXml = await zip.file('word/footnotes.xml')?.async('string');
+  if (!notesXml?.includes('First note') || !notesXml.includes('Second note')) throw new Error('docx footnotes');
 });
 
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');

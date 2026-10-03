@@ -15,6 +15,8 @@ import StarterKit from '@tiptap/starter-kit';
 export type { JSONContent };
 import { Bookmark, DateChip, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DropdownOption } from './chips';
 export * from './chips';
+import { Equation, equationHtml, Footnote, footnotesOf } from './notes-math';
+export * from './notes-math';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';
@@ -374,6 +376,8 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     DropdownChip,
     PlaceChip,
     Bookmark,
+    Footnote,
+    Equation,
   ];
 }
 
@@ -395,7 +399,8 @@ export function toPlainText(doc: JSONContent | null | undefined): string {
     if (n.type === 'dateChip') return formatChipDate(n.attrs?.date, n.attrs?.format);
     if (n.type === 'dropdownChip') return n.attrs?.value ?? '';
     if (n.type === 'placeChip') return n.attrs?.name ?? '';
-    if (n.type === 'bookmark') return '';
+    if (n.type === 'bookmark' || n.type === 'footnote') return '';
+    if (n.type === 'equation') return String(n.attrs?.latex ?? '');
     if (n.type === 'resourceEmbed') return `[${n.attrs?.name ?? 'file'}]`;
     if (n.type === 'pageBreak' || n.type === 'tableOfContents') return '';
     const inner = (n.content ?? []).map((c) => walk(c, depth + 1));
@@ -415,6 +420,8 @@ export function toPlainText(doc: JSONContent | null | undefined): string {
     }
   };
   for (const n of doc?.content ?? []) out.push(walk(n));
+  const notes = footnotesOf(doc);
+  if (notes.length) out.push(notes.map((t, i) => `[${i + 1}] ${t}`).join('\n'));
   return out.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -506,6 +513,7 @@ function blockAttrs(n: JSONContent): string {
 export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage?: (src: string) => string } = {}): string {
   const headings = headingsOf(doc);
   let headingIndex = 0;
+  let footnoteNo = 0;
   const render = (n: JSONContent): string => {
     const inner = () => (n.content ?? []).map(render).join('');
     switch (n.type) {
@@ -569,6 +577,12 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return `<a class="chip" href="${esc(placeUrl(String(n.attrs?.name ?? '')))}">📍 ${esc(String(n.attrs?.name ?? ''))}</a>`;
       case 'bookmark':
         return `<a id="bm-${esc(String(n.attrs?.id ?? ''))}"></a>`;
+      case 'footnote': {
+        const no = ++footnoteNo;
+        return `<sup class="fn"><a href="#fn-${no}" id="fnref-${no}">${no}</a></sup>`;
+      }
+      case 'equation':
+        return `<span class="equation">${equationHtml(String(n.attrs?.latex ?? ''), 'mathml')}</span>`;
       case 'resourceEmbed':
         return `<div class="embed">📎 ${esc(String(n.attrs?.name ?? 'Linked file'))}</div>`;
       case 'table':
@@ -585,7 +599,11 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return inner();
     }
   };
-  return (doc?.content ?? []).map(render).join('\n');
+  const body = (doc?.content ?? []).map(render).join('\n');
+  const notes = footnotesOf(doc);
+  return notes.length
+    ? `${body}\n<section class="footnotes"><ol>${notes.map((t, i) => `<li id="fn-${i + 1}">${esc(t)} <a href="#fnref-${i + 1}">↩</a></li>`).join('')}</ol></section>`
+    : body;
 }
 
 /** Stylesheet shared by HTML export and PDF rendering — mirrors the editor's page style. */
@@ -603,6 +621,7 @@ export const EXPORT_CSS = `
   .task-list { list-style: none; padding-left: 4px; } .task-item { display: flex; gap: 8px; } .task-item p { margin: 0; } .due { color: #64748b; font-size: 9pt; }
   .mention { color: #2563eb; background: #eff5ff; border-radius: 4px; padding: 0 3px; }
   .page-link { color: #2563eb; text-decoration: underline; } .status { font-weight: 600; }
+  sup.fn a { text-decoration: none; color: #2563eb; } .footnotes { margin-top: 2em; border-top: 1px solid #cbd5e1; padding-top: 0.5em; font-size: 0.85em; color: #334155; } .footnotes ol { padding-left: 1.4em; }
   .chip { display: inline-block; border-radius: 999px; padding: 0 0.5em; background: #f1f5f9; color: #334155; font-size: 0.92em; text-decoration: none; }
   .embed { border: 1px solid #e6eaf0; border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
   .page-break { break-after: page; page-break-after: always; height: 0; }
