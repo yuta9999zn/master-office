@@ -57,11 +57,12 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Slide | New, duplicate, delete, skip (hide), move, change background, apply layout (6/11), transition, change theme | ✅ |
 | | Thêm layout (main point, big number, caption, one column…), **edit theme (theme builder: master + layouts)**, import slides từ bản trình chiếu khác | ❌ |
 | Arrange | Order, align, distribute, center on page | ✅ |
-| | **Group / ungroup**, rotate 90° / flip menu | ◐ flip · ❌ group |
+| | Group / ungroup | ✅ |
+| | Rotate 90° / flip menu | ◐ flip |
 | Format | Text, align, bullets, table, borders & lines | ✅ |
 | | **Format options** (drop shadow ◐, reflection, text fitting/autofit, indent), line & paragraph spacing chi tiết, **image: crop, mask, adjustments (transparency, brightness, contrast, recolor)** | ❌ |
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
-| | **Motion panel (animations)**, Q&A khán giả, dictate notes, spelling, linked objects, publish to web / embed | ❌ |
+| | Motion panel (animations) ✅ · Q&A khán giả, dictate notes, spelling, linked objects, publish to web / embed | ❌ |
 
 ## 4. Google Forms → Master Forms — ✅ xong 2026-10-03 (ARCHITECTURE §25); còn thiếu: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay
 

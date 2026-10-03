@@ -1,8 +1,8 @@
 'use client';
 
-import { slideHtml, slideTitle, type DeckSize, type PlainSlide, type Theme } from '@workos/slide-model';
+import { animCss, animTimeline, slideHtml, slideTitle, type DeckSize, type PlainSlide, type Theme } from '@workos/slide-model';
 import { ChevronLeft, ChevronRight, MonitorPlay, MousePointer2, Pause, Play, RotateCcw, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../ui/primitives';
 import { SlideStyles, SlideView } from './SlideView';
 
@@ -26,6 +26,10 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
   const list = visible.length ? visible : slides;
   const startIndex = Math.max(0, list.indexOf(slides[start]) >= 0 ? list.indexOf(slides[start]) : 0);
   const [index, setIndex] = useState(startIndex);
+  // Animation step on the current slide (0 = what plays as the slide appears, n = after the n-th click) and
+  // whether that step is being played (forward) or just shown in its end state (going back).
+  const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(true);
   const [prev, setPrev] = useState<number | null>(null);
   const [black, setBlack] = useState(false);
   const [laser, setLaser] = useState(false);
@@ -45,10 +49,35 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
       }
       setPrev(index);
       setIndex(i);
+      setStep(0);
+      setPlaying(true);
       setBlack(false);
     },
     [index, list.length],
   );
+  const clicksOf = useCallback((i: number) => (list[i] ? animTimeline(list[i]).clicks : 0), [list]);
+  /** Next click: the next animation step, else the next slide. */
+  const next = useCallback(() => {
+    if (index < list.length && step < clicksOf(index)) {
+      setStep(step + 1);
+      setPlaying(true);
+      setBlack(false);
+    } else go(index + 1);
+  }, [index, list.length, step, clicksOf, go]);
+  /** Back: undo the last animation step, else the previous slide with all its animations done. */
+  const back = useCallback(() => {
+    if (index < list.length && step > 0) {
+      setStep(step - 1);
+      setPlaying(false);
+    } else if (index > 0) {
+      const i = Math.min(index, list.length) - 1;
+      setPrev(null);
+      setIndex(i);
+      setStep(clicksOf(i));
+      setPlaying(false);
+      setBlack(false);
+    }
+  }, [index, list.length, step, clicksOf]);
 
   // Full screen on open; leaving full screen ends the show.
   useEffect(() => {
@@ -74,8 +103,8 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'].includes(e.key)) go(index + 1);
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P'].includes(e.key)) go(index - 1);
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'].includes(e.key)) next();
+      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P'].includes(e.key)) back();
       else if (e.key === 'Home') go(0);
       else if (e.key === 'End') go(list.length - 1);
       else if (e.key === 'Escape') exit();
@@ -86,7 +115,7 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, index, list.length, exit]);
+  }, [go, next, back, index, list.length, exit]);
 
   // Presenter window sync.
   useEffect(() => {
@@ -95,7 +124,7 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
     ch.onmessage = (e: MessageEvent<Msg>) => {
       const m = e.data;
       if (m.t === 'go') go(m.index);
-      else if (m.t === 'step') go(index + m.d);
+      else if (m.t === 'step') (m.d > 0 ? next() : back());
       else if (m.t === 'black') setBlack((b) => !b);
       else if (m.t === 'end') exit();
       else if (m.t === 'hello') post();
@@ -107,7 +136,7 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
         t: 'state',
         index,
         total: list.length,
-        current: slideHtml(cur, deck),
+        current: slideHtml(cur, deck, { elementCss: animCss(cur, step, false) }),
         next: nxt ? slideHtml(nxt, deck) : null,
         notes: cur.notes,
         title: slideTitle(cur),
@@ -117,20 +146,21 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
     };
     post();
     return () => ch.close();
-  }, [index, black, list, deck, go, exit, resourceId]);
+  }, [index, step, black, list, deck, go, next, back, exit, resourceId]);
 
   const k = Math.min(vp.w / deck.size.w, vp.h / deck.size.h);
   const done = index >= list.length;
   const slide = list[Math.min(index, list.length - 1)];
   const transition = slide?.meta.transition ?? 'none';
+  const animOpts = useMemo(() => (slide ? { elementCss: animCss(slide, step, playing) } : undefined), [slide, step, playing]);
 
   return (
     <div
       ref={root}
       className="fixed inset-0 z-[100] flex select-none items-center justify-center overflow-hidden bg-black"
       style={{ cursor: laser ? 'none' : chrome ? 'default' : 'none' }}
-      onClick={(e) => (e.button === 0 && !(e.target as HTMLElement).closest('[data-chrome]') ? go(index + 1) : undefined)}
-      onContextMenu={(e) => (e.preventDefault(), go(index - 1))}
+      onClick={(e) => (e.button === 0 && !(e.target as HTMLElement).closest('[data-chrome]') ? next() : undefined)}
+      onContextMenu={(e) => (e.preventDefault(), back())}
       onMouseMove={(e) => {
         setPointer({ x: e.clientX, y: e.clientY });
         setChrome(true);
@@ -164,6 +194,7 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
             slide={slide}
             deck={deck}
             width={deck.size.w * k}
+            opts={animOpts}
             className="absolute inset-0"
             style={prev !== null && transition !== 'none' ? { animation: `mo-${transition} ${transition === 'fade' ? 450 : 500}ms ease-out both` } : undefined}
           />
@@ -172,13 +203,13 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
       )}
       {laser && pointer && <div className="pointer-events-none fixed z-[2] size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_12px_4px_rgba(239,68,68,0.7)]" style={{ left: pointer.x, top: pointer.y }} />}
       <div data-chrome className={cn('fixed bottom-4 left-4 flex items-center gap-1 rounded-xl bg-black/60 p-1 text-white/80 backdrop-blur transition-opacity', chrome ? 'opacity-100' : 'opacity-0')} onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => go(index - 1)} className="rounded-lg p-2 hover:bg-white/15" aria-label="Previous slide">
+        <button onClick={back} className="rounded-lg p-2 hover:bg-white/15" aria-label="Previous slide">
           <ChevronLeft size={18} />
         </button>
         <span className="px-1 text-[13px] tabular-nums" data-testid="presenter-counter">
           {Math.min(index + 1, list.length)} / {list.length}
         </span>
-        <button onClick={() => go(index + 1)} className="rounded-lg p-2 hover:bg-white/15" aria-label="Next slide">
+        <button onClick={next} className="rounded-lg p-2 hover:bg-white/15" aria-label="Next slide">
           <ChevronRight size={18} />
         </button>
         <button onClick={() => setLaser((l) => !l)} className={cn('rounded-lg p-2 hover:bg-white/15', laser && 'text-red-400')} aria-label="Laser pointer (L)">

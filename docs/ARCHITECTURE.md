@@ -596,3 +596,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Nhập | Chiều ngược lại cho cùng các loại; validation ExcelJS trả về từng ô → gộp lại thành dải theo cột; báo cáo import liệt kê số CF/validation/note/named range giữ được và phần không có tương đương. |
 | Giới hạn | Biểu đồ, pivot (Excel PivotCache), slicer, sparkline, icon set tuỳ chỉnh, CF theo ngày chưa đi qua XLSX; bảng pivot vẫn ra Excel dưới dạng giá trị ô. |
 | Test | `sheets-flow.mjs`: upload XLSX có CF + validation + note + named range → Univer hiển thị, `=SUM(Amounts)` = 45 → export lại có đủ. |
+
+## 30. Phase 4.1 — Slides: nhóm đối tượng & animation: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Group | Khoá vô hướng `group` (id nhóm) trên từng element — hai người sửa hai thuộc tính khác nhau không đè nhau. Một cấp như Google Slides. Click chọn cả nhóm; khung nhóm có 8 tay nắm co giãn mọi thành viên (góc giữ tỉ lệ); nhấp đúp "vào" nhóm để chọn từng thành viên, nhấp đúp lần nữa để sửa chữ. Ctrl+Alt+G / Ctrl+Alt+Shift+G, menu Arrange, menu chuột phải. Sao chép / dán / nhân bản slide cấp id nhóm mới (`regroup`). |
+| Animation | Khoá `anim` = `{effect, start: click/with/after, dur, delay, order}`; 15 hiệu ứng vào/ra (appear, fade, fly in/out 4 hướng, zoom, spin…). `animTimeline` (dùng chung) chia bước: trước click đầu = bước 0 (chạy khi slide hiện), mỗi "on click" mở bước mới, "with" chạy cùng mục trước, "after" chạy khi mục trước xong. `animCss` → CSS theo element qua `RenderOptions.elementCss`; keyframes nằm trong `SLIDE_CSS` dùng thuộc tính `translate`/`scale`/`rotate` nên không đè `transform: rotate` của element. |
+| UI | Tab **Motion**: chuyển trang + danh sách animation (hiệu ứng, bắt đầu, thời lượng, độ trễ, lên/xuống, xoá), nút Play xem thử. Menu Slide → "Transition & animations…", chuột phải → Animate. |
+| Trình chiếu | Mỗi click chạy bước kế tiếp, hết bước mới sang slide; lùi = bỏ bước gần nhất (không chạy hiệu ứng), lùi sang slide trước hiện trạng thái cuối. Cửa sổ người thuyết trình hiển thị đúng bước hiện tại. |
+| Giới hạn | Animation & nhóm chưa xuất ra PPTX (pptxgenjs không hỗ trợ) và chưa nhập từ PPTX; một animation mỗi đối tượng; chưa có motion path. |
+| Test | `apps/web/e2e/slides-motion-flow.mjs` (5 bước, 2 người): nhóm → co giãn → vào nhóm → bỏ nhóm → animation → trình chiếu từng click. |

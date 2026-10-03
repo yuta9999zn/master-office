@@ -65,6 +65,9 @@ import {
   Underline,
   Undo2,
   X,
+  Group as GroupIcon,
+  Sparkles,
+  Ungroup as UngroupIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ContextMenu as CM, DropdownMenu as DM } from 'radix-ui';
@@ -80,6 +83,7 @@ import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
 import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 import { allRunsHave, DeckStore, LOCAL, setAlignEverywhere, setMarkEverywhere, setTextStyleEverywhere, useDeck, type DeckSnapshot } from './deck-store';
+import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
 import { CtxItem, CtxSep, SlideCanvas, type RemoteSelection } from './SlideCanvas';
 import { anchorOf, SlideComments, type SlideAnchor } from './SlideComments';
@@ -97,7 +101,7 @@ const CLIP_PREFIX = 'MO-SLIDES:';
 type Clip = { kind: 'elements'; items: PlainElement[] } | { kind: 'slides'; items: PlainSlide[] };
 let clipboard: Clip | null = null;
 
-type Tab = 'Design' | 'Layout' | 'Theme' | 'Format' | 'Comments' | 'History';
+type Tab = 'Design' | 'Layout' | 'Theme' | 'Format' | 'Motion' | 'Comments' | 'History';
 
 const isTextual = (e: PlainElement) => e.type === 'text' || (e.type === 'shape' && !isLine(e.geom));
 const typingTarget = (t: EventTarget | null) => {
@@ -483,6 +487,20 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
     setPresenting(from);
   };
 
+  // ── Groups ───────────────────────────────────────────────────────────────
+  const canGroup = editable && selected.length > 1 && !(selected[0].group && selected.every((e) => e.group === selected[0].group));
+  const canUngroup = editable && selected.some((e) => e.group);
+  const groupSelection = () => {
+    if (!store || !slide || !canGroup) return;
+    store.group(slide.id, selection);
+    store.checkpoint();
+  };
+  const ungroupSelection = () => {
+    if (!store || !slide || !canUngroup) return;
+    store.ungroup(slide.id, selection);
+    store.checkpoint();
+  };
+
   // ── Keyboard ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -501,6 +519,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       else if (mod && k === 'x') (e.preventDefault(), copy(true));
       else if (mod && k === 'd') (e.preventDefault(), duplicate());
       else if (mod && k === 'm') (e.preventDefault(), newSlide());
+      else if (mod && e.altKey && e.code === 'KeyG') (e.preventDefault(), e.shiftKey ? ungroupSelection() : groupSelection());
       else if (mod && k === 'a') (e.preventDefault(), setSelection(slide.elements.map((x) => x.id)));
       else if (mod && (k === 'b' || k === 'i' || k === 'u') && textEls.length) (e.preventDefault(), fmt.mark(k === 'b' ? 'bold' : k === 'i' ? 'italic' : 'underline'));
       else if (e.key === 'Delete' || e.key === 'Backspace') (e.preventDefault(), deleteSelection());
@@ -579,7 +598,20 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
         <CtxItem icon={<MessageSquareText />} onSelect={() => setTab('Comments')}>
           Comment
         </CtxItem>
+        <CtxItem icon={<Sparkles />} onSelect={() => setTab('Motion')}>
+          Animate
+        </CtxItem>
         <CtxSep />
+        {canGroup && (
+          <CtxItem icon={<GroupIcon />} shortcut="Ctrl+Alt+G" onSelect={groupSelection}>
+            Group
+          </CtxItem>
+        )}
+        {canUngroup && (
+          <CtxItem icon={<UngroupIcon />} shortcut="Ctrl+Alt+Shift+G" onSelect={ungroupSelection}>
+            Ungroup
+          </CtxItem>
+        )}
         <CtxItem disabled={!editable} onSelect={() => store!.arrange(slide!.id, selection, 'front')}>
           Bring to front
         </CtxItem>
@@ -843,6 +875,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             <MenuItem icon={<Shapes />} onSelect={() => setTab('Theme')}>
               Change theme…
             </MenuItem>
+            <MenuItem icon={<Sparkles />} onSelect={() => setTab('Motion')}>
+              Transition & animations…
+            </MenuItem>
             <MenuItem icon={<Play />} onSelect={() => present(index)}>
               Present from this slide
             </MenuItem>
@@ -865,6 +900,13 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                 {label}
               </MenuItem>
             ))}
+            <MenuSeparator />
+            <MenuItem icon={<GroupIcon />} shortcut="Ctrl+Alt+G" disabled={!canGroup} onSelect={groupSelection}>
+              Group
+            </MenuItem>
+            <MenuItem icon={<UngroupIcon />} shortcut="Ctrl+Alt+Shift+G" disabled={!canUngroup} onSelect={ungroupSelection}>
+              Ungroup
+            </MenuItem>
             <MenuSeparator />
             <MenuItem disabled={!selected.length} onSelect={() => setTab('Format')}>
               Align & distribute…
@@ -1169,7 +1211,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
         {tab && deck?.ready && slide && store && (
           <aside className="flex w-[320px] shrink-0 flex-col rounded-xl border border-line bg-surface" data-testid="slides-panel">
             <div className="flex items-center gap-4 overflow-x-auto border-b border-line px-4">
-              {(['Design', 'Layout', 'Theme', 'Format', 'Comments'] as const).map((t) => (
+              {(['Design', 'Layout', 'Theme', 'Format', 'Motion', 'Comments'] as const).map((t) => (
                 <button key={t} className="tab shrink-0" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>
                   {t}
                   {t === 'Comments' && openThreads.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">{openThreads.length}</span>}
@@ -1202,6 +1244,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                   }}
                 />
               )}
+              {tab === 'Motion' && <MotionPanel store={store} deck={deck} slide={slide} selected={selected} editable={editable} onSelect={setSelection} />}
               {tab === 'Comments' && (
                 <SlideComments
                   resourceId={r.id}

@@ -14,9 +14,11 @@ import {
   newSlide,
   ORDER_ARRAY,
   readSlide,
+  regroup,
   slideIds,
   SLIDES_MAP,
   type DeckSize,
+  type ElementAnim,
   type ElementStyle,
   type LayoutId,
   type PlainElement,
@@ -283,7 +285,7 @@ export class DeckStore {
     this.tx(() => {
       const map = this.elements(slideId);
       if (!map) return;
-      for (const e of els) {
+      for (const e of regroup(els)) {
         const el = { ...structuredClone(e), id: newId(), z: ++z };
         const y = createYElement(el);
         map.set(el.id, y.map);
@@ -337,6 +339,63 @@ export class DeckStore {
       }
     }
     this.tx(() => next.forEach((id, i) => this.el(slideId, id)?.set('z', i + 1)));
+  }
+
+  // ── Groups ─────────────────────────────────────────────────────────────────
+
+  /** Ids of the elements in the same group as `id` (just `[id]` when it is not grouped). */
+  groupMembers(slideId: string, id: string): string[] {
+    const s = this.slide(slideId);
+    const g = s?.elements.find((e) => e.id === id)?.group;
+    return g ? s!.elements.filter((e) => e.group === g).map((e) => e.id) : [id];
+  }
+
+  /** Groups the elements (and the groups they belong to) into one group. */
+  group(slideId: string, ids: string[]): string | null {
+    const s = this.slide(slideId);
+    if (!s) return null;
+    const groups = new Set(s.elements.filter((e) => ids.includes(e.id) && e.group).map((e) => e.group));
+    const members = s.elements.filter((e) => ids.includes(e.id) || (e.group && groups.has(e.group)));
+    if (members.length < 2) return null;
+    const gid = newId();
+    this.tx(() => members.forEach((e) => this.el(slideId, e.id)?.set('group', gid)));
+    return gid;
+  }
+
+  ungroup(slideId: string, ids: string[]) {
+    const s = this.slide(slideId);
+    if (!s) return;
+    const groups = new Set(s.elements.filter((e) => ids.includes(e.id) && e.group).map((e) => e.group));
+    if (!groups.size) return;
+    this.tx(() => s.elements.filter((e) => e.group && groups.has(e.group)).forEach((e) => this.el(slideId, e.id)?.delete('group')));
+  }
+
+  // ── Animations ─────────────────────────────────────────────────────────────
+
+  /** Adds an animation to each element (appended to the end of the slide's list). */
+  addAnimation(slideId: string, ids: string[], anim: Omit<ElementAnim, 'order'>) {
+    const s = this.slide(slideId);
+    if (!s) return;
+    let order = Math.max(0, ...s.elements.map((e) => e.anim?.order ?? 0));
+    this.tx(() => ids.forEach((id, i) => this.el(slideId, id)?.set('anim', { ...anim, start: i === 0 ? anim.start : 'with', order: ++order })));
+  }
+
+  setAnimation(slideId: string, id: string, patch: Partial<ElementAnim> | null) {
+    const m = this.el(slideId, id);
+    if (!m) return;
+    const cur = m.get('anim') as ElementAnim | undefined;
+    this.tx(() => (patch === null ? m.delete('anim') : cur && m.set('anim', { ...cur, ...patch })));
+  }
+
+  /** Writes the slide's animation order (element ids, first to last). */
+  orderAnimations(slideId: string, ids: string[]) {
+    this.tx(() =>
+      ids.forEach((id, i) => {
+        const m = this.el(slideId, id);
+        const cur = m?.get('anim') as ElementAnim | undefined;
+        if (m && cur && cur.order !== i + 1) m.set('anim', { ...cur, order: i + 1 });
+      }),
+    );
   }
 
   // ── Tables ─────────────────────────────────────────────────────────────────

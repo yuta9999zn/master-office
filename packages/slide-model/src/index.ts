@@ -11,6 +11,7 @@
 //                            notes:    Y.Text (speaker notes)
 //                            elements: Y.Map<elementId, Y.Map {
 //                                         type, x, y, w, h, rot, z, flipH, flipV, geom, ph, name, style, src, alt, chart, table,
+//                                         group (id shared by grouped elements), anim (ElementAnim),
 //                                         text:  Y.XmlFragment   (text boxes and shapes — same encoding as y-prosemirror)
 //                                         cells: Y.Map<"rowId:colId", string>  (tables)
 //                                      }>
@@ -142,6 +143,115 @@ export interface PlainElement {
   alt?: string;
   chart?: ChartSpec;
   table?: { rows: string[][]; colW?: number[]; header?: boolean; banded?: boolean; fontSize?: number; headerFill?: string; border?: string };
+  /** Elements sharing a group id are selected, moved and resized together (one level, like Google Slides). */
+  group?: string;
+  anim?: ElementAnim;
+}
+
+// ── Animations ───────────────────────────────────────────────────────────────
+
+export type AnimEffect =
+  | 'appear'
+  | 'fadeIn'
+  | 'flyInLeft'
+  | 'flyInRight'
+  | 'flyInTop'
+  | 'flyInBottom'
+  | 'zoomIn'
+  | 'spinIn'
+  | 'disappear'
+  | 'fadeOut'
+  | 'flyOutLeft'
+  | 'flyOutRight'
+  | 'flyOutTop'
+  | 'flyOutBottom'
+  | 'zoomOut';
+
+export interface ElementAnim {
+  effect: AnimEffect;
+  /** On click, with the previous animation, or after it (Google Slides / PowerPoint semantics). */
+  start: 'click' | 'with' | 'after';
+  dur: number; // ms
+  delay?: number; // ms
+  order: number; // position in the slide's animation list
+}
+
+export const ANIM_EFFECTS: { id: AnimEffect; label: string; exit?: boolean }[] = [
+  { id: 'appear', label: 'Appear' },
+  { id: 'fadeIn', label: 'Fade in' },
+  { id: 'flyInLeft', label: 'Fly in from left' },
+  { id: 'flyInRight', label: 'Fly in from right' },
+  { id: 'flyInBottom', label: 'Fly in from bottom' },
+  { id: 'flyInTop', label: 'Fly in from top' },
+  { id: 'zoomIn', label: 'Zoom in' },
+  { id: 'spinIn', label: 'Spin' },
+  { id: 'disappear', label: 'Disappear', exit: true },
+  { id: 'fadeOut', label: 'Fade out', exit: true },
+  { id: 'flyOutLeft', label: 'Fly out to left', exit: true },
+  { id: 'flyOutRight', label: 'Fly out to right', exit: true },
+  { id: 'flyOutBottom', label: 'Fly out to bottom', exit: true },
+  { id: 'flyOutTop', label: 'Fly out to top', exit: true },
+  { id: 'zoomOut', label: 'Zoom out', exit: true },
+];
+export const isExitEffect = (e: AnimEffect) => ANIM_EFFECTS.find((x) => x.id === e)?.exit === true;
+
+export interface AnimItem {
+  id: string;
+  effect: AnimEffect;
+  dur: number;
+  /** Start time within its step (ms). */
+  at: number;
+  /** 0 = plays when the slide appears; 1… = the n-th click. */
+  step: number;
+}
+
+/**
+ * The slide's animations as steps: items before the first "on click" play when the slide appears (step 0);
+ * each "on click" opens a new step; "with" starts together with the previous item, "after" when it ends.
+ */
+export function animTimeline(slide: PlainSlide): { items: AnimItem[]; clicks: number } {
+  const list = slide.elements.filter((e) => e.anim).sort((a, b) => a.anim!.order - b.anim!.order || (a.id < b.id ? -1 : 1));
+  const items: AnimItem[] = [];
+  let step = 0;
+  let prevStart = 0;
+  let prevEnd = 0;
+  list.forEach((e, i) => {
+    const a = e.anim!;
+    const delay = Math.max(0, a.delay ?? 0);
+    const dur = a.effect === 'appear' || a.effect === 'disappear' ? 0 : Math.max(0, a.dur);
+    let at: number;
+    if (a.start === 'click') {
+      step++;
+      prevStart = 0;
+      prevEnd = 0;
+      at = delay;
+    } else if (i === 0) at = delay;
+    else if (a.start === 'with') at = prevStart + delay;
+    else at = prevEnd + delay;
+    prevStart = at;
+    prevEnd = Math.max(prevEnd, at + dur);
+    items.push({ id: e.id, effect: a.effect, dur, at, step });
+  });
+  return { items, clicks: step };
+}
+
+/**
+ * Per-element CSS for a slide shown at a given step of its animations (`playing`: animate the items of that step,
+ * otherwise show their end state). Used by the slide show and the motion panel preview.
+ */
+export function animCss(slide: PlainSlide, step: number, playing: boolean): Record<string, string> {
+  const css: Record<string, string> = {};
+  for (const it of animTimeline(slide).items) {
+    const exit = isExitEffect(it.effect);
+    if (it.step > step) {
+      if (!exit) css[it.id] = 'visibility:hidden';
+    } else if (it.step === step && playing) {
+      css[it.id] = it.dur
+        ? `animation:mo-${it.effect} ${it.dur}ms ease-out ${it.at}ms both`
+        : `animation:mo-${exit ? 'disappear' : 'appear'} 1ms linear ${it.at}ms both`;
+    } else if (exit) css[it.id] = 'visibility:hidden';
+  }
+  return css;
 }
 
 export interface PlainSlide {
@@ -332,7 +442,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */
@@ -463,7 +573,17 @@ export function readDeck(doc: Y.Doc): PlainDeck {
 
 /** Fresh ids for a slide and its elements (duplicate slide, paste, copy of a deck). */
 export function cloneSlide(s: PlainSlide): PlainSlide {
-  return { ...structuredClone(s), id: newId(), elements: s.elements.map((e) => ({ ...structuredClone(e), id: newId() })) };
+  return { ...structuredClone(s), id: newId(), elements: regroup(s.elements.map((e) => ({ ...structuredClone(e), id: newId() }))) };
+}
+
+/** Fresh group ids for copied elements, so a pasted copy never joins the original's group. */
+export function regroup(els: PlainElement[]): PlainElement[] {
+  const map = new Map<string, string>();
+  return els.map((e) => {
+    if (!e.group) return e;
+    if (!map.has(e.group)) map.set(e.group, newId());
+    return { ...e, group: map.get(e.group) };
+  });
 }
 
 // ── Layouts ──────────────────────────────────────────────────────────────────

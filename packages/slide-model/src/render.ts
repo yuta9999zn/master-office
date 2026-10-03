@@ -25,6 +25,21 @@ export const SLIDE_CSS = `
 .mo-slide table.mo-table td { padding: 0.35em 0.6em; vertical-align: middle; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; }
 .mo-ph-prompt { color: #94A3B8; }
 .mo-editing .ProseMirror { outline: none; }
+@keyframes mo-appear { from { visibility: hidden } to { visibility: visible } }
+@keyframes mo-disappear { from { visibility: visible } to { visibility: hidden } }
+@keyframes mo-fadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes mo-fadeOut { from { opacity: 1 } to { opacity: 0 } }
+@keyframes mo-flyInLeft { from { translate: -1600px 0 } to { translate: 0 0 } }
+@keyframes mo-flyInRight { from { translate: 1600px 0 } to { translate: 0 0 } }
+@keyframes mo-flyInTop { from { translate: 0 -1000px } to { translate: 0 0 } }
+@keyframes mo-flyInBottom { from { translate: 0 1000px } to { translate: 0 0 } }
+@keyframes mo-flyOutLeft { from { translate: 0 0 } to { translate: -1600px 0 } }
+@keyframes mo-flyOutRight { from { translate: 0 0 } to { translate: 1600px 0 } }
+@keyframes mo-flyOutTop { from { translate: 0 0 } to { translate: 0 -1000px } }
+@keyframes mo-flyOutBottom { from { translate: 0 0 } to { translate: 0 1000px } }
+@keyframes mo-zoomIn { from { scale: 0; opacity: 0 } to { scale: 1; opacity: 1 } }
+@keyframes mo-zoomOut { from { scale: 1; opacity: 1 } to { scale: 0; opacity: 0 } }
+@keyframes mo-spinIn { from { rotate: -360deg; scale: 0.2; opacity: 0 } to { rotate: 0deg; scale: 1; opacity: 1 } }
 .mo-editing p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #94A3B8; float: left; height: 0; pointer-events: none; }
 `;
 
@@ -437,6 +452,8 @@ export interface RenderOptions {
   prompts?: boolean;
   /** Leave the text of these elements out (they are being edited in place). */
   skipText?: Set<string>;
+  /** Extra CSS per element id (animation states in the slide show). */
+  elementCss?: Record<string, string>;
 }
 
 export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions = {}): string {
@@ -444,6 +461,8 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
   const wrap = [`left:${f(el.x)}px`, `top:${f(el.y)}px`, `width:${f(el.w)}px`, `height:${f(el.h)}px`];
   if (el.rot) wrap.push(`transform:rotate(${f(el.rot)}deg)`);
   if (s.opacity !== undefined && s.opacity < 1) wrap.push(`opacity:${s.opacity}`);
+  const extra = opts.elementCss?.[el.id];
+  if (extra) wrap.push(extra);
   let inner = '';
   if (el.type === 'image' && el.src) {
     const src = opts.resolveSrc ? opts.resolveSrc(el.src) : el.src;

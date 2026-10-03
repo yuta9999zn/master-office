@@ -24,6 +24,7 @@ type Drag =
   | { kind: 'resize'; id: string; handle: string; box: Box; aspect: boolean }
   | { kind: 'rotate'; id: string; box: Box }
   | { kind: 'line'; id: string; end: 'start' | 'end'; box: Box; flipH: boolean; flipV: boolean }
+  | { kind: 'scale'; handle: string; union: Box; boxes: Map<string, Box> }
   | { kind: 'marquee'; start: { x: number; y: number }; additive: string[] };
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
@@ -82,6 +83,8 @@ export function SlideCanvas({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
+  // A group "entered" by double-click: its members are then picked one by one (like Google Slides).
+  const [inGroup, setInGroup] = useState<string | null>(null);
   const pending = useRef<{ id: string; patch: Record<string, unknown> }[] | null>(null);
   const raf = useRef(0);
   const { w: W, h: H } = deck.size;
@@ -113,6 +116,20 @@ export function SlideCanvas({
   const html = useMemo(() => slideHtml(slide, deck, { prompts: editable, skipText: editing ? new Set([editing]) : undefined }), [slide, deck, editable, editing]);
   const byId = useMemo(() => new Map(slide.elements.map((e) => [e.id, e])), [slide]);
   const selected = selection.map((id) => byId.get(id)).filter((e): e is PlainElement => !!e);
+  /** What a click on an element selects: its whole group, unless that group was entered. */
+  const unitOf = (id: string) => {
+    const g = byId.get(id)?.group;
+    return g && g !== inGroup ? slide.elements.filter((e) => e.group === g).map((e) => e.id) : [id];
+  };
+  // One whole group selected → a single box that scales every member.
+  const groupBox = (() => {
+    const g = selected[0]?.group;
+    if (!g || g === inGroup || selected.length < 2 || !selected.every((e) => e.group === g)) return null;
+    if (slide.elements.filter((e) => e.group === g).length !== selected.length) return null;
+    const x = Math.min(...selected.map((e) => e.x));
+    const y = Math.min(...selected.map((e) => e.y));
+    return { x, y, w: Math.max(...selected.map((e) => e.x + e.w)) - x, h: Math.max(...selected.map((e) => e.y + Math.max(e.h, 1))) - y, rot: 0 };
+  })();
 
   const toSlide = (e: { clientX: number; clientY: number }) => {
     const r = page.current!.getBoundingClientRect();
@@ -155,12 +172,15 @@ export function SlideCanvas({
     if (e.button !== 0) return;
     e.stopPropagation();
     if (editing && editing !== id) setEditing(null);
+    if (inGroup && byId.get(id)?.group !== inGroup) setInGroup(null);
+    const unit = byId.get(id)?.group === inGroup && inGroup ? [id] : unitOf(id);
+    const has = unit.every((u) => selection.includes(u));
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
-      setSelection(selection.includes(id) ? selection.filter((s) => s !== id) : [...selection, id]);
+      setSelection(has ? selection.filter((s) => !unit.includes(s)) : [...new Set([...selection, ...unit])]);
       return;
     }
-    const sel = selection.includes(id) ? selection : [id];
-    if (!selection.includes(id)) setSelection(sel);
+    const sel = has ? selection : unit;
+    if (!has) setSelection(sel);
     if (!editable) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     store.beginGesture();
@@ -172,7 +192,8 @@ export function SlideCanvas({
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     store.beginGesture();
-    if (handle === 'rot') setDrag({ kind: 'rotate', id: el.id, box: boxOf(el) });
+    if (handle.startsWith('g-')) setDrag({ kind: 'scale', handle: handle.slice(2), union: groupBox!, boxes: new Map(selected.map((s) => [s.id, boxOf(s)])) });
+    else if (handle === 'rot') setDrag({ kind: 'rotate', id: el.id, box: boxOf(el) });
     else if (handle === 'start' || handle === 'end') setDrag({ kind: 'line', id: el.id, end: handle, box: boxOf(el), flipH: !!el.flipH, flipV: !!el.flipV });
     else setDrag({ kind: 'resize', id: el.id, handle, box: boxOf(el), aspect: el.type === 'image' && handle.length === 2 });
   };
@@ -181,6 +202,7 @@ export function SlideCanvas({
     if (e.button !== 0) return;
     if (editing) setEditing(null);
     onTableCell(null);
+    setInGroup(null);
     const additive = e.shiftKey ? selection : [];
     if (!e.shiftKey) setSelection([]);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -249,10 +271,29 @@ export function SlideCanvas({
       const s0 = drag.end === 'start' ? q : start;
       const e0 = drag.end === 'end' ? q : end;
       write([{ id: drag.id, patch: { x: Math.min(s0.x, e0.x), y: Math.min(s0.y, e0.y), w: Math.abs(e0.x - s0.x), h: Math.abs(e0.y - s0.y), flipH: s0.x > e0.x || undefined, flipV: s0.y > e0.y || undefined } }]);
+    } else if (drag.kind === 'scale') {
+      // Scale the whole group from the opposite handle (members keep their relative layout).
+      const u = drag.union;
+      const sx = drag.handle.includes('e') ? 1 : drag.handle.includes('w') ? -1 : 0;
+      const sy = drag.handle.includes('s') ? 1 : drag.handle.includes('n') ? -1 : 0;
+      const ax = sx > 0 ? u.x : u.x + u.w;
+      const ay = sy > 0 ? u.y : u.y + u.h;
+      let w = sx ? Math.max(8, (p.x - ax) * sx) : u.w;
+      let h = sy ? Math.max(8, (p.y - ay) * sy) : u.h;
+      if (sx && sy) {
+        const r = u.w / u.h;
+        if (w / h > r) h = w / r;
+        else w = h * r;
+      }
+      const nx = sx < 0 ? ax - w : sx > 0 ? ax : u.x;
+      const ny = sy < 0 ? ay - h : sy > 0 ? ay : u.y;
+      const kx = w / u.w;
+      const ky = h / u.h;
+      write([...drag.boxes].map(([id, b]) => ({ id, patch: { x: nx + (b.x - u.x) * kx, y: ny + (b.y - u.y) * ky, w: b.w * kx, h: b.h * ky } })));
     } else if (drag.kind === 'marquee') {
       const r = { x: Math.min(p.x, drag.start.x), y: Math.min(p.y, drag.start.y), w: Math.abs(p.x - drag.start.x), h: Math.abs(p.y - drag.start.y) };
       setMarquee(r);
-      const hit = slide.elements.filter((el) => el.x < r.x + r.w && el.x + el.w > r.x && el.y < r.y + r.h && el.y + Math.max(el.h, 1) > r.y).map((el) => el.id);
+      const hit = slide.elements.filter((el) => el.x < r.x + r.w && el.x + el.w > r.x && el.y < r.y + r.h && el.y + Math.max(el.h, 1) > r.y).flatMap((el) => unitOf(el.id));
       setSelection([...new Set([...drag.additive, ...hit])]);
     }
   };
@@ -307,7 +348,14 @@ export function SlideCanvas({
                         className={cn('absolute', editable ? 'cursor-move' : 'cursor-default')}
                         style={{ left: el.x - pad, top: el.y - pad, width: Math.max(el.w, 1) + pad * 2, height: Math.max(el.h, 1) + pad * 2, transform: el.rot ? `rotate(${el.rot}deg)` : undefined }}
                         onPointerDown={(e) => startMove(e, el.id)}
-                        onDoubleClick={(e) => (e.stopPropagation(), startEdit(el))}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          // First double-click on a group enters it and picks this member; the next one edits.
+                          if (el.group && inGroup !== el.group) {
+                            setInGroup(el.group);
+                            setSelection([el.id]);
+                          } else startEdit(el);
+                        }}
                         onContextMenu={() => !selection.includes(el.id) && setSelection([el.id])}
                       />
                     );
@@ -367,7 +415,26 @@ export function SlideCanvas({
                       </button>
                     );
                   })}
+                  {groupBox && (
+                    <div className="absolute" data-testid="group-box" style={{ left: groupBox.x, top: groupBox.y, width: groupBox.w, height: groupBox.h, outline: `${1.5 / k}px solid #2563eb` }}>
+                      {editable &&
+                        HANDLES.map((h) => {
+                          const x = h.includes('w') ? 0 : h.includes('e') ? groupBox.w : groupBox.w / 2;
+                          const y = h.includes('n') ? 0 : h.includes('s') ? groupBox.h : groupBox.h / 2;
+                          return (
+                            <div
+                              key={h}
+                              data-handle={`g-${h}`}
+                              className="pointer-events-auto absolute rounded-[2px] border-brand-600 bg-white"
+                              style={{ left: x - hs / 2, top: y - hs / 2, width: hs, height: hs, borderWidth: 1.5 / k, borderStyle: 'solid', cursor: CURSOR[h] }}
+                              onPointerDown={(e) => startHandle(e, selected[0], `g-${h}`)}
+                            />
+                          );
+                        })}
+                    </div>
+                  )}
                   {selected.map((el) => {
+                    if (groupBox) return <div key={el.id} className="absolute" style={{ left: el.x, top: el.y, width: el.w, height: Math.max(el.h, 1), transform: el.rot ? `rotate(${el.rot}deg)` : undefined, outline: `${1 / k}px dashed #93c5fd` }} />;
                     const line = el.type === 'shape' && isLine(el.geom) && !el.rot;
                     const single = selected.length === 1 && editable && editing !== el.id;
                     if (line) {
