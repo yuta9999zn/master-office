@@ -226,6 +226,8 @@ export interface CommentAnchor {
   /** Yjs RelativePosition JSON — survives concurrent edits. */
   from: unknown;
   to: unknown;
+  /** Documents: the tab the comment was made in (absent = first tab). */
+  tab?: string;
 }
 
 export interface CommentReply {

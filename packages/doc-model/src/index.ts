@@ -17,6 +17,7 @@ import { Bookmark, DateChip, DropdownChip, formatChipDate, PlaceChip, placeUrl, 
 export * from './chips';
 import { Equation, equationHtml, Footnote, footnotesOf } from './notes-math';
 export * from './notes-math';
+export * from './tabs';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';

@@ -33,6 +33,8 @@ export interface LiveEditorOptions {
   onFind: (replace: boolean) => void;
   onImage: () => void;
   onEmbed: () => void;
+  /** Yjs field of the body (document tabs); the editor is rebuilt when it changes. */
+  field?: string;
 }
 
 /**
@@ -69,7 +71,7 @@ export function useLiveEditor(o: LiveEditorOptions) {
       editable: canEdit,
       extensions: [
         ...browserSchema({ collaboration: true, mention: mentionSuggestion(() => usersRef.current) }),
-        Collaboration.configure({ document: session.doc, field: COLLAB_FIELD }),
+        Collaboration.configure({ document: session.doc, field: o.field ?? COLLAB_FIELD }),
         CollaborationCaret.configure({ provider: session.provider, user: { id: me.id, name: me.name, color: me.avatarColor } }),
         Placeholder.configure({ placeholder: canEdit ? o.placeholder ?? 'Start writing… type / for blocks, @ to mention, [[ to link a page' : '' }),
         CharacterCount,
@@ -110,7 +112,7 @@ export function useLiveEditor(o: LiveEditorOptions) {
         },
       },
     },
-    [session],
+    [session, o.field],
   );
   editorRef.current = editor;
   return { editor, uploadImages };

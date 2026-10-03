@@ -2,8 +2,9 @@
 
 import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, WatermarkDialog } from './DocFormatDialogs';
+import { DocTabsPanel, useDocTabs } from './DocTabs';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
-import { expandTokens, paperSize, watermarkSvg, type JSONContent } from '@workos/doc-model';
+import { DEFAULT_TAB, expandTokens, paperSize, tabField, watermarkSvg, type JSONContent } from '@workos/doc-model';
 import type { ImportReport, ResourceDetail, ResourceType } from '@workos/shared';
 import { can } from '@workos/shared';
 import {
@@ -114,7 +115,24 @@ function DocBody({
   const canEdit = can(role, 'editor');
   const canComment = can(role, 'commenter');
 
-  const { data: threads = [], refetch: refetchComments } = useComments(r.id);
+  const { data: allThreads = [], refetch: refetchComments } = useComments(r.id);
+  // Document tabs: the open tab lives in the URL (?tab=), comments belong to the tab they were made in.
+  const { tabs, ...tabOps } = useDocTabs(session.doc);
+  const [tab, setTabState] = useState<string>(() => (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null) ?? DEFAULT_TAB);
+  const currentTab = tabs.some((t) => t.id === tab) ? tab : DEFAULT_TAB;
+  const openTab = useCallback((id: string) => {
+    setTabState(id);
+    const url = new URL(window.location.href);
+    if (id === DEFAULT_TAB) url.searchParams.delete('tab');
+    else url.searchParams.set('tab', id);
+    window.history.replaceState(null, '', url);
+  }, []);
+  const threads = useMemo(() => allThreads.filter((t) => (t.anchor?.tab ?? DEFAULT_TAB) === currentTab), [allThreads, currentTab]);
+  const commentCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of allThreads) if (!t.resolvedAt) m.set(t.anchor?.tab ?? DEFAULT_TAB, (m.get(t.anchor?.tab ?? DEFAULT_TAB) ?? 0) + 1);
+    return m;
+  }, [allThreads]);
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
   const [active, setActive] = useState<string | null>(null);
@@ -142,11 +160,13 @@ function DocBody({
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
 
+  const tabRef = useRef(currentTab);
+  tabRef.current = currentTab;
   const openLink = useCallback(() => setLinkOpen(true), []);
   const startComment = useCallback((ed: Editor) => {
     const a = anchorFromSelection(ed);
     if (!a) return toast.info('Select some text to comment on');
-    setDraft(a);
+    setDraft(tabRef.current === DEFAULT_TAB ? a : { ...a, anchor: { ...a.anchor, tab: tabRef.current } });
     setPanel('Comments');
   }, []);
 
@@ -166,6 +186,7 @@ function DocBody({
     onFind: (replace) => setFind({ replace }),
     onImage: () => imageInput.current?.click(),
     onEmbed: () => setEmbedOpen(true),
+    field: tabField(currentTab),
   });
   // Viewing mode: the final text, nothing editable (suggestion marks hidden by CSS).
   useEffect(() => {
@@ -176,7 +197,15 @@ function DocBody({
   useEffect(() => onStateless((p) => p.type === 'comments' && void refetchComments()), [onStateless, refetchComments]);
   useEffect(() => refreshAnchors(editor), [editor, threads, active, synced]);
 
-  const words = useEditorState({ editor, selector: ({ editor: e }) => (e ? { w: e.storage.characterCount.words() as number, c: e.storage.characterCount.characters() as number } : { w: 0, c: 0 }) }) ?? { w: 0, c: 0 };
+  // While a tab switch rebuilds the editor, the old one has no storage any more.
+  const words =
+    useEditorState({
+      editor,
+      selector: ({ editor: e }) => {
+        const cc = e?.storage.characterCount as { words?: () => number; characters?: () => number } | undefined;
+        return cc?.words && cc.characters ? { w: cc.words(), c: cc.characters() } : { w: 0, c: 0 };
+      },
+    }) ?? { w: 0, c: 0 };
 
   if (!editor) return <Skeleton className="m-5 h-[60vh]" />;
   const report = r.metadata?.import as ImportReport | undefined;
@@ -488,7 +517,7 @@ function DocBody({
       <ImportBanner report={report} canEdit={canEdit} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />
 
       <div className="flex min-h-0 flex-1 gap-3 px-5 pb-3 pt-3">
-        {showOutline && !preview && <Outline editor={editor} />}
+        {showOutline && !preview && <DocTabsPanel tabs={tabs} current={currentTab} onOpen={openTab} editor={editor} canEdit={canEdit} ops={tabOps} commentCounts={commentCounts} />}
         <div className="relative min-w-0 flex-1">
         {find && <FindBar editor={editor} withReplace={find.replace} canEdit={canEdit} suggesting={suggesting} onClose={() => setFind(null)} />}
         <div className="h-full overflow-y-auto rounded-xl" id="doc-scroll">

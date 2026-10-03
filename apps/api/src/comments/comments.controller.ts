@@ -7,7 +7,7 @@ import { CommentsService } from './comments.service';
 const createBody = z.object({
   body: z.string().trim().min(1).max(10_000),
   threadId: z.string().uuid().nullish(),
-  anchor: z.object({ from: z.unknown(), to: z.unknown() }).nullish(),
+  anchor: z.object({ from: z.unknown(), to: z.unknown(), tab: z.string().max(40).optional() }).nullish(),
   quote: z.string().max(2000).nullish(),
 });
 const updateBody = z.object({ body: z.string().trim().min(1).max(10_000).optional(), resolved: z.boolean().optional() });
@@ -24,7 +24,7 @@ export class CommentsController {
   @Post('resources/:id/comments')
   create(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     const input = parse(createBody, b);
-    return this.svc.create(a, id, { ...input, anchor: input.anchor ? { from: input.anchor.from, to: input.anchor.to } : null });
+    return this.svc.create(a, id, { ...input, anchor: input.anchor ? { from: input.anchor.from, to: input.anchor.to, ...(input.anchor.tab ? { tab: input.anchor.tab } : {}) } : null });
   }
 
   @Patch('comments/:cid')

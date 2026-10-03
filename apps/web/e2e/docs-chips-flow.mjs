@@ -187,6 +187,36 @@ await step('viewing mode: nothing editable, back to editing', claudia, async () 
   if ((await editorOf(claudia).getAttribute('contenteditable')) !== 'true') throw new Error('not editable again');
 });
 
+await step('document tabs: a second tab has its own text and comments; export and copies keep every tab', claudia, async () => {
+  await claudia.getByTestId('add-tab').click();
+  await claudia.getByLabel('Tab name').fill('Appendix');
+  await claudia.getByLabel('Tab name').press('Enter');
+  await editorOf(claudia).click();
+  await claudia.keyboard.type('Appendix text only here');
+  // Mika sees the tab, opens it: its own text; the first tab does not have it.
+  await mika.getByTestId('doc-tab').filter({ hasText: 'Appendix' }).waitFor({ timeout: 10000 });
+  if (await editorOf(mika).getByText('Appendix text only here').count()) throw new Error('second tab text shown in the first tab');
+  await mika.getByTestId('doc-tab').filter({ hasText: 'Appendix' }).click();
+  await editorOf(mika).getByText('Appendix text only here').waitFor({ timeout: 10000 });
+  if (await editorOf(mika).getByText('Shibuya Station').count()) throw new Error('first tab text shown in the second tab');
+  // A comment made in the Appendix tab stays there.
+  await editorOf(claudia).getByText('Appendix text only here').click({ clickCount: 3 });
+  await claudia.getByRole('button', { name: 'Add comment' }).click();
+  await claudia.getByPlaceholder('Add a comment… use @ to mention').fill('Check the appendix');
+  await claudia.keyboard.press('Control+Enter');
+  await mika.getByText('Check the appendix').waitFor({ timeout: 10000 });
+  await mika.getByTestId('doc-tab').first().click();
+  await editorOf(mika).getByText('Shibuya Station').waitFor();
+  if (await mika.getByText('Check the appendix').count()) throw new Error('appendix comment shown in the first tab');
+  // Export and copy carry both tabs.
+  await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
+  const html = await (await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=html`)).text();
+  if (!html.includes('Appendix text only here') || !html.includes('Shibuya Station') || !/<h1[^>]*>Appendix<\/h1>/.test(html)) throw new Error('export misses a tab');
+  const copy = await (await claudia.request.post(`${BASE}/api/resources/${doc.id}/copy`, { data: {} })).json();
+  const copyHtml = await (await claudia.request.get(`${BASE}/api/resources/${copy.id}/export?format=html`)).text();
+  if (!copyHtml.includes('Appendix text only here') || !copyHtml.includes('class="watermark"')) throw new Error('copy lost a tab or the page setup');
+});
+
 await step('DOCX and HTML export carry chips, the bookmark and the internal link', claudia, async () => {
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const docx = await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`);

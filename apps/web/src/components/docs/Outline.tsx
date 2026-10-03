@@ -11,7 +11,7 @@ interface Heading {
 }
 
 /** Page outline from the live document's headings. */
-export function Outline({ editor }: { editor: Editor }) {
+export function Outline({ editor, compact }: { editor: Editor; compact?: boolean }) {
   const { headings, current } = useEditorState({
     editor,
     selector: ({ editor: e }) => {
@@ -28,9 +28,9 @@ export function Outline({ editor }: { editor: Editor }) {
   }) ?? { headings: [], current: null };
 
   return (
-    <nav className="w-[200px] shrink-0 overflow-y-auto pr-2 pt-2">
-      <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-subtle">Outline</div>
-      {!headings.length && <p className="px-2 text-[12px] text-muted">Headings you add appear here.</p>}
+    <nav className={compact ? 'py-0.5' : 'w-[200px] shrink-0 overflow-y-auto pr-2 pt-2'}>
+      {!compact && <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-subtle">Outline</div>}
+      {!headings.length && <p className="px-2 py-1 text-[12px] text-muted">{compact ? 'Headings appear here' : 'Headings you add appear here.'}</p>}
       {headings.map((h) => (
         <button
           key={h.pos}

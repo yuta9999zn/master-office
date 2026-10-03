@@ -687,3 +687,15 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Viền & nền | Thuộc tính đoạn văn / heading `border` (all / left / top / bottom / topBottom), `borderWidth`, `borderColor`, `shading` (Format → Borders and shading…). CSS dùng chung (`borderShadingCss`) cho editor và HTML / PDF; DOCX: `w:pBdr` + `w:shd`. |
 | Sửa lỗi kèm theo | Một hook mới đặt sau lệnh `return` sớm làm trang Docs không mở được (React: thứ tự hook) — đã chuyển lên trước. |
 | Test | `docs-chips-flow.mjs` +3 bước: viền + nền đồng bộ; pageless (Print layout bị khoá ở máy người kia) → về Pages + watermark DRAFT hiện trong print layout; Viewing → không sửa được → Editing. Export: DOCX có `w:pBdr`/`w:shd`, HTML có watermark. |
+
+## 39. Phase 2.2 — Docs: tab tài liệu: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | Mỗi tab là một **XmlFragment** Yjs riêng: tab đầu là fragment `default` có sẵn (tài liệu cũ không cần chuyển đổi), các tab sau là `tab:<id>`. Danh sách `settings.tabs = [{id, title}]` (`packages/doc-model/src/tabs.ts`). Hai người sửa hai tab không đụng nhau. |
+| Editor | Cột trái "Document tabs" (thay cột Outline): thêm (đặt tên ngay), đổi tên (nhấp đúp / menu), lên / xuống, xoá (trừ tab đầu); mục lục của tab đang mở nằm dưới tên tab. Đổi tab = tạo lại editor trên fragment của tab (`useLiveEditor({ field })`); tab đang mở nằm trên URL `?tab=`. |
+| Bình luận | Anchor lưu thêm `tab`; mỗi tab chỉ hiện bình luận của mình, tab khác hiện số bình luận đang mở. |
+| Server | Đọc để xuất / tìm kiếm / link / xem phiên bản: **mọi tab** (`documentJSON`) — mỗi tab sau bắt đầu trang mới với tên tab là Heading 1. Khôi phục phiên bản thay **mọi tab và settings** (`replaceDocument`). Tạo bản sao chép mọi tab và settings — sửa luôn lỗi cũ: bản sao trước đây mất page setup. Import Word vẫn ghi vào tab đầu. |
+| Sửa lỗi kèm theo | Đếm từ đọc storage của editor vừa bị huỷ khi đổi tab ("Cannot read properties of undefined (reading 'words')"). |
+| Giới hạn | Chưa có tab con, emoji cho tab, kéo thả để sắp xếp; tab đầu không xoá được. |
+| Test | `docs-chips-flow.mjs`: tab "Appendix" có chữ và bình luận riêng (không lẫn với tab đầu ở máy người kia); HTML export có cả hai tab; bản sao giữ tab và watermark. |

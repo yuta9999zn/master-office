@@ -1,6 +1,6 @@
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import { Injectable, Logger } from '@nestjs/common';
-import { COLLAB_FIELD, docExtensions, linksOf, toPlainText, type JSONContent } from '@workos/doc-model';
+import { COLLAB_FIELD, combineTabs, docExtensions, linksOf, SETTINGS_MAP, tabField, tabsOf, toPlainText, type DocTab, type JSONContent } from '@workos/doc-model';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { hasWorkbook, readWorkbook, workbookText } from '@workos/sheet-model';
 import { deckText, hasDeck, readDeck } from '@workos/slide-model';
@@ -19,18 +19,42 @@ const AUTO_SNAPSHOT_INTERVAL_MS = 15 * 60_000;
 export const docName = (resourceId: string) => `res:${resourceId}`;
 export const resourceIdFromDocName = (name: string) => (name.startsWith('res:') ? name.slice(4) : null);
 
-export function ydocToJSON(doc: Y.Doc): JSONContent {
-  return TiptapTransformer.fromYdoc(doc, COLLAB_FIELD) as JSONContent;
+/** One tab's body (the first tab by default). */
+export function ydocToJSON(doc: Y.Doc, field = COLLAB_FIELD): JSONContent {
+  return TiptapTransformer.fromYdoc(doc, field) as JSONContent;
+}
+
+export const docTabs = (doc: Y.Doc): DocTab[] => tabsOf(doc.getMap(SETTINGS_MAP).toJSON());
+
+/** Every tab as one document (export, search, links, previews). */
+export function documentJSON(doc: Y.Doc): JSONContent {
+  return combineTabs(docTabs(doc).map((tab) => ({ tab, json: ydocToJSON(doc, tabField(tab.id)) })));
+}
+
+/** Copies every tab (with `map` applied to each body) and the settings of `src` into a fresh Y.Doc. */
+export function copyDocument(src: Y.Doc, map: (json: JSONContent) => JSONContent = (j) => j): Y.Doc {
+  const doc = new Y.Doc();
+  doc.transact(() => {
+    for (const tab of docTabs(src)) {
+      const field = tabField(tab.id);
+      const body = TiptapTransformer.toYdoc(map(ydocToJSON(src, field)), field, docExtensions()).getXmlFragment(field);
+      doc.getXmlFragment(field).insert(0, body.toArray().map((n) => (n as Y.XmlElement | Y.XmlText).clone()));
+    }
+    const settings = doc.getMap(SETTINGS_MAP);
+    src.getMap(SETTINGS_MAP).forEach((v, k) => settings.set(k, v));
+  });
+  return doc;
 }
 
 export function jsonToYdoc(json: JSONContent): Y.Doc {
   return TiptapTransformer.toYdoc(json, COLLAB_FIELD, docExtensions());
 }
 
+/** Every tab of a stored state as one document. */
 export function stateToJSON(state: Uint8Array): JSONContent {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, state);
-  return ydocToJSON(doc);
+  return documentJSON(doc);
 }
 
 /**
@@ -72,7 +96,7 @@ export class DocStore {
       text = deckText(deck);
       stats = { slideCount: deck.slides.length };
     } else {
-      const json = ydocToJSON(doc);
+      const json = documentJSON(doc);
       text = toPlainText(json);
       stats = { wordCount: text.split(/\s+/).filter(Boolean).length };
       await this.syncLinks(resourceId, json);

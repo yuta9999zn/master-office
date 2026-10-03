@@ -15,7 +15,7 @@ import { config } from '../config';
 import { signCollabToken } from '../collab/collab-token';
 import { CollabService } from '../collab/collab.service';
 import * as Y from 'yjs';
-import { DocStore, jsonToYdoc, stateToJSON, ydocToJSON } from './doc-store';
+import { copyDocument, DocStore, documentJSON, stateToJSON } from './doc-store';
 import { imageInfo, toDocx, type DocxImage } from './docx-export';
 import { PdfRenderer } from './pdf-renderer';
 import { cellValue } from '@workos/sheet-model';
@@ -100,7 +100,7 @@ export class DocsService {
     if (!state) return { json: { type: 'doc', content: [] }, pageSetup: pageSetupOf(null) };
     const doc = new Y.Doc();
     Y.applyUpdate(doc, state);
-    return { json: ydocToJSON(doc), pageSetup: pageSetupOf(doc.getMap(SETTINGS_MAP).toJSON()) };
+    return { json: documentJSON(doc), pageSetup: pageSetupOf(doc.getMap(SETTINGS_MAP).toJSON()) };
   }
 
   /** Formatted-free values of A1:D5 in a spreadsheet the viewer can read. */
@@ -396,7 +396,6 @@ export class DocsService {
       await this.store.save(toId, Object.keys(macros).length ? Y.encodeStateAsUpdate(doc) : fresh, doc, null);
       return;
     }
-    const json = stateToJSON(state);
     const prefix = `/api/resources/${fromId}/assets/`;
     const rewrite = (n: JSONContent): JSONContent => ({
       ...n,
@@ -407,7 +406,10 @@ export class DocsService {
     });
     await this.db.execute(sql`INSERT INTO resource_assets (resource_id, blob_id, created_by)
       SELECT ${toId}, blob_id, created_by FROM resource_assets WHERE resource_id = ${fromId} ON CONFLICT DO NOTHING`);
-    const doc = jsonToYdoc(rewrite(json));
+    // Every tab and the settings (page setup, watermark, tabs) are copied; images point at the copy's assets.
+    const source = new Y.Doc();
+    Y.applyUpdate(source, state);
+    const doc = copyDocument(source, rewrite);
     await this.store.save(toId, Y.encodeStateAsUpdate(doc), doc, null);
   }
 
@@ -468,7 +470,7 @@ export class DocsService {
         writeForm(doc, { ...form, settings: { ...form.settings, sheetId } });
       });
     }
-    else await this.collab.replaceContent(id, stateToJSON(state), { id: actor.id, name: actor.name });
+    else await this.collab.replaceDocument(id, state, { id: actor.id, name: actor.name });
     await this.events.emit(this.db, actor, 'resource.version_restored', { resourceId: id, spaceId: row.spaceId }, { name: row.name, versionId });
   }
 }

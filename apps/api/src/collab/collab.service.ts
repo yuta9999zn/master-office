@@ -2,12 +2,12 @@ import { Database } from '@hocuspocus/extension-database';
 import { Server } from '@hocuspocus/server';
 import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { can } from '@workos/shared';
-import { COLLAB_FIELD, type JSONContent } from '@workos/doc-model';
+import { COLLAB_FIELD, SETTINGS_MAP, tabField, TABS_KEY, type JSONContent } from '@workos/doc-model';
 import { RESOURCES_MAP, SHEETS_MAP, WB_MAP, writeWorkbook, type PlainWorkbook } from '@workos/sheet-model';
 import { DECK_MAP, ORDER_ARRAY, SLIDES_MAP, writeDeck, type PlainDeck } from '@workos/slide-model';
 import * as Y from 'yjs';
 import { config } from '../config';
-import { DocStore, docName, jsonToYdoc, resourceIdFromDocName } from '../docs/doc-store';
+import { copyDocument, DocStore, docName, docTabs, jsonToYdoc, resourceIdFromDocName } from '../docs/doc-store';
 import { verifyCollabToken, type CollabGrant } from './collab-token';
 
 export interface CollabContext {
@@ -84,6 +84,31 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
         const target = doc.getXmlFragment(COLLAB_FIELD);
         target.delete(0, target.length);
         target.insert(0, source.toArray().map((n) => (n as Y.XmlElement | Y.XmlText).clone()));
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  /** Restores a stored document state (every tab and the settings) for everyone connected. */
+  async replaceDocument(resourceId: string, state: Uint8Array, editor: { id: string; name: string }) {
+    const src = new Y.Doc();
+    Y.applyUpdate(src, state);
+    const from = copyDocument(src);
+    const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });
+    try {
+      await conn.transact((doc) => {
+        const fields = new Set([...docTabs(doc), ...docTabs(from)].map((t) => tabField(t.id)));
+        for (const field of fields) {
+          const target = doc.getXmlFragment(field);
+          target.delete(0, target.length);
+          const source = from.getXmlFragment(field);
+          if (source.length) target.insert(0, source.toArray().map((n) => (n as Y.XmlElement | Y.XmlText).clone()));
+        }
+        const settings = doc.getMap(SETTINGS_MAP);
+        for (const k of [...settings.keys()]) if (!from.getMap(SETTINGS_MAP).has(k)) settings.delete(k);
+        from.getMap(SETTINGS_MAP).forEach((v, k) => settings.set(k, v));
+        if (!from.getMap(SETTINGS_MAP).has(TABS_KEY)) settings.delete(TABS_KEY);
       });
     } finally {
       await conn.disconnect();
