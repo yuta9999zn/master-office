@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
-import { useMe, useResourceActions, useResourceMembers, useVersionActions, useVersionContent } from '@/lib/queries';
+import { useMe, useResourceActions, useResourceMembers, useUsers, useVersionActions, useVersionContent } from '@/lib/queries';
 import { ShareDialog } from '../drive/dialogs';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
@@ -40,6 +40,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const router = useRouter();
   const { data: me } = useMe();
   const { data: members } = useResourceMembers(r.id);
+  const { data: people } = useUsers();
   const collab = useCollab(r.id, me && { id: me.user.id, name: me.user.name, color: me.user.avatarColor });
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
@@ -228,6 +229,8 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                 doc={collab.session.doc}
                 synced={collab.synced}
                 editable={editable}
+                user={me ? { id: me.user.id, name: me.user.name, color: me.user.avatarColor } : undefined}
+                people={people}
                 onReady={(h) => {
                   setGrid(h);
                   if (!h) return;

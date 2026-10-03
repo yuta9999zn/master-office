@@ -7,6 +7,10 @@ import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 import '@univerjs/preset-sheets-data-validation/lib/index.css';
 import '@univerjs/preset-sheets-find-replace/lib/index.css';
 import '@univerjs/preset-sheets-hyper-link/lib/index.css';
+import '@univerjs/preset-sheets-note/lib/index.css';
+import '@univerjs/preset-sheets-thread-comment/lib/index.css';
+import '@univerjs/preset-sheets-drawing/lib/index.css';
+import '@univerjs/preset-sheets-table/lib/index.css';
 
 import { hasWorkbook } from '@workos/sheet-model';
 import { useEffect, useRef, useState } from 'react';
@@ -38,17 +42,31 @@ export function UniverGrid({
   doc,
   synced,
   editable,
+  user,
+  people,
   onReady,
 }: {
   unitId: string;
   doc: Y.Doc;
   synced: boolean;
   editable: boolean;
+  /** Author of cell comments. */
+  user?: { id: string; name: string; color: string };
+  /** Everyone in the workspace, so comment authors show their names. */
+  people?: { id: string; name: string }[];
   onReady?: (h: GridHandle | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
+  const userService = useRef<{ addUser(u: unknown): void } | null>(null);
+  const addPeople = (svc: { addUser(u: unknown): void }, list: { id: string; name: string }[] | undefined) => {
+    for (const p of list ?? []) for (const role of ['Owner', 'Reader']) svc.addUser({ userID: `${role}_${p.id}`, name: p.name, avatar: '' });
+  };
+  // The people list may arrive after the grid started.
+  useEffect(() => {
+    if (userService.current) addPeople(userService.current, people);
+  }, [people]);
 
   useEffect(() => {
     if (!synced || !host.current) return;
@@ -60,7 +78,7 @@ export function UniverGrid({
     let cleanup: (() => void) | null = null;
     (async () => {
       try {
-        const [presets, core, filter, sort, cf, dv, fr, link, enCore, enFilter, enSort, enCf, enDv, enFr, enLink] = await Promise.all([
+        const [presets, core, filter, sort, cf, dv, fr, link, note, comment, drawing, table, enCore, enFilter, enSort, enCf, enDv, enFr, enLink, enNote, enComment, enDrawing, enTable] = await Promise.all([
           import('@univerjs/presets'),
           import('@univerjs/preset-sheets-core'),
           import('@univerjs/preset-sheets-filter'),
@@ -69,6 +87,10 @@ export function UniverGrid({
           import('@univerjs/preset-sheets-data-validation'),
           import('@univerjs/preset-sheets-find-replace'),
           import('@univerjs/preset-sheets-hyper-link'),
+          import('@univerjs/preset-sheets-note'),
+          import('@univerjs/preset-sheets-thread-comment'),
+          import('@univerjs/preset-sheets-drawing'),
+          import('@univerjs/preset-sheets-table'),
           import('@univerjs/preset-sheets-core/locales/en-US'),
           import('@univerjs/preset-sheets-filter/locales/en-US'),
           import('@univerjs/preset-sheets-sort/locales/en-US'),
@@ -76,13 +98,17 @@ export function UniverGrid({
           import('@univerjs/preset-sheets-data-validation/locales/en-US'),
           import('@univerjs/preset-sheets-find-replace/locales/en-US'),
           import('@univerjs/preset-sheets-hyper-link/locales/en-US'),
+          import('@univerjs/preset-sheets-note/locales/en-US'),
+          import('@univerjs/preset-sheets-thread-comment/locales/en-US'),
+          import('@univerjs/preset-sheets-drawing/locales/en-US'),
+          import('@univerjs/preset-sheets-table/locales/en-US'),
         ]);
         if (disposed || !host.current) return;
         const { createUniver, LocaleType, mergeLocales } = presets;
         const { univer, univerAPI } = createUniver({
           locale: LocaleType.EN_US,
           locales: {
-            [LocaleType.EN_US]: mergeLocales(enCore.default, enFilter.default, enSort.default, enCf.default, enDv.default, enFr.default, enLink.default),
+            [LocaleType.EN_US]: mergeLocales(enCore.default, enFilter.default, enSort.default, enCf.default, enDv.default, enFr.default, enLink.default, enNote.default, enComment.default, enDrawing.default, enTable.default),
           },
           presets: [
             core.UniverSheetsCorePreset({
@@ -100,13 +126,28 @@ export function UniverGrid({
             dv.UniverSheetsDataValidationPreset(),
             fr.UniverSheetsFindReplacePreset(),
             link.UniverSheetsHyperLinkPreset(),
+            note.UniverSheetsNotePreset(),
+            comment.UniverSheetsThreadCommentPreset(),
+            drawing.UniverSheetsDrawingPreset(),
+            table.UniverSheetsTablePreset(),
           ],
         });
+        const injector = univer.__getInjector();
         const binding = new SheetBinding(univerAPI, doc, unitId, {
           editable,
+          resources: injector.get(presets.IResourceManagerService),
           onError: (e) => console.error('[sheets] binding', e),
         });
         binding.start();
+        // Comments are signed with the signed-in Master Office user. Set it only once the workbook exists: on a user
+        // change Univer rebuilds the permission points of the open workbooks — with none open yet, the protection
+        // rules stay "not initialised" and every permission check (adding a comment…) fails.
+        // Univer's local authorisation derives the role from the user id prefix ("Owner_…" / "Reader_…"); real access
+        // control stays with Master Office (the binding never writes for viewers and the server rejects their updates).
+        const users = injector.get(presets.UserManagerService);
+        userService.current = users as never;
+        addPeople(users as never, people);
+        if (user) users.setCurrentUser({ userID: `${editable ? 'Owner' : 'Reader'}_${user.id}`, name: user.name, avatar: '', color: user.color } as never);
         const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId) };
         (window as unknown as { __moSheet?: GridHandle }).__moSheet = handle; // e2e hooks (formula parity tests)
         onReady?.(handle);

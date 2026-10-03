@@ -142,7 +142,13 @@ export class SheetBinding {
     private readonly api: UniverAPI,
     private readonly doc: Y.Doc,
     readonly unitId: string,
-    private readonly opts: { editable: boolean; onReload?: () => void; onError?: (e: unknown) => void },
+    private readonly opts: {
+      editable: boolean;
+      onReload?: () => void;
+      onError?: (e: unknown) => void;
+      /** Univer's resource manager: lets one plugin's state be reloaded without rebuilding the workbook. */
+      resources?: { getAllResourceHooks(): { pluginName: string; toJson(unitId: string): string; parseJson(s: string): unknown; onLoad(unitId: string, model: unknown): void; onUnLoad(unitId: string): void }[] };
+    },
   ) {}
 
   // ── setup ──
@@ -406,8 +412,9 @@ export class SheetBinding {
         this.dirty.order = true;
         break;
       default:
-        // Plugin state (filters, conditional formats, data validation, hyperlinks, protection) is synced as resources.
-        if (/filter|conditional|data-validation|hyper-link|protection|range-theme/i.test(id)) this.dirty.resources = true;
+        // Plugin state (filters, conditional formats, data validation, hyperlinks, protection, notes, comments,
+        // drawings, tables) is synced as resources.
+        if (/filter|conditional|data-validation|hyper-link|protection|range-theme|note|comment|drawing|table/i.test(id)) this.dirty.resources = true;
         else return;
     }
     this.scheduleFlush();
@@ -661,14 +668,52 @@ export class SheetBinding {
     this.api.syncExecuteCommand(id, { unitId: this.unitId, ...params }, { fromCollab: true });
   }
 
+  /**
+   * Reloads only the plugins whose state changed remotely (comments, notes, filters…), so people typing in the
+   * grid are not interrupted by a workbook rebuild. Returns false when that is not possible.
+   */
+  private reloadResources(names: string[]): boolean {
+    const hooks = this.opts.resources?.getAllResourceHooks();
+    if (!hooks || !this.workbook()) return false;
+    const res = this.doc.getMap<string>(RESOURCES_MAP);
+    this.applying++;
+    try {
+      // Only plugins whose state really differs from what Univer holds (the first save writes them all).
+      const changed = names.filter((name) => {
+        const hook = hooks.find((h) => h.pluginName === name);
+        return !hook || (res.get(name) ?? '') !== (hook.toJson(this.unitId) ?? '');
+      });
+      // Permission points are rebuilt with the workbook: unloading them alone breaks Univer's permission service.
+      if (changed.some((n) => /PROTECTION/.test(n) || !hooks.some((h) => h.pluginName === n))) return false;
+      for (const name of changed) {
+        const hook = hooks.find((h) => h.pluginName === name)!;
+        hook.onUnLoad(this.unitId);
+        const data = res.get(name);
+        if (data) hook.onLoad(this.unitId, hook.parseJson(data));
+      }
+      return true;
+    } catch (err) {
+      this.opts.onError?.(err);
+      return false;
+    } finally {
+      this.applying--;
+    }
+  }
+
   private onRemote(events: Y.YEvent<Any>[]) {
     if (this.destroyed) return;
     const sheetsMap = this.doc.getMap(SHEETS_MAP);
     const wbMap = this.doc.getMap(WB_MAP);
+    const resMap = this.doc.getMap(RESOURCES_MAP);
+    const resEvent = events.find((e) => e.target === resMap) as Y.YMapEvent<unknown> | undefined;
+    if (resEvent && this.reloadResources([...resEvent.keysChanged])) {
+      events = events.filter((e) => e !== resEvent);
+      if (!events.length) return;
+    }
     const needsReload = events.some(
       (e) =>
         e.target === sheetsMap ||
-        e.target === this.doc.getMap(RESOURCES_MAP) ||
+        e.target === resMap ||
         (e.target === wbMap && (e as Y.YMapEvent<unknown>).keysChanged.has('sheetOrder') && !this.orderMatches()),
     );
     if (needsReload || !this.workbook()) {

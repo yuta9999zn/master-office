@@ -122,6 +122,26 @@ await step('xlsx export carries the live edits and formulas', claudia, async () 
   if (x.status() !== 200 || (await x.body()).length < 5000) throw new Error('xlsx export');
 });
 
+await step('notes and comments sync without rebuilding the other editor’s grid', mika, async () => {
+  await mika.evaluate(() => {
+    window.__reloads = 0;
+    const orig = window.__moSheet.binding.reload.bind(window.__moSheet.binding);
+    window.__moSheet.binding.reload = () => (window.__reloads++, orig());
+  });
+  await claudia.evaluate(async () => {
+    const api = window.__moSheet.api;
+    const ws = api.getActiveWorkbook().getSheetByName('Sales Data');
+    ws.getRange('H3').createOrUpdateNote({ note: 'Call back on Monday', width: 200, height: 80 });
+    const ok = await ws.getRange('G4').addCommentAsync(api.newTheadComment().setContent(api.newRichText().insertText('Why canceled?')));
+    if (!ok) throw new Error('comment refused');
+  });
+  await until(mika, () => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getSheetByName('Sales Data');
+    return ws.getRange('H3').getNote()?.note === 'Call back on Monday' && ws.getRange('G4').getComments().length === 1;
+  });
+  if ((await mika.evaluate(() => window.__reloads)) !== 0) throw new Error('the grid was rebuilt');
+});
+
 await step('viewers get a read-only grid', claudia, async () => {
   const sora = await session('sora@kaori.jp');
   await sora.goto(`${BASE}/sheets/${sales.id}`);
