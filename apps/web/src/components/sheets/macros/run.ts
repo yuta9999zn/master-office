@@ -1,7 +1,7 @@
 'use client';
 
 import type { UniverAPI } from '../binding';
-import { macroWorker, type MacroCell, type MacroOp, type MacroResult, type MacroSnapshot } from './runtime';
+import { macroWorker, type MacroCell, type MacroEvent, type MacroOp, type MacroResult, type MacroSnapshot } from './runtime';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
@@ -56,7 +56,7 @@ export function snapshotOf(api: UniverAPI, unitId: string): MacroSnapshot {
 let workerUrl: string | null = null;
 
 /** Runs a macro in a fresh sandboxed worker; never resolves later than the timeout. */
-export function runInWorker(code: string, fn: string | null, snapshot: MacroSnapshot, timeoutMs = MACRO_TIMEOUT_MS): Promise<MacroResult> {
+export function runInWorker(code: string, fn: string | null, snapshot: MacroSnapshot, timeoutMs = MACRO_TIMEOUT_MS, event: MacroEvent | null = null): Promise<MacroResult> {
   workerUrl ??= URL.createObjectURL(new Blob([`(${macroWorker.toString()})();`], { type: 'text/javascript' }));
   const worker = new Worker(workerUrl);
   const t0 = performance.now();
@@ -69,7 +69,7 @@ export function runInWorker(code: string, fn: string | null, snapshot: MacroSnap
     const timer = setTimeout(() => done({ ok: false, ops: [], logs: [], error: `Exceeded maximum execution time (${timeoutMs / 1000} s) — the macro was stopped and nothing was changed`, ms: timeoutMs }), timeoutMs);
     worker.onmessage = (e: MessageEvent<MacroResult>) => done(e.data);
     worker.onerror = (e) => done({ ok: false, ops: [], logs: [], error: e.message || 'The macro crashed', ms: performance.now() - t0 });
-    worker.postMessage({ code, fn, snapshot });
+    worker.postMessage({ code, fn, snapshot, event });
   });
 }
 
@@ -207,14 +207,24 @@ export function applyOps(api: UniverAPI, unitId: string, ops: MacroOp[], toast: 
   }
 }
 
+/**
+ * Set while a macro's changes are being applied: those edits must not fire onEdit / onSelectionChange triggers
+ * (Apps Script: changes made by a script never trigger onEdit). Commands may finish a tick later, hence the delay.
+ */
+export const macroApply = { until: 0 };
+export const applyingMacro = () => Date.now() < macroApply.until;
+
 /** Runs a macro end-to-end: snapshot → sandboxed worker → apply changes (also those made before an error). */
-export async function runMacro(api: UniverAPI, unitId: string, code: string, fn: string | null, toast: (text: string) => void) {
-  const result = await runInWorker(code, fn, snapshotOf(api, unitId));
+export async function runMacro(api: UniverAPI, unitId: string, code: string, fn: string | null, toast: (text: string) => void, event: MacroEvent | null = null) {
+  const result = await runInWorker(code, fn, snapshotOf(api, unitId), MACRO_TIMEOUT_MS, event);
   let applyError: string | null = null;
+  macroApply.until = Number.POSITIVE_INFINITY;
   try {
     applyOps(api, unitId, result.ops, toast);
   } catch (e) {
     applyError = (e as Error).message;
+  } finally {
+    macroApply.until = Date.now() + 150;
   }
   return { ...result, error: result.error ?? applyError, ok: result.ok && !applyError };
 }

@@ -763,3 +763,26 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Editor | Plugin `Spellcheck` (`components/docs/spelling.tsx`): gạch sóng đỏ (chính tả) / xanh (ngữ pháp), map vị trí khi gõ, bỏ issue nếu chữ bên trong bị sửa; quét lại 600 ms sau mỗi lần sửa, chỉ hỏi server từ mới. Khi bật gạch chân, plugin đặt `spellcheck="false"` để không trùng với gạch của trình duyệt. Chỉ người có quyền sửa, không chạy ở chế độ Viewing. |
 | Giao diện | Tools → Spelling and grammar check (**Ctrl+Alt+X**) hoặc bấm vào chữ bị gạch → thẻ nổi: "Change X to" + các gợi ý, Accept / Ignore (bỏ qua từ đó trong phiên) / Add to dictionary, mũi tên trước-sau, "n of m". Tools → Show spelling and grammar suggestions (bật/tắt, nhớ theo trình duyệt). Accept đi qua transaction thường → có Undo và ghi thành đề xuất ở chế độ Suggesting. |
 | Test | `apps/web/e2e/spelling-flow.mjs` (6 bước): API gợi ý (teh→the, recieve→receive); gạch chân khi gõ, đoạn tiếng Việt không bị gạch; Ctrl+Alt+X + Accept sửa hết → câu đúng; bấm từ gạch → Add to dictionary; Ignore; Personal dictionary xoá từ → gạch lại; tắt Show suggestions → hết gạch, trả lại spellcheck của trình duyệt. |
+
+## 46. Phase 3.3 — Macro: trigger & nhập macro: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Simple trigger | Giống Apps Script: macro nào khai báo `function onOpen(e)`, `onEdit(e)`, `onSelectionChange(e)` thì tự chạy. Phát hiện bằng cách đọc code (`findTriggers`), không cần đăng ký. Chạy **trong trình duyệt của người mở / người sửa, với tư cách người đó**, cùng sandbox Worker như macro thường (§24) — chỉ editor. |
+| Sự kiện `e` | `e.range` (Range thật của API), `e.value`, `e.oldValue` (chỉ khi sửa 1 ô; giá trị cũ lấy ở `BeforeCommandExecute`), `e.source`, `e.user.getEmail()`, `e.triggerUid`, `e.authMode = 'LIMITED'`. |
+| Khi nào chạy | `onEdit`: lệnh **cục bộ** set-range-values / clear / delete-range của chính người đó. Thay đổi từ cộng tác viên (`fromCollab`) **không** chạy trigger ở máy mình → mỗi lần sửa trigger chạy đúng một lần, ở máy người sửa. Thay đổi do macro áp (`macroApply`, + 150 ms cho lệnh xong muộn) không bao giờ kích hoạt trigger → trigger ghi vào sheet không lặp vô hạn. `onSelectionChange`: debounce 250 ms, chỉ giữ lần mới nhất. `onOpen`: một lần mỗi lần mở file, chỉ với macro đã có lúc lưới tải xong (tạo macro onOpen giữa phiên không chạy ngay). Hàng đợi tuần tự, tối đa 20 sự kiện. |
+| Bật / tắt | Panel Macros → mục **Triggers**: công tắc cho từng trigger; danh sách tắt lưu trong Y.Doc (`macroSettings.disabledTriggers`) → áp cho mọi người. |
+| Executions | Mục **Executions (this session)**: mọi lần chạy (thủ công + trigger), trạng thái, thời gian, lỗi; lỗi trigger cũng hiện toast. Chỉ trong phiên (chưa lưu server). |
+| Nhập macro | Panel → **Import**: chọn bảng tính khác (cần quyền xem) → `GET /api/resources/:id/macros` (đọc map `macros` từ trạng thái Yjs) → tick macro cần chép; tên trùng thêm "(2)", **không chép phím tắt**. |
+| Chưa làm | Trigger theo lịch (time-driven) và on form submit cần chạy mã người dùng **trên server** khi không ai mở file — cần sandbox thật (`isolated-vm`), không dùng `vm` của Node; để quyết định riêng. Executions chưa lưu lâu dài. |
+| Test | `apps/web/e2e/macro-triggers-flow.mjs` (6 bước): phát hiện trigger, onOpen không tự chạy khi vừa tạo; onEdit với e.value/e.oldValue/e.user và không tự kích hoạt (đếm E1 = 2 sau 2 lần sửa); Mika sửa → chạy một lần ở máy Mika (E1 = 3); mở lại file → onOpen; tắt công tắc → không chạy; Import sang bảng tính khác. |
+
+## 47. Phase 3.3 — Sheets: màu xen kẽ (alternating colors): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Cách làm | Univer OSS không có "banding". Mỗi bộ màu xen kẽ = **các rule conditional format** trên vùng: hàng tiêu đề (`=TRUE`), hai dải (`=ISEVEN/ISODD(ROW()-ROW($A$n))`, neo tuyệt đối vào hàng dữ liệu đầu tiên), hàng chân. Nhờ vậy tự đồng bộ, theo khi chèn/xoá dòng, vào lịch sử phiên bản và **xuất ra Excel** (§29) mà không cần định dạng riêng. |
+| Lưu | Map `bandings` trong Y.Doc: `{id, sheetId, header, footer, colors {header, band1, band2, footer}, cf {phần → cfId}}`. **Vùng không lưu**: đọc lại từ hợp các vùng của các rule (rule tự giãn khi chèn dòng). |
+| Thao tác | Menu **Format → Alternating colors**: ô chọn nằm trong một bộ màu → mở bộ đó; không thì tạo mới trên vùng chọn (1 ô → vùng dữ liệu), tiêu đề bật, kiểu xanh. Không cho hai bộ chồng nhau. Panel: vùng, Header / Footer, 8 kiểu mặc định (bảng màu Google), màu tuỳ chỉnh (ghi lại sau 250 ms khi kéo), **Remove** (chỉ xoá rule của bộ đó, rule CF khác giữ nguyên). Mọi thay đổi ghi lại toàn bộ rule của bộ. |
+| Giới hạn | Chưa đổi vùng bằng ô nhập; màu dải là màu nền CF nên ô có CF khác cùng vùng có thể bị che theo thứ tự ưu tiên của Univer. |
+| Test | `apps/web/e2e/sheets-format-flow.mjs` (4 bước): tạo trên vùng dữ liệu (A1:C6, rule đúng màu); footer + kiểu khác, Mika thấy và mở cùng bộ; chèn 2 dòng → A1:C8; Remove chỉ xoá rule của bộ. |

@@ -57,6 +57,11 @@ export class DocsController {
     res.send(f.body);
   }
 
+  @Get(':id/macros')
+  macros(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.docs.macros(a, id);
+  }
+
   /** Values of a range in a spreadsheet (charts in Slides link to it). */
   @Get(':id/sheet-range')
   sheetRange(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query() q: unknown) {

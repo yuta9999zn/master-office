@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -30,7 +30,10 @@ import { MacrosPanel, SHORTCUT_LABEL } from './macros/MacrosPanel';
 import { functionNameOf, MacroRecorder, recordedCode } from './macros/recorder';
 import { runMacro } from './macros/run';
 import type { MacroResult } from './macros/runtime';
-import { saveMacro, useMacros, type MacroDef } from './macros/store';
+import { macrosOf, saveMacro, useMacros, type MacroDef } from './macros/store';
+import { ImportMacrosDialog } from './macros/ImportMacrosDialog';
+import { BandingPanel, openBanding } from './banding';
+import { findTriggers, setTriggerEnabled, TriggerRunner, useDisabledTriggers, type Execution } from './macros/triggers';
 
 // Univer touches the DOM at import time: load it on the client only.
 const UniverGrid = dynamic(() => import('./UniverGrid').then((m) => m.UniverGrid), {
@@ -56,7 +59,8 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const [share, setShare] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | 'Alternating colors' | null>(null);
+  const [bandingId, setBandingId] = useState<string | null>(null);
   const [pivotId, setPivotId] = useState<string | null>(null);
   const [pivotHere, setPivotHere] = useState<string | null>(null);
   const [dedupe, setDedupe] = useState(false);
@@ -68,6 +72,13 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const [lastRun, setLastRun] = useState<(MacroResult & { macro: string }) | null>(null);
   const [editingMacro, setEditingMacro] = useState<string | null>(null);
   const macros = useMacros(collab.session?.doc ?? null);
+  const disabledTriggers = useDisabledTriggers(collab.session?.doc ?? null);
+  const [executions, setExecutions] = useState<Execution[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const logExecution = (x: Execution) => setExecutions((list) => [x, ...list].slice(0, 50));
+  // Read by the trigger runner at event time, so it always sees the current macros and switches.
+  const activeTriggers = useRef(() => findTriggers(macros).filter((t) => !disabledTriggers.includes(t.key)));
+  activeTriggers.current = () => findTriggers(macros).filter((t) => !disabledTriggers.includes(t.key));
   const [previewing, setPreviewing] = useState<string | null>(null);
   const titleRef = useRef<TitleBarHandle>(null);
   const activeSheet = useRef<string | null>(null);
@@ -80,6 +91,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     try {
       const res = await runMacro(grid.api, r.id, m.code, m.fn, (t) => toast(t));
       setLastRun({ ...res, macro: m.id });
+      logExecution({ id: crypto.randomUUID(), at: new Date().toISOString(), macro: m.name, fn: m.fn, trigger: 'manual', result: res });
       if (res.error) toast.error(`${m.name}: ${res.error}`);
       else toast.success(`${m.name} finished`, { description: `${res.ops.length} change${res.ops.length === 1 ? '' : 's'} in ${Math.round(res.ms)} ms` });
     } finally {
@@ -103,6 +115,32 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     window.addEventListener('mo-chart-edit', onEdit);
     return () => window.removeEventListener('mo-chart-edit', onEdit);
   }, [r.id]);
+  // Simple triggers (onOpen / onEdit / onSelectionChange) run for editors, in their own browser.
+  const macrosLoaded = macros.length > 0;
+  // onOpen fires once per opening, and only for macros that were there when the grid finished loading.
+  const openState = useRef<'pending' | 'skip' | 'done'>('pending');
+  useEffect(() => {
+    // Read the document itself: the hook's list can lag a render behind the grid.
+    if (grid && collab.session && openState.current === 'pending' && !macrosOf(collab.session.doc).size) openState.current = 'skip';
+  }, [grid, collab.session]);
+  useEffect(() => {
+    if (!grid || !editable || !me || !macrosLoaded) return;
+    const runner = new TriggerRunner(grid.api, r.id, {
+      triggers: () => activeTriggers.current(),
+      user: { email: me.user.email, name: me.user.name },
+      toast: (t) => toast(t),
+      onExecution: (x) => {
+        logExecution(x);
+        if (x.result.error) toast.error(`${x.macro} · ${x.fn}: ${x.result.error}`);
+      },
+    });
+    runner.start();
+    if (openState.current === 'pending') {
+      openState.current = 'done';
+      runner.open();
+    }
+    return () => runner.destroy();
+  }, [grid, editable, me, macrosLoaded, r.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Other people's selections on the grid.
   useEffect(() => {
     const aw = collab.session?.provider.awareness;
@@ -258,6 +296,26 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         </Menu>
         <Menu>
           <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Format</button>
+          </MenuTrigger>
+          <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuItem
+              icon={<Paintbrush />}
+              disabled={!editable || !grid}
+              onSelect={() => {
+                if (!grid || !collab.session) return;
+                const res = openBanding(grid.api, collab.session.doc, r.id);
+                if ('error' in res) return void toast.error(res.error);
+                setBandingId(res.banding.id);
+                setPanel('Alternating colors');
+              }}
+            >
+              Alternating colors
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+        <Menu>
+          <MenuTrigger asChild>
             <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Data</button>
           </MenuTrigger>
           <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
@@ -394,7 +452,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         {panel && (
           <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
             <div className="flex items-center gap-4 border-b border-line px-4">
-              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : []), ...(pivotId ? (['Pivot table'] as const) : [])] as const).map((t) => (
+              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : []), ...(pivotId ? (['Pivot table'] as const) : []), ...(bandingId ? (['Alternating colors'] as const) : [])] as const).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                 </button>
@@ -404,7 +462,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'Pivot table' && pivotId && grid && collab.session ? (
+              {panel === 'Alternating colors' && bandingId && grid && collab.session ? (
+                <BandingPanel api={grid.api} doc={collab.session.doc} unitId={r.id} id={bandingId} editable={editable} onClose={() => (setBandingId(null), setPanel(null))} />
+              ) : panel === 'Pivot table' && pivotId && grid && collab.session ? (
                 <PivotEditor doc={collab.session.doc} api={grid.api} unitId={r.id} pivotId={pivotId} editable={editable} onClose={() => (setPivotId(null), setPanel(null))} />
               ) : panel === 'Column stats' && grid ? (
                 <ColumnStatsPanel api={grid.api} unitId={r.id} />
@@ -424,6 +484,10 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                   setEditingId={setEditingMacro}
                   onRun={(m) => void run(m)}
                   onRecord={startRecording}
+                  onImport={() => setImportOpen(true)}
+                  disabledTriggers={disabledTriggers}
+                  onToggleTrigger={(key, on) => setTriggerEnabled(collab.session!.doc, key, on)}
+                  executions={executions}
                 />
               ) : null}
             </div>
@@ -431,6 +495,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         )}
       </div>
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      {collab.session && <ImportMacrosDialog open={importOpen} doc={collab.session.doc} currentId={r.id} me={me?.user.name ?? 'Someone'} onClose={() => setImportOpen(false)} />}
       <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
       {grid && <RemoveDuplicatesDialog api={grid.api} unitId={r.id} open={dedupe} onOpenChange={setDedupe} />}

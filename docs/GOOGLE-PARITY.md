@@ -22,7 +22,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | File | New, Open, Make a copy, Share, Download, Rename, Move, Trash, Version history, Page setup, Print, Print preview | ✅ |
 | | Email (gửi file / email cộng tác viên), Approvals, Make available offline (◐ cache IndexedDB), Details, Language | ❌ (Approvals → Phase 7) |
 | Edit | Undo/redo, cut/copy/paste, select all, find & replace | ✅ |
-| | Paste without formatting, **Copy as Markdown / Paste from Markdown** | ❌ |
+| | **Copy as Markdown / Paste from Markdown** ✅ · paste without formatting ❌ | ◐ |
 | View | Mode Editing / Suggesting | ✅ |
 | | Mode **Viewing**, comments show/hide, **Document tabs & outline sidebar**, text width, **pageless format**, ruler, non-printing characters, equation toolbar, full screen | ◐ outline · ❌ còn lại |
 | Insert | Image (upload/URL/Drive), table, link, horizontal line, page break, TOC, header/footer, page numbers, comment | ✅ |
@@ -39,16 +39,16 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Menu Google | Tính năng | MO |
 |---|---|---|
 | Format | Number formats (đầy đủ), bold/italic/…, alignment, wrapping, font size, merge, conditional formatting, clear formatting | ✅ |
-| | **Theme**, **convert to table / table formatting**, **alternating colors**, smart chip formats, RTL | ❌ |
+| | **Alternating colors** ✅ (§47) · **theme**, convert to table / table formatting, smart chip formats, RTL ❌ | ◐ |
 | Insert | Rows/columns/cells, sheet, function, link | ✅ |
 | | Chart (column, bar, line, area, pie, doughnut), pivot table, checkbox, image over cells, comment, note, table | ✅ |
 | | **image in cell**, drawing, **dropdown** (◐ qua data validation), emoji, smart chips | ❌ |
 | Data | Sort sheet/range, filter, data validation, column stats, remove duplicates, trim whitespace, split text to columns, protected sheets & ranges, named ranges | ✅ |
 | | **Filter views**, **group-by views**, **slicer**, **named functions**, randomize range, data extraction, data connectors | ❌ |
-| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ❌ trigger, import macro từ file khác · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
+| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ✅ simple triggers (onOpen / onEdit / onSelectionChange) · ✅ import macro từ file khác · ❌ trigger theo lịch / form submit · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
 | | ✅ **Activity dashboard** | ✅ |
 | View | Freeze, gridlines, zoom, formula bar, hidden sheets | ✅ |
-| | Show/hide formulas, protected ranges, group/outline rows & columns, **⭐ sheet tabs on top** | ❌ |
+| | Protected ranges ✅, **⭐ sheet tabs on top** ✅ · show/hide formulas, group/outline rows & columns ❌ | ◐ |
 | Cộng tác | Realtime, versions, export XLSX/CSV/PDF, con trỏ người khác trên lưới | ✅ |
 
 ## 3. Google Slides → Master Slides
@@ -96,4 +96,8 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 4 | **3.1** | Sheets: chart, pivot, comment & note theo ô, protect ranges, named ranges, filter views, remove duplicates / trim, split text, table & alternating colors, checkbox, ảnh trong ô, text rotation, con trỏ người khác |
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets ✅, bookmark, watermark, borders & shading, compare ✅, Markdown copy/paste ✅, pageless, chế độ Viewing |
-| 7 | **chung** | Spelling, translate, publish/embed, activity dashboard, templates gallery |
+| 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
+| 8 | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · filter views, group rows/columns, show formulas, trigger theo lịch (cần sandbox server) |
+| 9 | **4.2** | Slides: rotate menu, shape sets / curve / polyline, link tới slide, autofit, spelling trong Slides, Q&A khán giả |
+| 10 | **2.3** | Docs: drawing, section break & hướng trang theo section, calendar-event / placeholder chip, H5–H6, small caps, thụt lề (first line / hanging), line numbers, citations |
+| 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |

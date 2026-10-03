@@ -116,6 +116,19 @@ export class DocsService {
   }
 
   /** Formatted-free values of A1:D5 in a spreadsheet the viewer can read. */
+  /** Macros of a spreadsheet, for Extensions → Macros → Import (docs/ARCHITECTURE.md §46). Viewers may import from it. */
+  async macros(actor: Actor, id: string) {
+    const { row } = await this.perms.require(actor, id, 'viewer');
+    if (row.type !== 'spreadsheet') throw new BadRequestException('Not a spreadsheet');
+    const state = await this.collab.currentState(id);
+    if (!state) return [];
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, state);
+    return [...doc.getMap<{ name: string; fn: string; code: string }>('macros').values()]
+      .map((m) => ({ name: m.name, fn: m.fn, code: m.code }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async sheetRange(actor: Actor, id: string, range: string, sheetName?: string) {
     const { row } = await this.perms.require(actor, id, 'viewer');
     if (row.type !== 'spreadsheet') throw new BadRequestException('Not a spreadsheet');

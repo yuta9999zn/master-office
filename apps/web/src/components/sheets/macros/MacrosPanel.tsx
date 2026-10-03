@@ -2,7 +2,7 @@
 
 import { javascript } from '@codemirror/lang-javascript';
 import { basicSetup, EditorView } from 'codemirror';
-import { ArrowLeft, BookOpen, Circle, Code2, FileCode2, Keyboard, Loader2, Play, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Circle, Code2, Download, FileCode2, Keyboard, Loader2, Play, Plus, Save, Trash2, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { Button, cn, EmptyState } from '../../ui/primitives';
@@ -10,6 +10,7 @@ import type { GridHandle } from '../UniverGrid';
 import type { MacroResult } from './runtime';
 import { functionNameOf } from './recorder';
 import { deleteMacro, saveMacro, useMacros, useVba, type MacroDef, type VbaModule } from './store';
+import { findTriggers, TRIGGER_LABEL, type Execution } from './triggers';
 
 export const SHORTCUT_LABEL = (n: number) => `Ctrl+Alt+Shift+${n}`;
 
@@ -67,6 +68,10 @@ export function MacrosPanel({
   setEditingId,
   onRun,
   onRecord,
+  onImport,
+  disabledTriggers,
+  onToggleTrigger,
+  executions,
 }: {
   doc: Y.Doc;
   grid: GridHandle | null;
@@ -78,6 +83,10 @@ export function MacrosPanel({
   setEditingId: (id: string | null) => void;
   onRun: (m: MacroDef) => void;
   onRecord: () => void;
+  onImport: () => void;
+  disabledTriggers: string[];
+  onToggleTrigger: (key: string, on: boolean) => void;
+  executions: Execution[];
 }) {
   const macros = useMacros(doc);
   const vba = useVba(doc);
@@ -202,6 +211,9 @@ export function MacrosPanel({
           <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={create}>
             New script
           </Button>
+          <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={onImport} data-testid="macro-import">
+            Import
+          </Button>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -234,6 +246,8 @@ export function MacrosPanel({
             )}
           </div>
         ))}
+        <Triggers macros={macros} disabled={disabledTriggers} editable={editable} onToggle={onToggleTrigger} />
+        <Executions list={executions} />
         {vba.length > 0 && (
           <div className="mt-3 border-t border-line pt-3" data-testid="vba-modules">
             <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">Excel VBA (read-only)</div>
@@ -249,6 +263,68 @@ export function MacrosPanel({
       </div>
       <Output lastRun={lastRun} />
       {!grid && <p className="px-3 pb-2 text-[11px] text-muted">The grid is still loading.</p>}
+    </div>
+  );
+}
+
+/** Simple triggers found in the code (onOpen / onEdit / onSelectionChange), each with an on/off switch. */
+function Triggers({ macros, disabled, editable, onToggle }: { macros: MacroDef[]; disabled: string[]; editable: boolean; onToggle: (key: string, on: boolean) => void }) {
+  const list = findTriggers(macros);
+  return (
+    <div className="mt-3 border-t border-line pt-3" data-testid="macro-triggers">
+      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">Triggers</div>
+      {!list.length ? (
+        <p className="px-2 text-[12px] leading-relaxed text-muted">
+          Define <code className="rounded bg-canvas px-1">onOpen(e)</code>, <code className="rounded bg-canvas px-1">onEdit(e)</code> or <code className="rounded bg-canvas px-1">onSelectionChange(e)</code> in a script to run it automatically — as the person who opens or edits, in their browser.
+        </p>
+      ) : (
+        list.map((t) => {
+          const on = !disabled.includes(t.key);
+          return (
+            <div key={t.key} className="flex items-center gap-2 rounded-lg px-2 py-1.5" data-testid="trigger-item">
+              <Zap size={14} className={cn('shrink-0', on ? 'text-amber-500' : 'text-subtle')} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] text-ink">{TRIGGER_LABEL[t.trigger]}</div>
+                <div className="truncate text-[11px] text-muted">
+                  {t.trigger}(e) · {t.macro.name}
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={on}
+                aria-label={`${TRIGGER_LABEL[t.trigger]} trigger in ${t.macro.name}`}
+                disabled={!editable}
+                onClick={() => onToggle(t.key, !on)}
+                className={cn('relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-40', on ? 'bg-brand-600' : 'bg-slate-300')}
+              >
+                <span className={cn('absolute top-0.5 size-4 rounded-full bg-white shadow transition-all', on ? 'left-[18px]' : 'left-0.5')} />
+              </button>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/** This session's runs (manual and triggered), newest first. */
+function Executions({ list }: { list: Execution[] }) {
+  if (!list.length) return null;
+  return (
+    <div className="mt-3 border-t border-line pt-3" data-testid="macro-executions">
+      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">Executions (this session)</div>
+      {list.slice(0, 20).map((x) => (
+        <div key={x.id} className="px-2 py-1 text-[12px]" title={[x.result.error, ...x.result.logs].filter(Boolean).join('\n')}>
+          <div className="flex items-center gap-2">
+            <span className={cn('size-1.5 shrink-0 rounded-full', x.result.error ? 'bg-red-500' : 'bg-emerald-500')} />
+            <span className="min-w-0 flex-1 truncate text-ink">
+              {x.macro} · <span className="text-muted">{x.trigger === 'manual' ? 'run' : x.trigger}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-muted">{Math.round(x.result.ms)} ms</span>
+          </div>
+          {x.result.error && <div className="truncate pl-3.5 text-red-600">{x.result.error}</div>}
+        </div>
+      ))}
     </div>
   );
 }

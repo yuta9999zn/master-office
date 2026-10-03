@@ -26,10 +26,19 @@ export interface MacroSnapshot {
   sheets: MacroSheetSnapshot[];
 }
 export type MacroOp = { op: string; sheet?: string; [k: string]: any };
+/** What a trigger passes to onOpen(e) / onEdit(e) / onSelectionChange(e) (Apps Script event objects). */
+export interface MacroEvent {
+  trigger: 'onOpen' | 'onEdit' | 'onSelectionChange';
+  range: { sheet: string; r: number; c: number; nr: number; nc: number } | null;
+  value?: string | number | boolean | null;
+  oldValue?: string | number | boolean | null;
+  user: { email: string; name: string };
+}
 export interface MacroRequest {
   code: string;
   fn: string | null;
   snapshot: MacroSnapshot;
+  event?: MacroEvent | null;
 }
 export interface MacroResult {
   ok: boolean;
@@ -59,7 +68,7 @@ export function macroWorker() {
 
   g.onmessage = async (e: MessageEvent<MacroRequest>) => {
     const t0 = Date.now();
-    const { code, fn, snapshot } = e.data;
+    const { code, fn, snapshot, event } = e.data;
     const ops: MacroOp[] = [];
     const logs: string[] = [];
     const fmt = (a: unknown) => (typeof a === 'string' ? a : a instanceof Error ? a.message : (() => { try { return JSON.stringify(a); } catch { return String(a); } })());
@@ -556,10 +565,24 @@ export function macroWorker() {
     };
     const consoleShim = { log, info: log, warn: log, error: log };
 
+    // Trigger event object, shaped like Apps Script's (e.range, e.value, e.oldValue, e.source, e.user, e.triggerUid).
+    const ev = event
+      ? {
+          triggerUid: event.trigger,
+          authMode: 'LIMITED',
+          source: spreadsheet,
+          range: event.range ? new Range(event.range.sheet, event.range.r, event.range.c, event.range.nr, event.range.nc) : undefined,
+          value: event.value === null ? undefined : event.value,
+          oldValue: event.oldValue === null ? undefined : event.oldValue,
+          user: { getEmail: () => event.user.email, getName: () => event.user.name, email: event.user.email },
+        }
+      : undefined;
+
     try {
-      const body = `${code}\n;return (typeof ${fn && /^[A-Za-z_$][\w$]*$/.test(fn) ? fn : '__none__'} === 'function') ? ${fn && /^[A-Za-z_$][\w$]*$/.test(fn) ? fn : '(() => undefined)'}() : undefined;`;
-      const run = new Function('SpreadsheetApp', 'Logger', 'Browser', 'Utilities', 'console', body);
-      await run(SpreadsheetApp, Logger, Browser, Utilities, consoleShim);
+      const name = fn && /^[A-Za-z_$][\w$]*$/.test(fn) ? fn : null;
+      const body = `${code}\n;return ${name ? `(typeof ${name} === 'function') ? ${name}(__event) : undefined` : 'undefined'};`;
+      const run = new Function('SpreadsheetApp', 'Logger', 'Browser', 'Utilities', 'console', '__event', body);
+      await run(SpreadsheetApp, Logger, Browser, Utilities, consoleShim, ev);
       g.postMessage({ ok: true, ops, logs, error: null, ms: Date.now() - t0 } satisfies MacroResult);
     } catch (err) {
       const m = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
