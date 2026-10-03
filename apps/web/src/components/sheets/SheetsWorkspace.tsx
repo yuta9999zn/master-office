@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useMe, useResourceActions, useResourceMembers, useUsers, useVersionActions, useVersionContent } from '@/lib/queries';
 import { ShareDialog } from '../drive/dialogs';
 import { PublishDialog } from '../editor/PublishDialog';
+import { ActivityDashboard } from '../editor/ActivityDashboard';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
 import { SheetTabs } from './SheetTabs';
@@ -54,6 +55,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | null>(null);
   const [pivotId, setPivotId] = useState<string | null>(null);
   const [pivotHere, setPivotHere] = useState<string | null>(null);
@@ -197,6 +199,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             </MenuItem>
             <MenuItem icon={<Globe />} onSelect={() => setPublishOpen(true)}>
               Publish to web…
+            </MenuItem>
+            <MenuItem disabled={!editable} onSelect={() => setActivityOpen(true)}>
+              Activity dashboard
             </MenuItem>
             <MenuSeparator />
             <MenuItem icon={<History />} onSelect={() => setPanel('History')}>
@@ -427,6 +432,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
       </div>
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
+      <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
       {grid && <RemoveDuplicatesDialog api={grid.api} unitId={r.id} open={dedupe} onOpenChange={setDedupe} />}
       <SaveMacroDialog
         lines={saveRecording}

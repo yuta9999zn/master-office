@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { blobs, resourceAssets, resourceLinks, resources, users } from '../db/schema';
+import { auditEvents, blobs, comments, resourceAssets, resourceLinks, resources, resourceViews, users } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { StorageService } from '../storage/storage.service';
@@ -90,6 +90,8 @@ export class DocsService {
 
   async collabToken(actor: Actor, id: string) {
     const { role, row } = await this.requireDoc(actor, id, 'viewer');
+    // Opening the editor counts as a view (Activity dashboard). Never blocks opening.
+    await this.recordView(actor, id).catch((e) => this.log.warn(`view not recorded: ${(e as Error).message}`));
     if (row.type === 'presentation' && !row.blobId && !(await this.store.load(id))) await this.slides.init(id, row.name);
     const [u] = await this.db.select({ color: users.avatarColor }).from(users).where(eq(users.id, actor.id));
     return {
@@ -501,6 +503,40 @@ export class DocsService {
     if (row.type === 'presentation') html = html.replace('</body>', `<script>${PUBLISH_SLIDES_JS}</script></body>`);
     if (!embed) html = html.replace(/<body([^>]*)>/, `<body$1><div class="mo-pub-bar">Published with Master Office · <b>${title.replace(/</g, '&lt;')}</b> · updated automatically</div>`);
     return { title, html };
+  }
+
+  // ── Activity dashboard (docs/ARCHITECTURE.md §43) ───────────────────────────
+
+  private recordView(actor: Actor, id: string) {
+    return this.db
+      .insert(resourceViews)
+      .values({ resourceId: id, userId: actor.id, day: sql`current_date` })
+      .onConflictDoUpdate({ target: [resourceViews.resourceId, resourceViews.userId, resourceViews.day], set: { count: sql`${resourceViews.count} + 1`, lastAt: sql`now()` } });
+  }
+
+  /** Tools → Activity dashboard: viewers, 30-day viewer and comment trends, sharing history. Editors only. */
+  async activityDashboard(actor: Actor, id: string) {
+    await this.requireDoc(actor, id, 'editor');
+    const viewers = await this.db
+      .select({ userId: resourceViews.userId, name: users.name, color: users.avatarColor, lastAt: sql<string>`max(${resourceViews.lastAt})`, views: sql<number>`sum(${resourceViews.count})::int` })
+      .from(resourceViews)
+      .innerJoin(users, eq(users.id, resourceViews.userId))
+      .where(eq(resourceViews.resourceId, id))
+      .groupBy(resourceViews.userId, users.name, users.avatarColor)
+      .orderBy(sql`max(${resourceViews.lastAt}) desc`);
+    const days = (await this.db.execute(sql`
+      SELECT to_char(d::date, 'YYYY-MM-DD') AS day,
+        (SELECT count(DISTINCT user_id) FROM resource_views v WHERE v.resource_id = ${id} AND v.day = d::date)::int AS viewers,
+        (SELECT count(*) FROM comments c WHERE c.resource_id = ${id} AND c.created_at::date = d::date)::int AS comments
+      FROM generate_series(current_date - 29, current_date, interval '1 day') AS d ORDER BY d`)) as unknown as { rows: { day: string; viewers: number; comments: number }[] };
+    const sharing = await this.db
+      .select({ action: auditEvents.action, data: auditEvents.data, at: auditEvents.createdAt, actor: users.name })
+      .from(auditEvents)
+      .leftJoin(users, eq(users.id, auditEvents.actorId))
+      .where(and(eq(auditEvents.resourceId, id), inArray(auditEvents.action, ['resource.created', 'acl.changed', 'resource.published', 'resource.unpublished', 'resource.moved'])))
+      .orderBy(sql`${auditEvents.createdAt} desc`)
+      .limit(40);
+    return { viewers, trend: days.rows ?? (days as unknown as { day: string; viewers: number; comments: number }[]), sharing };
   }
 
   async createVersion(actor: Actor, id: string, label: string | null) {

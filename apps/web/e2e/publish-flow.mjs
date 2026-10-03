@@ -30,7 +30,7 @@ const step = async (name, page, fn) => {
   }
 };
 const claudia = await session('claudia@kaori.jp');
-const find = async (q) => (await (await claudia.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource');
+const find = async (q, type) => (await (await claudia.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource' && (!type || h.type === type) && h.title === q);
 const menu = async (top, item) => {
   await claudia.getByRole('button', { name: top, exact: true }).click();
   await claudia.getByRole('menuitem', { name: item }).click();
@@ -82,16 +82,37 @@ await step('stop publishing: the link stops working', claudia, async () => {
 });
 
 await step('spreadsheet and presentation publish too', claudia, async () => {
-  for (const [q, path, text] of [
-    ['Sales Report - September 2026', 'sheets', 'Monthly Summary'],
-    ['Q4 Marketing Strategy - October 2026', 'slides', 'Q4 Campaign'],
+  for (const [q, type, text] of [
+    ['Sales Report - September 2026', 'spreadsheet', 'Monthly Summary'],
+    ['Q4 Marketing Strategy - October 2026', 'presentation', 'Q4 Campaign'],
   ]) {
-    const r = await find(q);
+    const r = await find(q, type);
     const res = await (await claudia.request.post(`${BASE}/api/resources/${r.id}/publish`, { data: { on: true } })).json();
     const page = await claudia.request.get(`${BASE}/pub/${res.token}`);
-    if (page.status() !== 200 || !(await page.text()).includes(text)) throw new Error(`${path} not published`);
+    if (page.status() !== 200 || !(await page.text()).includes(text)) throw new Error(`${type} not published`);
     await claudia.request.post(`${BASE}/api/resources/${r.id}/publish`, { data: { on: false } });
   }
+});
+
+await step('activity dashboard: viewers, trends and sharing history', claudia, async () => {
+  const doc = await find('Branch Operation Plan - October 2026');
+  // Mika opens the document (a view).
+  const mika = await session('mika@kaori.jp');
+  await mika.goto(`${BASE}/docs/${doc.id}`);
+  await mika.getByTestId('doc-editor').waitFor({ timeout: 60000 });
+  await mika.context().close();
+  await claudia.goto(`${BASE}/docs/${doc.id}`);
+  await claudia.getByTestId('doc-editor').waitFor({ timeout: 60000 });
+  await menu('Tools', 'Activity dashboard');
+  const dash = claudia.getByTestId('activity-dashboard');
+  await dash.getByTestId('viewers').getByText('Mika Tanaka').waitFor({ timeout: 10000 });
+  await dash.getByTestId('viewers').getByText('Claudia Chen').waitFor();
+  await dash.getByRole('button', { name: 'Viewer trend' }).click();
+  const bars = await dash.getByTestId('viewer-trend').locator('svg path').count();
+  if (bars < 1) throw new Error('no bar for today');
+  await dash.getByRole('button', { name: 'Sharing history' }).click();
+  await dash.getByTestId('sharing-history').getByText(/published it to the web/).first().waitFor();
+  await claudia.keyboard.press('Escape');
 });
 
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');

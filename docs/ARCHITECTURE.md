@@ -730,3 +730,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Nhúng | `?embed=1`: bỏ thanh trên; `Content-Security-Policy: frame-ancestors *`; dialog cho sẵn mã `<iframe>` (960×569 cho slides, 800×600 cho tài liệu / bảng tính). |
 | Lưu ý triển khai | Khi bật đăng nhập thật (identity module), `/pub/*` phải nằm ngoài lớp xác thực. |
 | Test | `apps/web/e2e/publish-flow.mjs` (4 bước): publish tài liệu → link + mã nhúng; trình duyệt không cookie xem được, không sửa được, nội dung mới hiện ngay; embed; Stop publishing → 404; Sheets và Slides cũng publish được. |
+
+## 43. Chung — Activity dashboard: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Phạm vi | Docs: Tools → Activity dashboard; Sheets, Slides: File → Activity dashboard. Chỉ người có quyền **editor** (API trả 403 với viewer; menu bị tắt). |
+| Ghi lượt xem | Bảng `resource_views(resource_id, user_id, day, count, last_at)`, khoá chính (resource, user, day) — mỗi người mỗi ngày một dòng, upsert `count + 1`. Ghi khi cấp `collab-token` (mở trình soạn thảo = một lượt xem); lỗi ghi chỉ log, không chặn mở file. Trang publish công khai không tính. |
+| Endpoint | `GET /api/resources/:id/activity-dashboard` → `viewers` (lần xem cuối, tổng lượt), `trend` 30 ngày (`generate_series`: số người xem khác nhau + số bình luận mỗi ngày, ngày trống = 0), `sharing` (audit: created, acl.changed, published, unpublished, moved — 40 mục mới nhất). |
+| Giao diện | Tabs: Viewers (bảng + "Has access, not viewed yet" từ danh sách thành viên), Viewer trend, Comment trend (cột một chuỗi, đầu bo tròn, tooltip khi hover cả cột ngày — tự neo trái/phải để không tràn), Sharing history. |
+| Test | `publish-flow.mjs` bước 5: Mika mở tài liệu → Claudia thấy cả hai người xem, có cột hôm nay, lịch sử có "published it to the web". |

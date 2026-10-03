@@ -30,7 +30,8 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Format | Bold/italic/underline/strike, super/subscript, size, capitalization, paragraph styles (Normal, Title, Subtitle, H1–H4), align, line spacing, bullets & numbering, clear formatting | ✅ |
 | | Small caps, H5–H6, **paragraph styles options (update style to match, save as default)**, borders & shading ✅, indentation options (first line, hanging), **columns**, page orientation per section, RTL text, keep with next / prevent single lines | ❌ |
 | Tools | Word count, review suggested edits | ✅ |
-| | **Spelling & grammar**, **compare documents**, citations, line numbers, explore, linked objects, dictionary, **translate document**, voice typing, notification settings, activity dashboard | ❌ |
+| | **Spelling & grammar**, **compare documents**, citations, line numbers, explore, linked objects, dictionary, **translate document**, voice typing, notification settings | ❌ |
+| | ✅ **Activity dashboard** (viewers, trends, sharing history) | ✅ |
 
 ## 2. Google Sheets → Master Sheets
 
@@ -43,7 +44,8 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | | **image in cell**, drawing, **dropdown** (◐ qua data validation), emoji, smart chips | ❌ |
 | Data | Sort sheet/range, filter, data validation, column stats, remove duplicates, trim whitespace, split text to columns, protected sheets & ranges, named ranges | ✅ |
 | | **Filter views**, **group-by views**, **slicer**, **named functions**, randomize range, data extraction, data connectors | ❌ |
-| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ❌ trigger, import macro từ file khác · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications, activity dashboard | ❌ |
+| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ❌ trigger, import macro từ file khác · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
+| | ✅ **Activity dashboard** | ✅ |
 | View | Freeze, gridlines, zoom, formula bar, hidden sheets | ✅ |
 | | Show/hide formulas, protected ranges, group/outline rows & columns, **⭐ sheet tabs on top** | ❌ |
 | Cộng tác | Realtime, versions, export XLSX/CSV/PDF, con trỏ người khác trên lưới | ✅ |
@@ -79,7 +81,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 
 ## 5. Tính năng chung còn thiếu (mọi editor)
 
-Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewing** · publish to web / embed ✅ · email cho cộng tác viên · activity dashboard (ai đã xem) · cài đặt thông báo · thư viện templates · offline đầy đủ.
+Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewing** · publish to web / embed ✅ · email cho cộng tác viên · activity dashboard (ai đã xem) ✅ · cài đặt thông báo · thư viện templates · offline đầy đủ.
 
 ---
 

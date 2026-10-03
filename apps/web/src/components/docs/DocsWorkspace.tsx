@@ -3,6 +3,7 @@
 import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, CompareDialog, WatermarkDialog } from './DocFormatDialogs';
 import { PublishDialog } from '../editor/PublishDialog';
+import { ActivityDashboard } from '../editor/ActivityDashboard';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
 import { ChartDialog } from './doc-chart';
 import { copyAsMarkdown, markdownPasteEnabled, pasteMarkdown, setColumns, setMarkdownPaste } from './columns';
@@ -147,6 +148,7 @@ function DocBody({
   const [panel, setPanel] = useState<Panel | null>(() => ((typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('panel') : null) as Panel | null) ?? 'Comments');
   const [compareOpen, setCompareOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -497,6 +499,9 @@ function DocBody({
         <>
           <MenuItem onSelect={() => toast.info(`${words.w} words · ${words.c} characters`)}>Word count</MenuItem>
           <MenuItem onSelect={() => setCompareOpen(true)}>Compare documents…</MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => setActivityOpen(true)}>
+            Activity dashboard
+          </MenuItem>
           <MenuItem onSelect={() => (setMdPaste(!mdPaste), setMarkdownPaste(!mdPaste))}>
             {mdPaste ? '✓ ' : ''}Automatically detect Markdown
           </MenuItem>
@@ -674,6 +679,7 @@ function DocBody({
       <ChartDialog open={chartOpen} editor={editor} onClose={() => setChartOpen(false)} />
       <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={canEdit} onClose={() => setPublishOpen(false)} />
+      <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
       <PrintPreview open={preview2 !== null} nonce={preview2 ?? 0} resourceId={r.id} onClose={() => setPreview2(null)} />
     </>
   );

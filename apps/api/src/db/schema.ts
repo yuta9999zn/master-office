@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  date,
+  integer,
   customType,
   bigserial,
   index,
@@ -287,3 +289,20 @@ export const formResponses = pgTable(
   (t) => [index('form_responses_form_idx').on(t.formId, t.submittedAt)],
 );
 
+
+/** Who viewed what, one row per person and day (Activity dashboard: viewers, last view, viewer trend). */
+export const resourceViews = pgTable(
+  'resource_views',
+  {
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    count: integer('count').notNull().default(1),
+    lastAt: ts('last_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.resourceId, t.userId, t.day] }), index('resource_views_day_idx').on(t.resourceId, t.day)],
+);

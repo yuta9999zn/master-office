@@ -24,6 +24,11 @@ export class DocsController {
     private readonly resources: ResourcesService,
   ) {}
 
+  @Get(':id/activity-dashboard')
+  activityDashboard(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.docs.activityDashboard(a, id);
+  }
+
   @Post(':id/publish')
   publish(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     const { on } = parse(z.object({ on: z.boolean() }), b);
