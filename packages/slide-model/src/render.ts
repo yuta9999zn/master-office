@@ -502,7 +502,7 @@ const PLAY_BADGE = `<svg viewBox="0 0 64 64" style="position:absolute;left:50%;t
 const SPEAKER = `<svg viewBox="0 0 24 24" style="width:60%;height:60%" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="#fff"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>`;
 
 /** Video / audio: a still frame with a play badge in the editor and exports; the real player in the slide show. */
-function mediaHtml(el: PlainElement, opts: RenderOptions): string {
+export function mediaHtml(el: PlainElement, opts: RenderOptions): string {
   const m = el.media ?? {};
   const src = opts.resolveSrc ? opts.resolveSrc(el.src!) : el.src!;
   if (el.type === 'audio') {

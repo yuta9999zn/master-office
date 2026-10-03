@@ -193,6 +193,12 @@ await step('video (YouTube link) and audio (uploaded file): still frame in the e
   await claudia.getByTestId('insert-video-link').click();
   await until(mika, () => window.__moDeck.snapshot.slides[0].elements.some((e) => e.type === 'video'));
   await until(mika, () => !!document.querySelector('[data-testid="slide-canvas"] [data-el] div[style*="i.ytimg.com/vi/dQw4w9WgXcQ"]'));
+  // Double-click plays it in place in the editor.
+  const vid = await claudia.evaluate(() => window.__moDeck.snapshot.slides[0].elements.find((e) => e.type === 'video').id);
+  await hitOf(claudia, vid).dblclick();
+  await claudia.locator('[data-testid="media-player"] iframe[src*="dQw4w9WgXcQ"]').waitFor({ state: 'attached' });
+  await claudia.getByLabel('Stop playing').click();
+  await claudia.getByTestId('media-player').waitFor({ state: 'detached' });
   await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Format', exact: true }).click();
   await claudia.getByLabel('Play automatically when presenting').check();
   await until(mika, () => window.__moDeck.snapshot.slides[0].elements.find((e) => e.type === 'video')?.media?.autoplay === true);

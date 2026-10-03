@@ -653,6 +653,7 @@ export function FormatTab({
           <p className="truncate text-[12px] text-muted" title={el.src}>
             {el.alt || el.src}
           </p>
+          <p className="text-[12px] text-muted">Double-click the {el.type} on the slide to play it here; it plays in the slide show too.</p>
           <div className="flex items-center gap-2 text-[12px] text-muted" data-testid="media-options">
             Start at
             <NumberField label="Start at (seconds)" value={el.media?.start ?? 0} min={0} step={1} suffix="s" w={72} onCommit={(v) => upd({ media: { ...el.media, start: v || undefined } })} />

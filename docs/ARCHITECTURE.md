@@ -622,7 +622,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Vấn đề | Quyết định |
 |---|---|
 | Mô hình | Element `video` / `audio`; `src` = link YouTube (watch, youtu.be, shorts, embed) hoặc file đã tải lên (asset của bài trình chiếu); `media` = `{start, end, autoplay, muted, loop}`. |
-| Hiển thị | Editor, thumbnail, PDF/PNG: ảnh tĩnh (thumbnail YouTube hoặc khung đầu của video) + biểu tượng Play; audio là biểu tượng loa. Trình chiếu (`RenderOptions.live`): YouTube qua `youtube-nocookie.com/embed` (start, end, autoplay, mute, loop), file qua `<video controls>` / `<audio>` với `#t=start,end`. Click vào video/loa trong lúc trình chiếu điều khiển phát, không chuyển slide. |
+| Hiển thị | Editor: nhấp đúp video/audio để phát ngay tại chỗ (nút × để dừng). Thumbnail, PDF/PNG: ảnh tĩnh (thumbnail YouTube hoặc khung đầu của video) + biểu tượng Play; audio là biểu tượng loa. Trình chiếu (`RenderOptions.live`): YouTube qua `youtube-nocookie.com/embed` (start, end, autoplay, mute, loop), file qua `<video controls>` / `<audio>` với `#t=start,end`. Click vào video/loa trong lúc trình chiếu điều khiển phát, không chuyển slide. |
 | Server | Asset nhận thêm `video/*`, `audio/*` (tối đa 100 MB; ảnh vẫn 20 MB). Tải asset hỗ trợ **HTTP Range** (206 + `Content-Range`, S3 `Range`) để tua video. |
 | PPTX | Xuất: YouTube → online video, file → nhúng media (pptxgenjs). Nhập: `a:videoFile` / `a:audioFile` → element tương ứng (loại theo MIME của file, vì có công cụ ghi audio dưới `videoFile`); link YouTube giữ nguyên. Start/end/autoplay/loop chưa đi qua PPTX (báo trong report). |
 | Giới hạn | Chưa có Google Drive picker; đổi bước animation trên slide đang phát video sẽ nạp lại trình phát. |

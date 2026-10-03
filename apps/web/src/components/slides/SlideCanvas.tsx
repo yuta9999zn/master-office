@@ -1,8 +1,8 @@
 'use client';
 
 import type { Editor } from '@tiptap/react';
-import { isLine, PLACEHOLDER_PROMPT, slideHtml, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
-import { MessageSquare } from 'lucide-react';
+import { isLine, mediaHtml, PLACEHOLDER_PROMPT, slideHtml, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
+import { MessageSquare, X } from 'lucide-react';
 import { ContextMenu as CM } from 'radix-ui';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../ui/primitives';
@@ -85,6 +85,12 @@ export function SlideCanvas({
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
   // A group "entered" by double-click: its members are then picked one by one (like Google Slides).
   const [inGroup, setInGroup] = useState<string | null>(null);
+  // Video / audio being played in place (double-click, like Google Slides' play button).
+  const [playingMedia, setPlayingMedia] = useState<string | null>(null);
+  useEffect(() => {
+    if (playingMedia && !selection.includes(playingMedia)) setPlayingMedia(null);
+  }, [selection, playingMedia]);
+  useEffect(() => setPlayingMedia(null), [slide.id]);
   const pending = useRef<{ id: string; patch: Record<string, unknown> }[] | null>(null);
   const raf = useRef(0);
   const { w: W, h: H } = deck.size;
@@ -317,6 +323,9 @@ export function SlideCanvas({
     } else if (el.type === 'table') {
       setSelection([el.id]);
       setEditing(el.id);
+    } else if (el.type === 'video' || el.type === 'audio') {
+      setSelection([el.id]);
+      setPlayingMedia(el.id);
     } else onOpenFormat(el.id);
   };
 
@@ -361,6 +370,31 @@ export function SlideCanvas({
                     );
                   })}
                 </div>
+
+                {/* Video / audio playing in place */}
+                {playingMedia &&
+                  byId.get(playingMedia) &&
+                  (() => {
+                    const el = byId.get(playingMedia)!;
+                    return (
+                      <div
+                        className="absolute"
+                        style={{ left: el.x, top: el.y, width: el.w, height: el.h, zIndex: 25, transform: el.rot ? `rotate(${el.rot}deg)` : undefined }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        data-testid="media-player"
+                      >
+                        <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: mediaHtml({ ...el, media: { ...el.media, autoplay: true } }, { live: true }) }} />
+                        <button
+                          className="absolute flex items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900"
+                          style={{ right: -40 / k, top: 0, width: 28 / k, height: 28 / k }}
+                          onClick={() => setPlayingMedia(null)}
+                          aria-label="Stop playing"
+                        >
+                          <X style={{ width: 16 / k, height: 16 / k }} />
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                 {/* In-place editors */}
                 {editingEl && frag && (
