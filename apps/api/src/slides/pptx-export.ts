@@ -1,4 +1,4 @@
-import { isLine, slideTitle, textOf, themeColor, youtubeId, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme } from '@workos/slide-model';
+import { isLine, slideTitle, textOf, themeColor, youtubeId, resolveConnectors, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme } from '@workos/slide-model';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 
@@ -174,7 +174,9 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
       slide.slideNumber = { x: inch(deck.size.w * 0.9), y: inch(deck.size.h * 0.9), w: inch(deck.size.w * 0.065), h: inch(deck.size.h * 0.06), fontSize: 11, color: hex(theme.colors.muted)?.color ?? '94A3B8', align: 'right' } as never;
     if (s.notes) slide.addNotes(s.notes);
 
-    for (const el of [...s.elements].sort((a, b) => a.z - b.z)) {
+    // Attached connectors are exported where their shapes are.
+    for (const el of [...resolveConnectors(s).elements].sort((a, b) => a.z - b.z)) {
+      if (el.conn?.kind && el.conn.kind !== 'straight') degrade('elbow and curved connectors → straight lines');
       if (el.type === 'image' && el.src) {
         const img = await loadImage(el.src);
         if (!img) {

@@ -66,6 +66,7 @@ import {
   Undo2,
   X,
   Group as GroupIcon,
+  Spline,
   Music,
   Video as VideoIcon,
   Hash,
@@ -844,6 +845,23 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             {SHAPES.slice(0, 6).map((s) => (
               <MenuItem key={s.geom} icon={<Shapes />} disabled={!editable} onSelect={() => insertShape(s.geom)}>
                 {s.label}
+              </MenuItem>
+            ))}
+            <MenuLabel>Connector</MenuLabel>
+            {(
+              [
+                ['straight', 'Straight connector'],
+                ['elbow', 'Elbow connector'],
+                ['curved', 'Curved connector'],
+              ] as const
+            ).map(([kind, label]) => (
+              <MenuItem
+                key={kind}
+                icon={<Spline />}
+                disabled={!editable}
+                onSelect={() => insert({ type: 'shape', geom: 'arrow', x: W / 2 - 150, y: H / 2 - 60, w: 300, h: kind === 'straight' ? 0 : 120, style: { stroke: '@text', strokeWidth: 3 }, conn: { kind } })}
+              >
+                {label}
               </MenuItem>
             ))}
           </MenuContent>

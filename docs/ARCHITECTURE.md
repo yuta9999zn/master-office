@@ -627,3 +627,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | PPTX | Xuất: YouTube → online video, file → nhúng media (pptxgenjs). Nhập: `a:videoFile` / `a:audioFile` → element tương ứng (loại theo MIME của file, vì có công cụ ghi audio dưới `videoFile`); link YouTube giữ nguyên. Start/end/autoplay/loop chưa đi qua PPTX (báo trong report). |
 | Giới hạn | Chưa có Google Drive picker; đổi bước animation trên slide đang phát video sẽ nạp lại trình phát. |
 | Test | `slides-motion-flow.mjs`: chèn link YouTube qua dialog → người kia thấy thumbnail, bật autoplay; tải file WAV → asset, Range 206; trình chiếu có iframe autoplay và `<audio>`. Vòng PPTX export→import giữ YouTube, MP4, MP3. |
+
+## 33. Phase 4.1 — Slides: đường nối (connector): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | Line/arrow có thêm khoá `conn = {kind: straight / elbow / curved, from?: {id, site}, to?: {id, site}}`, site = giữa cạnh n/e/s/w (tính cả xoay). Mã ở `packages/slide-model/src/connectors.ts`. |
+| Đi theo hình | Hình học của đầu mút đã bám được **tính khi vẽ** (`resolveConnectors`) — editor, thumbnail, trình chiếu, PDF/PNG, PPTX đều dùng. Di chuyển một hình không phải ghi vào các đường nối của nó (không xung đột khi hai người cùng sửa); hộp lưu trong element chỉ là phương án dự phòng khi hình bị xoá. |
+| Editor | Kéo đầu mút: hiện 4 điểm nối của hình gần nhất, bắt dính trong 14 px (Alt để bỏ bắt dính); thả ra ngoài thì tách. Kéo cả đường nối đi chỗ khác thì nhả các hình (trừ khi hình di chuyển cùng). Insert → Straight / Elbow / Curved connector; tab Format: kiểu đường nối, mũi tên. |
+| Vẽ | Elbow: ra vuông góc với cạnh đang bám, gấp ở giữa; curved: Bézier bậc ba với tay nắm theo pháp tuyến cạnh. PPTX: xuất đúng vị trí, elbow/curved thành đường thẳng (báo trong report). |
+| Test | `slides-motion-flow.mjs`: kéo hai đầu elbow connector vào cạnh phải / trái của hai hình → người kia thấy `from/to`; người kia di chuyển hình → đường nối của người này đi theo; kéo đường nối → tách. |

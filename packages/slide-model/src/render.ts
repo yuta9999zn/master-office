@@ -2,7 +2,8 @@
 // PDF / PNG / HTML export — so an exported slide is pixel-for-pixel what people saw in the editor.
 // Coordinates are slide px (1280 × 720 for 16:9); callers scale the whole slide with a CSS transform.
 import type { Background, ChartSpec, DeckSize, ElementStyle, Geometry, PlainDeck, PlainElement, PlainSlide, SlideNumbers, TextNode, Theme } from './index';
-import { youtubeId } from './index';
+import { resolveConnectors, type ConnSite } from './connectors';
+import { youtubeId } from './media';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -251,16 +252,48 @@ function shapeSvg(el: PlainElement, theme: Theme): string {
   const stroke = themeColor(s.stroke, theme) ?? (line ? theme.colors.title : null);
   const fill = line ? 'none' : themeColor(s.fill, theme) ?? 'none';
   const dash = s.dash === 'dash' ? ` stroke-dasharray="${sw * 4} ${sw * 2}"` : s.dash === 'dot' ? ` stroke-dasharray="${sw} ${sw * 1.5}" stroke-linecap="round"` : '';
-  const flip = el.flipH || el.flipV ? ` transform="translate(${el.flipH ? el.w : 0} ${el.flipV ? el.h : 0}) scale(${el.flipH ? -1 : 1} ${el.flipV ? -1 : 1})"` : '';
+  let flip = el.flipH || el.flipV ? ` transform="translate(${el.flipH ? el.w : 0} ${el.flipV ? el.h : 0}) scale(${el.flipH ? -1 : 1} ${el.flipV ? -1 : 1})"` : '';
+  let d = shapePath(geom, el.w, Math.max(el.h, line ? 0 : 1), s.radius);
+  if (line && el.conn?.kind && el.conn.kind !== 'straight') {
+    d = connectorPath(el);
+    flip = '';
+  }
   const marker =
     geom === 'arrow'
       ? `<defs><marker id="ah-${esc(el.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${Math.max(3, 12 / Math.max(1, sw / 2))}" markerHeight="${Math.max(3, 12 / Math.max(1, sw / 2))}" markerUnits="strokeWidth" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="${esc(stroke ?? '#000')}"/></marker></defs>`
       : '';
   const shadow = s.shadow ? ' style="filter:drop-shadow(0 6px 14px rgba(15,23,42,0.18))"' : '';
   // A zero-height (or zero-width) SVG is not rendered at all: keep 1 px and let the stroke overflow.
-  return `<svg width="${f(Math.max(1, el.w))}" height="${f(Math.max(1, el.h))}"${shadow}>${marker}<path d="${shapePath(geom, el.w, Math.max(el.h, line ? 0 : 1), s.radius)}" fill="${esc(fill)}"${
+  return `<svg width="${f(Math.max(1, el.w))}" height="${f(Math.max(1, el.h))}"${shadow}>${marker}<path d="${d}" fill="${esc(fill)}"${
     stroke && sw ? ` stroke="${esc(stroke)}" stroke-width="${sw}" stroke-linejoin="round"` : ''
   }${dash}${geom === 'arrow' ? ` marker-end="url(#ah-${esc(el.id)})"` : ''}${flip}/></svg>`;
+}
+
+const NORMAL: Record<ConnSite, { x: number; y: number }> = { n: { x: 0, y: -1 }, s: { x: 0, y: 1 }, e: { x: 1, y: 0 }, w: { x: -1, y: 0 } };
+
+/**
+ * Elbow / curved connector path in the element's own coordinates. Each end leaves its shape perpendicular to the
+ * side it is attached to (or along the main direction when free), like PowerPoint's bent / curved connectors.
+ */
+function connectorPath(el: PlainElement): string {
+  const s = { x: el.flipH ? el.w : 0, y: el.flipV ? el.h : 0 };
+  const e = { x: el.flipH ? 0 : el.w, y: el.flipV ? 0 : el.h };
+  const dx = e.x - s.x;
+  const dy = e.y - s.y;
+  const free = Math.abs(dx) >= Math.abs(dy) ? { x: Math.sign(dx) || 1, y: 0 } : { x: 0, y: Math.sign(dy) || 1 };
+  const ns = el.conn?.from ? NORMAL[el.conn.from.site] : free;
+  const ne = el.conn?.to ? NORMAL[el.conn.to.site] : { x: -free.x, y: -free.y };
+  if (el.conn?.kind === 'curved') {
+    const k = Math.max(30, Math.hypot(dx, dy) / 2);
+    return `M${f(s.x)} ${f(s.y)} C${f(s.x + ns.x * k)} ${f(s.y + ns.y * k)} ${f(e.x + ne.x * k)} ${f(e.y + ne.y * k)} ${f(e.x)} ${f(e.y)}`;
+  }
+  // Elbow: horizontal start → vertical middle → horizontal end, or the other way round.
+  if (ns.x !== 0) {
+    const mx = ne.x !== 0 ? (s.x + e.x) / 2 : e.x;
+    return ne.x !== 0 ? `M${f(s.x)} ${f(s.y)} H${f(mx)} V${f(e.y)} H${f(e.x)}` : `M${f(s.x)} ${f(s.y)} H${f(mx)} V${f(e.y)}`;
+  }
+  const my = ne.y !== 0 ? (s.y + e.y) / 2 : e.y;
+  return ne.y !== 0 ? `M${f(s.x)} ${f(s.y)} V${f(my)} H${f(e.x)} V${f(e.y)}` : `M${f(s.x)} ${f(s.y)} V${f(my)} H${f(e.x)}`;
 }
 
 // ── Charts ───────────────────────────────────────────────────────────────────
@@ -545,7 +578,8 @@ export function imageFilter(s: ElementStyle): string {
 export const PLACEHOLDER_PROMPT: Record<string, string> = { title: 'Click to add title', subtitle: 'Click to add subtitle', body: 'Click to add text', body2: 'Click to add text' };
 
 /** One slide as an absolutely-sized div (size.w × size.h px). */
-export function slideHtml(slide: PlainSlide, deck: { size: DeckSize; theme: Theme; numbers?: SlideNumbers }, opts: RenderOptions = {}): string {
+export function slideHtml(raw: PlainSlide, deck: { size: DeckSize; theme: Theme; numbers?: SlideNumbers }, opts: RenderOptions = {}): string {
+  const slide = resolveConnectors(raw);
   const els = [...slide.elements].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
   const showNo = deck.numbers?.show && slide.no && !(deck.numbers.skipTitle && slide.meta.layout === 'title');
   const no = showNo

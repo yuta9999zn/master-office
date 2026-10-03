@@ -239,6 +239,57 @@ await step('video (YouTube link) and audio (uploaded file): still frame in the e
   await claudia.keyboard.press('Escape');
 });
 
+await step('connectors: ends snap to shapes, follow them when moved, detach when dragged away', claudia, async () => {
+  // A fresh blank slide with two boxes.
+  const sid = await claudia.evaluate(() => window.__moDeck.addSlide('blank', 1));
+  await claudia.locator('[data-testid="slide-thumb"]').nth(1).click();
+  const [left, right] = await claudia.evaluate((s) => window.__moDeck.addElements(s, [
+    { id: 'l', type: 'shape', geom: 'rect', x: 150, y: 200, w: 200, h: 120, z: 0, style: { fill: '#BFDBFE' } },
+    { id: 'r', type: 'shape', geom: 'rect', x: 800, y: 400, w: 200, h: 120, z: 0, style: { fill: '#FBCFE8' } },
+  ]), sid);
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Elbow connector' }).click();
+  const conn = await claudia.evaluate((s) => window.__moDeck.snapshot.slides.find((x) => x.id === s).elements.find((e) => e.conn)?.id, sid);
+  // Slide → screen coordinates.
+  const toScreen = async (x, y) => {
+    const r = await claudia.getByTestId('slide-canvas').boundingBox();
+    const k = r.width / 1280;
+    return { x: r.x + x * k, y: r.y + y * k };
+  };
+  const dragTo = async (handle, x, y) => {
+    const h = await claudia.locator('[data-testid="selection-box"], svg').locator('..').locator(`div[style*="cursor: crosshair"]`).nth(handle === 'start' ? 0 : 1).boundingBox();
+    await claudia.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await claudia.mouse.down();
+    const t = await toScreen(x, y);
+    await claudia.mouse.move(t.x + 6, t.y + 4, { steps: 8 });
+    await claudia.getByTestId('conn-site').first().waitFor();
+    await claudia.mouse.move(t.x + 3, t.y + 2, { steps: 2 });
+    await claudia.mouse.up();
+  };
+  await dragTo('start', 350, 260); // east side of the left box
+  await dragTo('end', 800, 460); // west side of the right box
+  await until(mika, ([s, c, l, r]) => {
+    const e = window.__moDeck.snapshot.slides.find((x) => x.id === s)?.elements.find((x) => x.id === c);
+    return e?.conn?.kind === 'elbow' && e.conn.from?.id === l && e.conn.from.site === 'e' && e.conn.to?.id === r && e.conn.to.site === 'w';
+  }, [sid, conn, left, right]);
+  // Mika moves the right box: Claudia's connector follows (its end is the box's west side).
+  await mika.evaluate(([s, r]) => window.__moDeck.updateElements(s, [{ id: r, patch: { x: 900, y: 550 } }]), [sid, right]);
+  await until(claudia, (c) => {
+    const el = document.querySelector(`[data-testid="slide-canvas"] [data-el="${c}"]`);
+    return el && Math.abs(parseFloat(el.style.left) - 350) < 1 && Math.abs(parseFloat(el.style.width) - 550) < 1 && Math.abs(parseFloat(el.style.height) - 350) < 1;
+  }, conn);
+  // Dragging the connector itself lets go of the shapes.
+  const box = await claudia.locator(`[data-hit="${conn}"]`).boundingBox();
+  await claudia.mouse.move(box.x + box.width / 2, box.y + 4);
+  await claudia.mouse.down();
+  await claudia.mouse.move(box.x + box.width / 2 + 60, box.y + 60, { steps: 6 });
+  await claudia.mouse.up();
+  await until(mika, ([s, c]) => {
+    const e = window.__moDeck.snapshot.slides.find((x) => x.id === s)?.elements.find((x) => x.id === c);
+    return e && !e.conn?.from && !e.conn?.to && e.conn?.kind === 'elbow';
+  }, [sid, conn]);
+});
+
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');
 if (errors.length) fails++;
 console.log(fails ? `${fails} failed` : 'all passed');

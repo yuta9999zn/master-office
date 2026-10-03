@@ -620,6 +620,24 @@ export function FormatTab({
               <ColorPicker label="Fill colour" allowNone value={S.fill} theme={deck.theme} onChange={(c) => (el.type === 'text' && c ? upd({ type: 'shape', geom: 'rect', style: { fill: c } }) : style({ fill: c ?? undefined }))} />
             </Row>
           )}
+          {one && isLine(el.geom) && (
+            <>
+              <Row label="Connector">
+                <Select<'straight' | 'elbow' | 'curved'>
+                  label="Connector type"
+                  value={el.conn?.kind ?? 'straight'}
+                  options={[
+                    { value: 'straight', label: 'Straight' },
+                    { value: 'elbow', label: 'Elbow' },
+                    { value: 'curved', label: 'Curved' },
+                  ]}
+                  onChange={(kind) => upd({ conn: { ...el.conn, kind } })}
+                />
+              </Row>
+              <Toggle on={el.geom === 'arrow'} onChange={(v) => upd({ geom: v ? 'arrow' : 'line' })} label="Arrowhead at the end" />
+              {(el.conn?.from || el.conn?.to) && <p className="text-[12px] text-muted">Attached to {[el.conn?.from, el.conn?.to].filter(Boolean).length === 2 ? 'two shapes' : 'a shape'}: it follows them when they move. Drag an end away to detach it.</p>}
+            </>
+          )}
           <Row label={one && isLine(el.geom) ? 'Line' : 'Border'}>
             <ColorPicker label="Border colour" allowNone value={S.stroke} theme={deck.theme} onChange={(c) => (el.type === 'text' && c ? upd({ type: 'shape', geom: 'rect', style: { stroke: c, strokeWidth: S.strokeWidth || 2 } }) : style({ stroke: c ?? undefined, strokeWidth: c ? S.strokeWidth || 2 : undefined }))} />
             <NumberField label="Border width" value={S.strokeWidth ?? (one && isLine(el.geom) ? 3 : 0)} min={0} max={40} suffix="px" w={60} onCommit={(v) => style({ strokeWidth: v })} />

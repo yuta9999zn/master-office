@@ -1,7 +1,7 @@
 'use client';
 
 import type { Editor } from '@tiptap/react';
-import { isLine, mediaHtml, PLACEHOLDER_PROMPT, slideHtml, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
+import { isLine, mediaHtml, PLACEHOLDER_PROMPT, resolveConnectors, sitePoint, slideHtml, type ConnSite, type Connector, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
 import { MessageSquare, X } from 'lucide-react';
 import { ContextMenu as CM } from 'radix-ui';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -23,7 +23,7 @@ type Drag =
   | { kind: 'move'; start: { x: number; y: number }; boxes: Map<string, Box>; moved: boolean }
   | { kind: 'resize'; id: string; handle: string; box: Box; aspect: boolean }
   | { kind: 'rotate'; id: string; box: Box }
-  | { kind: 'line'; id: string; end: 'start' | 'end'; box: Box; flipH: boolean; flipV: boolean }
+  | { kind: 'line'; id: string; end: 'start' | 'end'; box: Box; flipH: boolean; flipV: boolean; conn?: Connector }
   | { kind: 'scale'; handle: string; union: Box; boxes: Map<string, Box> }
   | { kind: 'marquee'; start: { x: number; y: number }; additive: string[] };
 
@@ -38,9 +38,11 @@ const rotate = (x: number, y: number, deg: number) => {
 };
 const boxOf = (e: PlainElement): Box => ({ x: e.x, y: e.y, w: e.w, h: e.h, rot: e.rot ?? 0 });
 
+const SITES: ConnSite[] = ['n', 'e', 's', 'w'];
+
 export function SlideCanvas({
   store,
-  slide,
+  slide: rawSlide,
   deck,
   zoom,
   selection,
@@ -77,7 +79,11 @@ export function SlideCanvas({
   onFitScale: (k: number) => void;
   selectAllOnEdit: boolean;
 }) {
+  // Connectors attached to shapes are drawn (and hit-tested) where their shapes are now.
+  const slide = useMemo(() => resolveConnectors(rawSlide), [rawSlide]);
   const viewport = useRef<HTMLDivElement>(null);
+  // While a line end is dragged: the shape whose connection points are shown, and the point it snapped to.
+  const [siteHint, setSiteHint] = useState<{ id: string; site: ConnSite | null } | null>(null);
   const page = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(0.5);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -200,7 +206,7 @@ export function SlideCanvas({
     store.beginGesture();
     if (handle.startsWith('g-')) setDrag({ kind: 'scale', handle: handle.slice(2), union: groupBox!, boxes: new Map(selected.map((s) => [s.id, boxOf(s)])) });
     else if (handle === 'rot') setDrag({ kind: 'rotate', id: el.id, box: boxOf(el) });
-    else if (handle === 'start' || handle === 'end') setDrag({ kind: 'line', id: el.id, end: handle, box: boxOf(el), flipH: !!el.flipH, flipV: !!el.flipV });
+    else if (handle === 'start' || handle === 'end') setDrag({ kind: 'line', id: el.id, end: handle, box: boxOf(el), flipH: !!el.flipH, flipV: !!el.flipV, conn: el.conn });
     else setDrag({ kind: 'resize', id: el.id, handle, box: boxOf(el), aspect: el.type === 'image' && handle.length === 2 });
   };
 
@@ -233,7 +239,15 @@ export function SlideCanvas({
       };
       const s = e.altKey ? { dx: 0, dy: 0, gx: [], gy: [] } : snap(new Set(drag.boxes.keys()), union);
       setGuides({ x: s.gx, y: s.gy });
-      write([...drag.boxes].map(([id, b]) => ({ id, patch: { x: b.x + dx + s.dx, y: b.y + dy + s.dy } })));
+      write(
+        [...drag.boxes].map(([id, b]) => {
+          const c = byId.get(id)?.conn;
+          // A connector dragged away from its shapes lets go of them (kept when its shapes move along).
+          const keep = (end?: { id: string }) => !!end && drag.boxes.has(end.id);
+          const conn = c && (c.from || c.to) ? { kind: c.kind, ...(keep(c.from) ? { from: c.from } : {}), ...(keep(c.to) ? { to: c.to } : {}) } : undefined;
+          return { id, patch: { x: b.x + dx + s.dx, y: b.y + dy + s.dy, ...(conn ? { conn } : {}) } };
+        }),
+      );
     } else if (drag.kind === 'resize') {
       const b = drag.box;
       const sx = drag.handle.includes('e') ? 1 : drag.handle.includes('w') ? -1 : 0;
@@ -274,9 +288,37 @@ export function SlideCanvas({
         const len = Math.hypot(p.x - other.x, p.y - other.y);
         q = { x: other.x + Math.cos(a) * len, y: other.y + Math.sin(a) * len };
       }
+      // Snap to the nearest connection point (middle of a side) of another shape, like Google Slides' connectors.
+      let target: { id: string; site: ConnSite } | null = null;
+      let near: string | null = null;
+      if (!e.altKey) {
+        let best = 14 / k;
+        let nearD = 60 / k;
+        for (const o of slide.elements) {
+          if (o.id === drag.id || (o.type === 'shape' && isLine(o.geom))) continue;
+          for (const site of SITES) {
+            const sp = sitePoint(o, site);
+            const d = Math.hypot(sp.x - p.x, sp.y - p.y);
+            if (d < best) ((best = d), (target = { id: o.id, site }));
+            if (d < nearD) ((nearD = d), (near = o.id));
+          }
+          if (p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h && !near) near = o.id;
+        }
+      }
+      const tgt = target as { id: string; site: ConnSite } | null;
+      if (tgt) q = sitePoint(byId.get(tgt.id)!, tgt.site);
+      setSiteHint(tgt ? { id: tgt.id, site: tgt.site } : near ? { id: near, site: null } : null);
+      const key = drag.end === 'start' ? 'from' : 'to';
+      const conn: Connector = { ...(drag.conn ?? {}), [key]: tgt ?? undefined };
+      if (!conn[key]) delete conn[key];
       const s0 = drag.end === 'start' ? q : start;
       const e0 = drag.end === 'end' ? q : end;
-      write([{ id: drag.id, patch: { x: Math.min(s0.x, e0.x), y: Math.min(s0.y, e0.y), w: Math.abs(e0.x - s0.x), h: Math.abs(e0.y - s0.y), flipH: s0.x > e0.x || undefined, flipV: s0.y > e0.y || undefined } }]);
+      write([
+        {
+          id: drag.id,
+          patch: { x: Math.min(s0.x, e0.x), y: Math.min(s0.y, e0.y), w: Math.abs(e0.x - s0.x), h: Math.abs(e0.y - s0.y), flipH: s0.x > e0.x || undefined, flipV: s0.y > e0.y || undefined, conn: conn.kind || conn.from || conn.to ? conn : undefined },
+        },
+      ]);
     } else if (drag.kind === 'scale') {
       // Scale the whole group from the opposite handle (members keep their relative layout).
       const u = drag.union;
@@ -312,6 +354,7 @@ export function SlideCanvas({
     if (drag && drag.kind !== 'marquee') store.endGesture();
     setDrag(null);
     setMarquee(null);
+    setSiteHint(null);
     setGuides({ x: [], y: [] });
   };
 
@@ -536,6 +579,14 @@ export function SlideCanvas({
                   {guides.y.map((y) => (
                     <div key={`gy${y}`} className="absolute left-0 bg-pink-500" style={{ top: y - 0.5 / k, height: 1 / k, width: W }} />
                   ))}
+                  {siteHint &&
+                    byId.get(siteHint.id) &&
+                    SITES.map((site) => {
+                      const sp = sitePoint(byId.get(siteHint.id)!, site);
+                      const on = siteHint.site === site;
+                      const r = (on ? 7 : 5) / k;
+                      return <div key={site} className={cn('absolute rounded-full border', on ? 'border-brand-700 bg-brand-500' : 'border-brand-600 bg-white')} style={{ left: sp.x - r, top: sp.y - r, width: r * 2, height: r * 2, borderWidth: 1.5 / k }} data-testid="conn-site" />;
+                    })}
                   {marquee && <div className="absolute border border-brand-600 bg-brand-500/10" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, borderWidth: 1 / k }} />}
                 </div>
               </div>

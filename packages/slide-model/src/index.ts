@@ -17,6 +17,8 @@
 //                                      }>
 //                          }
 import * as Y from 'yjs';
+import type { Connector } from './connectors';
+import type { MediaOptions } from './media';
 
 export const DECK_MAP = 'deck';
 export const ORDER_ARRAY = 'slideOrder';
@@ -154,20 +156,8 @@ export interface PlainElement {
   crop?: Crop;
   /** Video / audio playback options (`src` is a YouTube link or an uploaded file). */
   media?: MediaOptions;
-}
-
-export interface MediaOptions {
-  start?: number; // seconds
-  end?: number;
-  autoplay?: boolean; // when the slide appears in the slide show
-  muted?: boolean;
-  loop?: boolean;
-}
-
-/** YouTube video id of a watch / share / embed / shorts link, else null. */
-export function youtubeId(url: string | null | undefined): string | null {
-  const m = /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/.exec(url ?? '');
-  return m ? m[1] : null;
+  /** Lines / arrows: routing and the shapes their ends are attached to. */
+  conn?: Connector;
 }
 
 export interface Crop {
@@ -480,7 +470,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media', 'conn'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */
@@ -712,4 +702,6 @@ export function slideTitle(s: PlainSlide): string {
   return t ? textOf(t.text).split('\n')[0] : '';
 }
 
+export * from './connectors';
+export * from './media';
 export * from './render';
