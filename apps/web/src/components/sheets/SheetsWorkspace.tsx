@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, Circle, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -15,6 +15,8 @@ import { HistoryPanel } from '../docs/HistoryPanel';
 import { SheetTabs } from './SheetTabs';
 import { ChartEditor } from './charts/ChartEditor';
 import { insertChart } from './charts/chart-actions';
+import { insertCheckboxes, trimWhitespace } from './data-tools';
+import { ColumnStatsPanel, RemoveDuplicatesDialog, runSplit } from './DataTools';
 import type { GridHandle } from './UniverGrid';
 import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
@@ -47,7 +49,8 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
-  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | null>(null);
+  const [dedupe, setDedupe] = useState(false);
   const [chartId, setChartId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MacroRecorder | null>(null);
   const [recCount, setRecCount] = useState(0);
@@ -198,6 +201,50 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             >
               Chart
             </MenuItem>
+            <MenuItem icon={<CheckSquare />} disabled={!editable || !grid} onSelect={() => grid && insertCheckboxes(grid.api, r.id)}>
+              Checkbox
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+        <Menu>
+          <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Data</button>
+          </MenuTrigger>
+          <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuItem icon={<BarChartHorizontal />} disabled={!grid} onSelect={() => setPanel('Column stats')}>
+              Column stats
+            </MenuItem>
+            <MenuSeparator />
+            <MenuLabel>Data cleanup</MenuLabel>
+            <MenuItem icon={<CopyMinus />} disabled={!editable || !grid} onSelect={() => setDedupe(true)}>
+              Remove duplicates
+            </MenuItem>
+            <MenuItem
+              icon={<Brush />}
+              disabled={!editable || !grid}
+              onSelect={() => {
+                if (!grid) return;
+                const n = trimWhitespace(grid.api, r.id);
+                toast.success(n ? `Trimmed whitespace in ${n} cell${n === 1 ? '' : 's'}` : 'No whitespace to trim');
+              }}
+            >
+              Trim whitespace
+            </MenuItem>
+            <MenuSeparator />
+            <MenuLabel>Split text to columns</MenuLabel>
+            {(
+              [
+                ['auto', 'Detect automatically'],
+                [',', 'Comma'],
+                [';', 'Semicolon'],
+                ['.', 'Period'],
+                [' ', 'Space'],
+              ] as const
+            ).map(([sep, label]) => (
+              <MenuItem key={label} icon={<Columns3 />} disabled={!editable || !grid} onSelect={() => grid && runSplit(grid.api, r.id, sep)}>
+                {label}
+              </MenuItem>
+            ))}
           </MenuContent>
         </Menu>
         <Menu>
@@ -287,7 +334,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         {panel && (
           <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
             <div className="flex items-center gap-4 border-b border-line px-4">
-              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : [])] as const).map((t) => (
+              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : [])] as const).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                 </button>
@@ -297,7 +344,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'Chart' && chartId && grid && collab.session ? (
+              {panel === 'Column stats' && grid ? (
+                <ColumnStatsPanel api={grid.api} unitId={r.id} />
+              ) : panel === 'Chart' && chartId && grid && collab.session ? (
                 <ChartEditor doc={collab.session.doc} api={grid.api} unitId={r.id} chartId={chartId} editable={editable} onClose={() => (setChartId(null), setPanel(null))} />
               ) : panel === 'History' ? (
                 <HistoryPanel resourceId={r.id} canEdit={editable} previewing={previewing} onPreview={setPreviewing} />
@@ -320,6 +369,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         )}
       </div>
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      {grid && <RemoveDuplicatesDialog api={grid.api} unitId={r.id} open={dedupe} onOpenChange={setDedupe} />}
       <SaveMacroDialog
         lines={saveRecording}
         taken={macros}

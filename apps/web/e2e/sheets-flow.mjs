@@ -167,6 +167,36 @@ await step('viewers get a read-only grid', claudia, async () => {
   await sora.close();
 });
 
+await step('data tools: trim, remove duplicates, split text, column stats, checkboxes', claudia, async () => {
+  const wbk = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Data tools ' + Date.now(), type: 'spreadsheet' } })).json();
+  await claudia.goto(`${BASE}/sheets/${wbk.id}`);
+  await ready(claudia, wbk.id);
+  const sheet = (js) => claudia.evaluate((code) => new Function('ws', code)(window.__moSheet.api.getActiveWorkbook().getActiveSheet()), js);
+  const menu = async (top, item) => {
+    await claudia.getByRole('button', { name: top, exact: true }).click();
+    await claudia.getByRole('menuitem', { name: item, exact: true }).click();
+  };
+  await sheet(`ws.getRange('A1:C6').setValues([['Name','City','Amount'],['  Ann   Lee ','Tokyo',10],['Bob','Osaka',20],['ann lee','tokyo',10],['Bob','Osaka',20],['Cy','Kyoto',5]]);
+    ws.getRange('D2').setFormula('=C2*2'); ws.getRange('A1').activate();`);
+  await menu('Data', 'Trim whitespace');
+  if ((await sheet(`return ws.getRange('A2').getValue()`)) !== 'Ann Lee') throw new Error('trim');
+  await sheet(`ws.getRange('A1:C6').activate()`);
+  await menu('Data', 'Remove duplicates');
+  await claudia.getByTestId('remove-duplicates-confirm').click();
+  const rows = await sheet(`return ws.getRange('A1:A6').getValues().map((r) => r[0])`);
+  if (JSON.stringify(rows) !== JSON.stringify(['Name', 'Ann Lee', 'Bob', 'Cy', null, null])) throw new Error('dedupe ' + JSON.stringify(rows));
+  if ((await sheet(`return ws.getRange('D2').getFormula()`)) !== '=C2*2') throw new Error('formula lost');
+  await sheet(`ws.getRange('F1:F3').setValues([['a,b,3'],['c,d'],['x']]); ws.getRange('F1:F3').activate();`);
+  await menu('Data', 'Detect automatically');
+  if (JSON.stringify(await sheet(`return ws.getRange('F1:H1').getValues()[0]`)) !== '["a","b",3]') throw new Error('split');
+  await sheet(`ws.getRange('C2').activate()`);
+  await menu('Data', 'Column stats');
+  await claudia.getByTestId('column-stats').getByText('35', { exact: true }).waitFor();
+  await sheet(`ws.getRange('J1:J3').activate()`);
+  await menu('Insert', 'Checkbox');
+  if ((await sheet(`return ws.getRange('J2').getDataValidation()?.getCriteriaType()`)) !== 'checkbox') throw new Error('checkbox');
+});
+
 // ── Excel formula parity ─────────────────────────────────────────────────────
 const created = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Formula parity ' + Date.now(), type: 'spreadsheet' } })).json();
 const mismatches = [];
