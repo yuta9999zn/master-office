@@ -186,6 +186,51 @@ await step('slide numbers: shown on every slide (title slides optional), synced'
   await until(mika, () => !document.querySelector('[data-testid="slide-canvas"] [data-testid="slide-number"]'));
 });
 
+await step('video (YouTube link) and audio (uploaded file): still frame in the editor, players in the slide show', claudia, async () => {
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Video…' }).click();
+  await claudia.getByLabel('YouTube link').fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await claudia.getByTestId('insert-video-link').click();
+  await until(mika, () => window.__moDeck.snapshot.slides[0].elements.some((e) => e.type === 'video'));
+  await until(mika, () => !!document.querySelector('[data-testid="slide-canvas"] [data-el] div[style*="i.ytimg.com/vi/dQw4w9WgXcQ"]'));
+  await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Format', exact: true }).click();
+  await claudia.getByLabel('Play automatically when presenting').check();
+  await until(mika, () => window.__moDeck.snapshot.slides[0].elements.find((e) => e.type === 'video')?.media?.autoplay === true);
+  // A tiny WAV file (0.1 s of silence).
+  const n = 800;
+  const wav = Buffer.alloc(44 + n);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + n, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32);
+  wav.writeUInt16LE(8, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(n, 40);
+  wav.fill(128, 44);
+  await claudia.getByTestId('audio-input').setInputFiles({ name: 'Chime.wav', mimeType: 'audio/wav', buffer: wav });
+  await until(mika, () => window.__moDeck.snapshot.slides[0].elements.some((e) => e.type === 'audio' && e.src.includes('/assets/')));
+  // Uploaded media is served in byte ranges (seeking).
+  const src = await claudia.evaluate(() => window.__moDeck.snapshot.slides[0].elements.find((e) => e.type === 'audio').src);
+  const part = await claudia.request.get(`${BASE}${src}`, { headers: { Range: 'bytes=0-9' } });
+  if (part.status() !== 206 || (await part.body()).length !== 10) throw new Error(`range request → ${part.status()}`);
+  await claudia.keyboard.press('Escape');
+  await claudia.keyboard.press('F5');
+  await claudia.getByTestId('presenter').waitFor();
+  // The slide's earlier animations: click through them, then the players are there.
+  await claudia.keyboard.press('ArrowRight');
+  const iframe = claudia.locator('[data-testid="presenter"] iframe[data-mo-media]');
+  await iframe.waitFor({ state: 'attached' });
+  const url = await iframe.getAttribute('src');
+  if (!/youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*autoplay=1/.test(url)) throw new Error(url);
+  await claudia.locator('[data-testid="presenter"] audio[data-mo-media]').waitFor({ state: 'attached' });
+  await claudia.keyboard.press('Escape');
+});
+
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');
 if (errors.length) fails++;
 console.log(fails ? `${fails} failed` : 'all passed');

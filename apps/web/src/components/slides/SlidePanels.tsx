@@ -648,6 +648,22 @@ export function FormatTab({
           <Toggle on={!!S.shadow} onChange={(v) => style({ shadow: v || undefined })} label="Shadow" />
         </Section>
       )}
+      {one && (el.type === 'video' || el.type === 'audio') && (
+        <Section title={el.type === 'video' ? 'Video playback' : 'Audio playback'}>
+          <p className="truncate text-[12px] text-muted" title={el.src}>
+            {el.alt || el.src}
+          </p>
+          <div className="flex items-center gap-2 text-[12px] text-muted" data-testid="media-options">
+            Start at
+            <NumberField label="Start at (seconds)" value={el.media?.start ?? 0} min={0} step={1} suffix="s" w={72} onCommit={(v) => upd({ media: { ...el.media, start: v || undefined } })} />
+            End at
+            <NumberField label="End at (seconds)" value={el.media?.end} min={0} step={1} suffix="s" w={72} onCommit={(v) => upd({ media: { ...el.media, end: v || undefined } })} />
+          </div>
+          <Toggle on={!!el.media?.autoplay} onChange={(v) => upd({ media: { ...el.media, autoplay: v || undefined } })} label="Play automatically when presenting" />
+          {el.type === 'video' && <Toggle on={!!el.media?.muted} onChange={(v) => upd({ media: { ...el.media, muted: v || undefined } })} label="Mute" />}
+          <Toggle on={!!el.media?.loop} onChange={(v) => upd({ media: { ...el.media, loop: v || undefined } })} label="Loop" />
+        </Section>
+      )}
       {one && el.type === 'image' && (
         <Section
           title="Crop"

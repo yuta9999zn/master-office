@@ -134,7 +134,10 @@ export class DocsService {
   // ── Assets (images inside documents) ──────────────────────────────────────
 
   async saveAsset(actor: Actor, id: string, buf: Buffer, mime: string) {
-    if (!mime.startsWith('image/')) throw new BadRequestException('Only images can be embedded');
+    // Pictures everywhere; video and audio for presentations (Insert → Video / Audio).
+    const media = /^(video|audio)\//.test(mime);
+    if (!mime.startsWith('image/') && !media) throw new BadRequestException('Only pictures, video and audio can be embedded');
+    if (!media && buf.length > 20 * 1024 * 1024) throw new BadRequestException('Pictures can be up to 20 MB');
     await this.requireDoc(actor, id, 'editor');
     return this.storeAsset(id, buf, mime, actor.id);
   }
@@ -151,7 +154,7 @@ export class DocsService {
     return { url: `/api/resources/${resourceId}/assets/${blob.id}`, blobId: blob.id };
   }
 
-  async asset(actor: Actor, id: string, blobId: string) {
+  async asset(actor: Actor, id: string, blobId: string, range?: { start: number; end?: number }) {
     await this.perms.require(actor, id, 'viewer');
     const [row] = await this.db
       .select({ key: blobs.storageKey, mime: blobs.mimeType, size: blobs.sizeBytes })
@@ -159,7 +162,12 @@ export class DocsService {
       .innerJoin(blobs, eq(blobs.id, resourceAssets.blobId))
       .where(and(eq(resourceAssets.resourceId, id), eq(resourceAssets.blobId, blobId)));
     if (!row) throw new NotFoundException('Image not found');
-    return { stream: await this.storage.getStream(row.key), mime: row.mime ?? 'application/octet-stream', size: row.size };
+    const size = Number(row.size);
+    if (range && range.start < size) {
+      const end = Math.min(size - 1, range.end ?? size - 1);
+      return { stream: await this.storage.getStream(row.key, { start: range.start, end }), mime: row.mime ?? 'application/octet-stream', size, range: { start: range.start, end } };
+    }
+    return { stream: await this.storage.getStream(row.key), mime: row.mime ?? 'application/octet-stream', size, range: null };
   }
 
   /** Bytes of an image a presentation references: its own assets or data: URLs (never arbitrary URLs). */

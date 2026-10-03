@@ -152,14 +152,23 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
   const done = index >= list.length;
   const slide = list[Math.min(index, list.length - 1)];
   const transition = slide?.meta.transition ?? 'none';
-  const animOpts = useMemo(() => (slide ? { elementCss: animCss(slide, step, playing) } : undefined), [slide, step, playing]);
+  const animOpts = useMemo(() => (slide ? { elementCss: animCss(slide, step, playing), live: true } : undefined), [slide, step, playing]);
 
   return (
     <div
       ref={root}
       className="fixed inset-0 z-[100] flex select-none items-center justify-center overflow-hidden bg-black"
       style={{ cursor: laser ? 'none' : chrome ? 'default' : 'none' }}
-      onClick={(e) => (e.button === 0 && !(e.target as HTMLElement).closest('[data-chrome]') ? next() : undefined)}
+      onClick={(e) => {
+        if (e.button !== 0 || (e.target as HTMLElement).closest('[data-chrome]')) return;
+        // Clicks on a video or an audio icon play / pause it instead of advancing.
+        const media = (e.target as HTMLElement).closest('.mo-el')?.querySelector<HTMLMediaElement>('video[data-mo-media], audio[data-mo-media]');
+        if (media) {
+          if (media.tagName === 'AUDIO') void (media.paused ? media.play() : media.pause());
+          return;
+        }
+        next();
+      }}
       onContextMenu={(e) => (e.preventDefault(), back())}
       onMouseMove={(e) => {
         setPointer({ x: e.clientX, y: e.clientY });

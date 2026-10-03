@@ -66,6 +66,8 @@ import {
   Undo2,
   X,
   Group as GroupIcon,
+  Music,
+  Video as VideoIcon,
   Hash,
   Sparkles,
   Ungroup as UngroupIcon,
@@ -84,6 +86,7 @@ import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
 import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 import { allRunsHave, DeckStore, LOCAL, setAlignEverywhere, setMarkEverywhere, setTextStyleEverywhere, useDeck, type DeckSnapshot } from './deck-store';
+import { VideoDialog } from './MediaDialog';
 import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
 import { CtxItem, CtxSep, SlideCanvas, type RemoteSelection } from './SlideCanvas';
@@ -150,6 +153,8 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const [, force] = useState(0);
   const pendingCommand = useRef<((e: Editor) => void) | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const audioInput = useRef<HTMLInputElement>(null);
+  const [videoDialog, setVideoDialog] = useState(false);
   const replaceTarget = useRef<string | null>(null);
 
   const slides = deck?.slides ?? [];
@@ -235,9 +240,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
 
   // ── Images ───────────────────────────────────────────────────────────────
   const upload = useCallback(
-    async (file: File): Promise<string | null> => {
-      if (!file.type.startsWith('image/')) {
-        toast.error('Only pictures can be inserted');
+    async (file: File, kinds: string[] = ['image']): Promise<string | null> => {
+      if (!kinds.some((k) => file.type.startsWith(`${k}/`))) {
+        toast.error(kinds.includes('image') ? 'Only pictures can be inserted' : `Choose a ${kinds.join(' or ')} file`);
         return null;
       }
       const fd = new FormData();
@@ -280,6 +285,21 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       const ids = store.addElements(slide.id, [{ id: '', type: 'image', x, y, w, h, z: 0, src: url, alt: f.name.replace(/\.[^.]+$/, '') }]);
       setSelection(ids);
     }
+  };
+
+  // ── Video & audio ────────────────────────────────────────────────────────
+  const insertMedia = async (type: 'video' | 'audio', source: File | string) => {
+    if (!store || !slide || !deck) return;
+    const src = typeof source === 'string' ? source : await upload(source, [type]);
+    if (!src) return;
+    setVideoDialog(false);
+    const w = type === 'video' ? Math.round(deck.size.w * 0.5) : 72;
+    const h = type === 'video' ? Math.round((w * 9) / 16) : 72;
+    const x = type === 'video' ? (deck.size.w - w) / 2 : deck.size.w - w - 48;
+    const y = type === 'video' ? (deck.size.h - h) / 2 : deck.size.h - h - 48;
+    store.checkpoint();
+    setSelection(store.addElements(slide.id, [{ id: '', type, x, y, w, h, z: 0, src, alt: typeof source === 'string' ? undefined : source.name.replace(/\.[^.]+$/, ''), media: {} }]));
+    store.checkpoint();
   };
 
   // ── Insert ───────────────────────────────────────────────────────────────
@@ -560,7 +580,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const commentTarget: SlideAnchor | null = slide ? { slide: slide.id, el: selected.length === 1 ? selected[0].id : null } : null;
   const targetLabel = slide
     ? selected.length === 1
-      ? `${textOf(selected[0].text).trim().split('\n')[0]?.slice(0, 60) || ({ text: 'Text box', shape: 'Shape', image: 'Picture', table: 'Table', chart: 'Chart' } as const)[selected[0].type]} (slide ${index + 1})`
+      ? `${textOf(selected[0].text).trim().split('\n')[0]?.slice(0, 60) || ({ text: 'Text box', shape: 'Shape', image: 'Picture', table: 'Table', chart: 'Chart', video: 'Video', audio: 'Audio' } as const)[selected[0].type]} (slide ${index + 1})`
       : `Slide ${index + 1}${slideTitle(slide) ? ` · ${slideTitle(slide)}` : ''}`
     : '';
 
@@ -801,6 +821,12 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             </MenuItem>
             <MenuItem icon={<ImageIcon />} disabled={!editable} onSelect={() => imageInput.current?.click()}>
               Picture…
+            </MenuItem>
+            <MenuItem icon={<VideoIcon />} disabled={!editable} onSelect={() => setVideoDialog(true)}>
+              Video…
+            </MenuItem>
+            <MenuItem icon={<Music />} disabled={!editable} onSelect={() => audioInput.current?.click()}>
+              Audio…
             </MenuItem>
             <MenuItem icon={<Hash />} disabled={!editable} onSelect={() => setTab('Design')}>
               Slide numbers…
@@ -1131,6 +1157,20 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
           void insertImages(files);
         }}
       />
+
+      <input
+        ref={audioInput}
+        type="file"
+        accept="audio/*"
+        hidden
+        data-testid="audio-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void insertMedia('audio', f);
+        }}
+      />
+      <VideoDialog open={videoDialog} onOpenChange={setVideoDialog} onLink={(u) => void insertMedia('video', u)} onFile={(f) => void insertMedia('video', f)} />
 
       <ImportBanner report={report} canEdit={editable} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />
 

@@ -2,6 +2,7 @@
 // PDF / PNG / HTML export — so an exported slide is pixel-for-pixel what people saw in the editor.
 // Coordinates are slide px (1280 × 720 for 16:9); callers scale the whole slide with a CSS transform.
 import type { Background, ChartSpec, DeckSize, ElementStyle, Geometry, PlainDeck, PlainElement, PlainSlide, SlideNumbers, TextNode, Theme } from './index';
+import { youtubeId } from './index';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -455,6 +456,8 @@ export interface RenderOptions {
   skipText?: Set<string>;
   /** Extra CSS per element id (animation states in the slide show). */
   elementCss?: Record<string, string>;
+  /** Real video / audio players (slide show); otherwise a still frame. */
+  live?: boolean;
 }
 
 export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions = {}): string {
@@ -477,6 +480,8 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
       inner = `<div style="width:100%;height:100%;overflow:hidden;position:relative${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}"><img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="position:absolute;max-width:none;left:${f(-c.l * kw * 100)}%;top:${f(-c.t * kh * 100)}%;width:${f(kw * 100)}%;height:${f(kh * 100)}%;display:block${filter}"></div>`;
     } else
       inner = `<img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="width:100%;height:100%;object-fit:fill;display:block${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}${filter}">`;
+  } else if ((el.type === 'video' || el.type === 'audio') && el.src) {
+    inner = mediaHtml(el, opts);
   } else if (el.type === 'chart' && el.chart) {
     inner = chartSvg(el.chart, el.w, el.h, theme, s.fontFamily);
   } else if (el.type === 'table' && el.table) {
@@ -491,6 +496,39 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
     }
   }
   return `<div class="mo-el" data-el="${esc(el.id)}" style="${wrap.join(';')}">${inner}</div>`;
+}
+
+const PLAY_BADGE = `<svg viewBox="0 0 64 64" style="position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"><circle cx="32" cy="32" r="30" fill="rgba(15,23,42,.72)"/><path d="M26 20 L46 32 L26 44 Z" fill="#fff"/></svg>`;
+const SPEAKER = `<svg viewBox="0 0 24 24" style="width:60%;height:60%" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="#fff"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>`;
+
+/** Video / audio: a still frame with a play badge in the editor and exports; the real player in the slide show. */
+function mediaHtml(el: PlainElement, opts: RenderOptions): string {
+  const m = el.media ?? {};
+  const src = opts.resolveSrc ? opts.resolveSrc(el.src!) : el.src!;
+  if (el.type === 'audio') {
+    const icon = `<div style="width:100%;height:100%;border-radius:50%;background:#2563EB;display:flex;align-items:center;justify-content:center">${SPEAKER}</div>`;
+    if (!opts.live) return icon;
+    // The player sits under the icon; it starts on its own when "autoplay" is set, else on a click on the icon.
+    return `${icon}<audio data-mo-media src="${esc(src)}${m.start || m.end ? `#t=${m.start ?? 0}${m.end ? `,${m.end}` : ''}` : ''}"${m.autoplay ? ' autoplay' : ''}${m.loop ? ' loop' : ''} preload="auto" style="position:absolute;left:0;top:100%;width:max(240px,100%);height:36px" controls></audio>`;
+  }
+  const yt = youtubeId(el.src);
+  if (yt) {
+    if (opts.live) {
+      const q = new URLSearchParams({ rel: '0', modestbranding: '1', playsinline: '1' });
+      if (m.start) q.set('start', String(Math.floor(m.start)));
+      if (m.end) q.set('end', String(Math.floor(m.end)));
+      if (m.autoplay) q.set('autoplay', '1');
+      if (m.muted) q.set('mute', '1');
+      if (m.loop) (q.set('loop', '1'), q.set('playlist', yt));
+      return `<iframe data-mo-media src="https://www.youtube-nocookie.com/embed/${yt}?${esc(q.toString())}" style="width:100%;height:100%;border:0;display:block" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+    }
+    return `<div style="width:100%;height:100%;background:#000 url('https://i.ytimg.com/vi/${yt}/hqdefault.jpg') center/cover no-repeat;position:relative">${PLAY_BADGE}</div>`;
+  }
+  const frag = m.start || m.end ? `#t=${m.start ?? 0}${m.end ? `,${m.end}` : ''}` : '#t=0.1';
+  if (opts.live) {
+    return `<video data-mo-media src="${esc(src)}${frag}" style="width:100%;height:100%;display:block;background:#000;object-fit:contain"${m.autoplay ? ' autoplay' : ''}${m.muted ? ' muted' : ''}${m.loop ? ' loop' : ''} playsinline controls preload="auto"></video>`;
+  }
+  return `<div style="width:100%;height:100%;background:#000;position:relative"><video src="${esc(src)}${frag}" muted preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain"></video>${PLAY_BADGE}</div>`;
 }
 
 /** CSS filter for picture adjustments (brightness / contrast -100…100, recolour presets). */

@@ -1,4 +1,4 @@
-import { isLine, slideTitle, textOf, themeColor, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme } from '@workos/slide-model';
+import { isLine, slideTitle, textOf, themeColor, youtubeId, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme } from '@workos/slide-model';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 
@@ -195,6 +195,20 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
         });
         if (el.style?.brightness || el.style?.contrast || el.style?.recolor) degrade('picture brightness / contrast / recolour → original picture');
         report.images++;
+      } else if ((el.type === 'video' || el.type === 'audio') && el.src) {
+        const yt = youtubeId(el.src);
+        if (yt) {
+          slide.addMedia({ type: 'online', link: `https://www.youtube.com/embed/${yt}`, ...boxProps(el) });
+          continue;
+        }
+        const file = await loadImage(el.src);
+        if (!file) {
+          degrade('some video / audio files could not be loaded');
+          continue;
+        }
+        const extn = (file.mime.split('/')[1] ?? '').replace('mpeg', 'mp3').replace('quicktime', 'mov').replace('x-m4a', 'm4a');
+        slide.addMedia({ type: el.type, data: `${file.mime};base64,${file.data.toString('base64')}`, extn, ...boxProps(el) } as never);
+        if (el.media?.start || el.media?.end || el.media?.autoplay || el.media?.loop) degrade('video / audio start, end, autoplay and loop settings');
       } else if (el.type === 'table' && el.table) {
         const t = el.table;
         const cols = t.rows[0]?.length ?? 0;

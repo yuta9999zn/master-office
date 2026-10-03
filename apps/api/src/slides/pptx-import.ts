@@ -3,6 +3,7 @@ import {
   DEFAULT_THEME,
   newId,
   THEMES,
+  youtubeId,
   type Background,
   type ChartSpec,
   type ElementStyle,
@@ -53,6 +54,7 @@ function desc(e: El | null | undefined, name: string): El[] {
 }
 const attr = (e: El | null | undefined, name: string) => (e && e.hasAttribute(name) ? e.getAttribute(name) : null);
 
+const MEDIA_MIME: Record<string, string> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg' };
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
 
 const GEOMS: Record<string, Geometry> = {
@@ -502,7 +504,28 @@ async function walkTree(tree: El, ctx: Ctx, out: PlainElement[], tf: Transform, 
       const xf = xfrmOf(kid(node, 'spPr'));
       const embed = attr(path(node, 'blipFill', 'blip'), 'r:embed');
       const rel = embed ? slideRels.get(embed) : null;
-      if (path(node, 'nvPicPr', 'nvPr', 'videoFile') || path(node, 'nvPicPr', 'nvPr', 'audioFile')) ctx.note('dropped', 'video and audio (the poster image is kept)');
+      // Video / audio: <a:videoFile|audioFile r:link> points at the media part (or an online video).
+      const mediaNode = path(node, 'nvPicPr', 'nvPr', 'videoFile') ?? path(node, 'nvPicPr', 'nvPr', 'audioFile');
+      if (mediaNode && xf) {
+        let kind: 'video' | 'audio' = path(node, 'nvPicPr', 'nvPr', 'videoFile') ? 'video' : 'audio';
+        const mrel = slideRels.get(attr(mediaNode, 'r:link') ?? '');
+        let msrc: string | null = null;
+        if (mrel?.external) msrc = youtubeId(mrel.target) ? mrel.target : null;
+        else if (mrel) {
+          const mfile = ctx.zip.file(mrel.target);
+          const mext = mrel.target.split('.').pop()?.toLowerCase() ?? '';
+          const mmime = MEDIA_MIME[mext];
+          if (mfile && mmime) msrc = await ctx.storeImage(Buffer.from(await mfile.async('uint8array')), mmime);
+          // Some writers put audio under <a:videoFile>: the file type decides.
+          if (mmime) kind = mmime.startsWith('audio/') ? 'audio' : 'video';
+        }
+        if (msrc) {
+          const box = tf(xf);
+          out.push({ id: newId(), type: kind, x: box.x, y: box.y, w: box.w, h: box.h, z, src: msrc, media: {}, ...(xf.rot ? { rot: xf.rot } : {}) });
+          continue;
+        }
+        ctx.note('dropped', 'some video and audio (linked files or unsupported formats — the poster image is kept)');
+      }
       if (!xf || !rel || rel.external) continue;
       const file = ctx.zip.file(rel.target);
       if (!file) continue;

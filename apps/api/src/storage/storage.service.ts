@@ -75,8 +75,9 @@ export class StorageService implements OnModuleInit {
     return Buffer.from(await out.Body!.transformToByteArray());
   }
 
-  async getStream(key: string): Promise<Readable> {
-    const out = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+  /** The object's bytes, or one byte range of them (`start`…`end` inclusive) for media seeking. */
+  async getStream(key: string, range?: { start: number; end: number }): Promise<Readable> {
+    const out = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key, ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }));
     return out.Body as Readable;
   }
 }

@@ -15,7 +15,7 @@ const START: { value: ElementAnim['start']; label: string }[] = [
 ];
 
 export const elementLabel = (e: PlainElement) =>
-  textOf(e.text).trim().split('\n')[0]?.slice(0, 40) || ({ text: 'Text box', shape: 'Shape', image: 'Picture', table: 'Table', chart: 'Chart' } as Record<string, string>)[e.type] || e.type;
+  textOf(e.text).trim().split('\n')[0]?.slice(0, 40) || ({ text: 'Text box', shape: 'Shape', image: 'Picture', table: 'Table', chart: 'Chart', video: 'Video', audio: 'Audio' } as Record<string, string>)[e.type] || e.type;
 
 /** Plays the slide's animations step after step in a small preview. */
 function Preview({ slide, deck, onDone }: { slide: PlainSlide; deck: DeckSnapshot; onDone: () => void }) {

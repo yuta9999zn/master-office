@@ -55,7 +55,7 @@ export interface SlideMeta {
   transition?: Transition;
 }
 
-export type ElementType = 'text' | 'shape' | 'image' | 'table' | 'chart';
+export type ElementType = 'text' | 'shape' | 'image' | 'table' | 'chart' | 'video' | 'audio';
 export type Geometry =
   | 'rect'
   | 'roundRect'
@@ -152,6 +152,22 @@ export interface PlainElement {
   anim?: ElementAnim;
   /** Picture crop: fraction of the source image cut off each side (0…1). */
   crop?: Crop;
+  /** Video / audio playback options (`src` is a YouTube link or an uploaded file). */
+  media?: MediaOptions;
+}
+
+export interface MediaOptions {
+  start?: number; // seconds
+  end?: number;
+  autoplay?: boolean; // when the slide appears in the slide show
+  muted?: boolean;
+  loop?: boolean;
+}
+
+/** YouTube video id of a watch / share / embed / shorts link, else null. */
+export function youtubeId(url: string | null | undefined): string | null {
+  const m = /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/.exec(url ?? '');
+  return m ? m[1] : null;
 }
 
 export interface Crop {
@@ -464,7 +480,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */

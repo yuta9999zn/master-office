@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
 import { contentDisposition } from '../common/http';
@@ -59,17 +59,24 @@ export class DocsController {
   }
 
   @Post(':id/assets')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
   asset(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
     return this.docs.saveAsset(a, id, file.buffer, file.mimetype);
   }
 
   @Get(':id/assets/:blobId')
-  async getAsset(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Param('blobId', ParseUUIDPipe) blobId: string, @Res() res: Response) {
-    const f = await this.docs.asset(a, id, blobId);
+  async getAsset(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Param('blobId', ParseUUIDPipe) blobId: string, @Req() req: Request, @Res() res: Response) {
+    // Byte ranges let <video> / <audio> seek without downloading the whole file.
+    const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ''));
+    const f = await this.docs.asset(a, id, blobId, m ? { start: Number(m[1]), end: m[2] ? Number(m[2]) : undefined } : undefined);
     res.setHeader('Content-Type', f.mime);
-    res.setHeader('Content-Length', String(f.size));
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
+    if (f.range) {
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${f.range.start}-${f.range.end}/${f.size}`);
+      res.setHeader('Content-Length', String(f.range.end - f.range.start + 1));
+    } else res.setHeader('Content-Length', String(f.size));
     f.stream.pipe(res);
   }
 
