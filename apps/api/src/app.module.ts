@@ -20,14 +20,17 @@ import { FormsService } from './forms/forms.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
+import { SpellingController } from './spelling/spelling.controller';
+import { SpellingService } from './spelling/spelling.service';
 import { StorageService } from './storage/storage.service';
 import { UsersController } from './users/users.controller';
 import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController],
   providers: [
+    SpellingService,
     PermissionsService,
     EventsService,
     StorageService,

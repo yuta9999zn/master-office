@@ -24,6 +24,7 @@ import { chartText, DocChart, type ChartPainter, type DocChartSpec } from './doc
 export * from './doc-chart';
 export * from './compare';
 export * from './templates';
+export * from './spelling';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';

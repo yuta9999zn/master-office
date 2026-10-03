@@ -36,6 +36,7 @@ import {
   Replace,
   Search,
   Globe,
+  SpellCheck,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -54,6 +55,7 @@ import { useCollab, type CollabSession } from './useCollab';
 import { useLiveEditor } from './useLiveEditor';
 import { browserSchema } from './editor-kit';
 import { FindBar } from './FindBar';
+import { PersonalDictionaryDialog, setUnderlinePref, SpellingCard, underlinePref, useSpellcheck } from './spelling';
 import { MM_TO_PX, PageSetupDialog, PrintPreview, useDocSettings } from './PageLayout';
 import { SuggestionsPanel } from './SuggestionsPanel';
 
@@ -156,6 +158,10 @@ function DocBody({
   const [embedOpen, setEmbedOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [find, setFind] = useState<{ replace: boolean } | null>(null);
+  const [spellOpen, setSpellOpen] = useState(false);
+  const [dictOpen, setDictOpen] = useState(false);
+  const [underline, setUnderline] = useState(true);
+  useEffect(() => setUnderline(underlinePref()), []);
   const [suggesting, setSuggestingState] = useState(false);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [preview2, setPreview2] = useState<number | null>(null);
@@ -196,11 +202,13 @@ function DocBody({
     onLink: openLink,
     onComment: startComment,
     onFind: (replace) => setFind({ replace }),
+    onSpelling: () => canEdit && setSpellOpen(true),
     onImage: () => imageInput.current?.click(),
     onEmbed: () => setEmbedOpen(true),
     field: tabField(currentTab),
     onChart: () => setChartOpen(true),
   });
+  const spell = useSpellcheck(editor, { enabled: canEdit && !viewing && (underline || spellOpen), show: underline || spellOpen });
   // Viewing mode: the final text, nothing editable (suggestion marks hidden by CSS).
   useEffect(() => {
     if (editor && !editor.isDestroyed) editor.setEditable(canEdit && !viewing);
@@ -497,6 +505,14 @@ function DocBody({
       label: 'Tools',
       items: (
         <>
+          <MenuItem icon={<SpellCheck />} shortcut="Ctrl+Alt+X" disabled={!canEdit} onSelect={() => setSpellOpen(true)}>
+            Spelling and grammar check
+          </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => (setUnderline(!underline), setUnderlinePref(!underline))}>
+            {underline ? '✓ ' : ''}Show spelling and grammar suggestions
+          </MenuItem>
+          <MenuItem onSelect={() => setDictOpen(true)}>Personal dictionary…</MenuItem>
+          <MenuSeparator />
           <MenuItem onSelect={() => toast.info(`${words.w} words · ${words.c} characters`)}>Word count</MenuItem>
           <MenuItem onSelect={() => setCompareOpen(true)}>Compare documents…</MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => setActivityOpen(true)}>
@@ -556,6 +572,7 @@ function DocBody({
       <div className="flex min-h-0 flex-1 gap-3 px-5 pb-3 pt-3">
         {showOutline && !preview && <DocTabsPanel tabs={tabs} current={currentTab} onOpen={openTab} editor={editor} canEdit={canEdit} ops={tabOps} commentCounts={commentCounts} />}
         <div className="relative min-w-0 flex-1">
+        {spellOpen && !find && <SpellingCard spell={spell} onClose={() => setSpellOpen(false)} />}
         {find && <FindBar editor={editor} withReplace={find.replace} canEdit={canEdit} suggesting={suggesting} onClose={() => setFind(null)} />}
         <div className="h-full overflow-y-auto rounded-xl" id="doc-scroll">
           {preview ? (
@@ -680,6 +697,7 @@ function DocBody({
       <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={canEdit} onClose={() => setPublishOpen(false)} />
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
+      <PersonalDictionaryDialog open={dictOpen} onClose={() => setDictOpen(false)} />
       <PrintPreview open={preview2 !== null} nonce={preview2 ?? 0} resourceId={r.id} onClose={() => setPreview2(null)} />
     </>
   );

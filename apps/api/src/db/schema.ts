@@ -306,3 +306,16 @@ export const resourceViews = pgTable(
   },
   (t) => [primaryKey({ columns: [t.resourceId, t.userId, t.day] }), index('resource_views_day_idx').on(t.resourceId, t.day)],
 );
+
+/** Personal dictionary (Tools → Spelling and grammar → Add to dictionary). docs/ARCHITECTURE.md §45. */
+export const userDictionary = pgTable(
+  'user_dictionary',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    word: text('word').notNull(),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.word] })],
+);

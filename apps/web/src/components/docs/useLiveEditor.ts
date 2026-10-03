@@ -16,6 +16,7 @@ import { CommentAnchors } from './comment-anchors';
 import { browserSchema, CollapsibleHeadings, PageLinks, SlashCommands } from './editor-kit';
 import { mentionSuggestion } from './mentions';
 import { SearchReplace } from './search';
+import { Spellcheck } from './spelling';
 import { SuggestChanges } from './suggestions';
 import type { CollabSession } from './useCollab';
 
@@ -35,6 +36,8 @@ export interface LiveEditorOptions {
   onImage: () => void;
   onEmbed: () => void;
   onChart?: () => void;
+  /** Tools → Spelling and grammar (Ctrl+Alt+X, or a click on an underlined word). */
+  onSpelling?: () => void;
   /** Yjs field of the body (document tabs); the editor is rebuilt when it changes. */
   field?: string;
 }
@@ -78,6 +81,7 @@ export function useLiveEditor(o: LiveEditorOptions) {
         Placeholder.configure({ placeholder: canEdit ? o.placeholder ?? 'Start writing… type / for blocks, @ to mention, [[ to link a page' : '' }),
         CharacterCount,
         SearchReplace,
+        Spellcheck.configure({ onOpen: () => opts.current.onSpelling?.() }),
         PageLinks,
         CollapsibleHeadings,
         ...(canEdit ? [SlashCommands.configure({ handlers: { image: () => opts.current.onImage(), embed: () => opts.current.onEmbed(), linkTo: () => opts.current.onLink(), chart: () => opts.current.onChart?.() } })] : []),
@@ -94,11 +98,12 @@ export function useLiveEditor(o: LiveEditorOptions) {
             'Mod-Alt-m': ({ editor: ed }) => (opts.current.onComment(ed as Editor), true),
             'Mod-f': () => (opts.current.onFind(false), true),
             'Mod-h': () => (opts.current.onFind(true), true),
+            'Mod-Alt-x': () => (opts.current.onSpelling?.(), !!opts.current.onSpelling),
           }),
         }),
       ],
       editorProps: {
-        attributes: { class: 'mo-editor', 'data-testid': o.testId ?? 'doc-editor', spellcheck: 'true' },
+        attributes: { class: 'mo-editor', 'data-testid': o.testId ?? 'doc-editor' }, // spellcheck: set by the Spellcheck plugin,
         handlePaste: (_view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
           // Plain text that reads as Markdown (headings, lists, tables…) is pasted formatted (Tools → Detect Markdown).

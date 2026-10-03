@@ -3,3 +3,9 @@
 declare module '@tiptap/html/server' {
   export { generateHTML, generateJSON } from '@tiptap/html';
 }
+
+// nspell ships no types.
+declare module 'nspell' {
+  const nspell: (dict: { aff: Buffer | string; dic: Buffer | string }) => { correct(word: string): boolean; suggest(word: string): string[]; add(word: string): void };
+  export default nspell;
+}
