@@ -197,6 +197,8 @@ await step('video (YouTube link) and audio (uploaded file): still frame in the e
   const vid = await claudia.evaluate(() => window.__moDeck.snapshot.slides[0].elements.find((e) => e.type === 'video').id);
   await hitOf(claudia, vid).dblclick();
   await claudia.locator('[data-testid="media-player"] iframe[src*="dQw4w9WgXcQ"]').waitFor({ state: 'attached' });
+  // The double-click must not leave the browser's selection highlight over the player.
+  if ((await claudia.evaluate(() => getSelection().type)) === 'Range') throw new Error('the player is covered by a text selection');
   await claudia.getByLabel('Stop playing').click();
   await claudia.getByTestId('media-player').waitFor({ state: 'detached' });
   await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Format', exact: true }).click();

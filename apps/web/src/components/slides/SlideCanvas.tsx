@@ -324,6 +324,8 @@ export function SlideCanvas({
       setSelection([el.id]);
       setEditing(el.id);
     } else if (el.type === 'video' || el.type === 'audio') {
+      // A double-click also selects the slide's content in the browser: that highlight would cover the player.
+      window.getSelection()?.removeAllRanges();
       setSelection([el.id]);
       setPlayingMedia(el.id);
     } else onOpenFormat(el.id);
@@ -378,7 +380,7 @@ export function SlideCanvas({
                     const el = byId.get(playingMedia)!;
                     return (
                       <div
-                        className="absolute"
+                        className="absolute select-none"
                         style={{ left: el.x, top: el.y, width: el.w, height: el.h, zIndex: 25, transform: el.rot ? `rotate(${el.rot}deg)` : undefined }}
                         onPointerDown={(e) => e.stopPropagation()}
                         data-testid="media-player"
