@@ -719,3 +719,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Sửa lỗi kèm theo | Xuất DOCX phần chia cột dựng nội dung cột hai lần → số footnote / biểu đồ trong cột bị lệch (biểu đồ trong cột mất ảnh). |
 | Giới hạn | Biểu đồ: chưa sửa bảng số liệu ngay trong Docs (dùng Sheets hoặc biểu đồ mẫu), chưa kéo đổi kích thước. So sánh: định dạng (đậm / nghiêng) và thuộc tính khối không được so, chỉ nội dung. |
 | Test | `docs-chips-flow.mjs` +2 bước: biểu đồ liên kết "Sales Report" → người kia thấy, nút Update, đổi sang Line; so sánh với bản sao cũ → tài liệu mới có `ins` / `del`; HTML có `<figure class="chart"><svg`, DOCX có ảnh PNG. |
+
+## 42. Chung — Publish to web & nhúng: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Phạm vi | Docs, Wiki, Sheets, Slides: File → Publish to web… (`PublishDialog` dùng chung). Forms đã có trang trả lời công khai riêng. |
+| Lưu | `resources.metadata.publish = {token, at, by}` — token ngẫu nhiên 128 bit; publish lại giữ nguyên link; Stop publishing xoá → link trả 404. Sự kiện `resource.published` / `unpublished` trong activity. |
+| Trang | `GET /pub/:token` (Next rewrite `/pub/:token` → API): **luôn là nội dung hiện tại** (render lúc xem bằng chính bộ xuất HTML — ảnh nhúng dạng data URI, tài liệu mọi tab, bảng tính mọi sheet, slides thu nhỏ theo cửa sổ); không có bình luận, lịch sử, đề xuất chưa duyệt. Thanh "Published with Master Office"; `noindex`; cache 60 s. Render với quyền chủ sở hữu nhưng không ghi sự kiện export mỗi lần mở. |
+| Nhúng | `?embed=1`: bỏ thanh trên; `Content-Security-Policy: frame-ancestors *`; dialog cho sẵn mã `<iframe>` (960×569 cho slides, 800×600 cho tài liệu / bảng tính). |
+| Lưu ý triển khai | Khi bật đăng nhập thật (identity module), `/pub/*` phải nằm ngoài lớp xác thực. |
+| Test | `apps/web/e2e/publish-flow.mjs` (4 bước): publish tài liệu → link + mã nhúng; trình duyệt không cookie xem được, không sửa được, nội dung mới hiện ngay; embed; Stop publishing → 404; Sheets và Slides cũng publish được. |

@@ -3,13 +3,14 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { useMe, useResourceActions, useResourceMembers, useUsers, useVersionActions, useVersionContent } from '@/lib/queries';
 import { ShareDialog } from '../drive/dialogs';
+import { PublishDialog } from '../editor/PublishDialog';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
 import { SheetTabs } from './SheetTabs';
@@ -52,6 +53,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | null>(null);
   const [pivotId, setPivotId] = useState<string | null>(null);
   const [pivotHere, setPivotHere] = useState<string | null>(null);
@@ -192,6 +194,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             )}
             <MenuItem icon={<Printer />} shortcut="Ctrl+P" onSelect={() => window.open(`/api/resources/${r.id}/export?format=pdf&inline=1`, '_blank')}>
               Print (PDF)
+            </MenuItem>
+            <MenuItem icon={<Globe />} onSelect={() => setPublishOpen(true)}>
+              Publish to web…
             </MenuItem>
             <MenuSeparator />
             <MenuItem icon={<History />} onSelect={() => setPanel('History')}>
@@ -421,6 +426,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         )}
       </div>
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
       {grid && <RemoveDuplicatesDialog api={grid.api} unitId={r.id} open={dedupe} onOpenChange={setDedupe} />}
       <SaveMacroDialog
         lines={saveRecording}

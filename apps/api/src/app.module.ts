@@ -6,6 +6,7 @@ import { CurrentUserMiddleware } from './common/current-user';
 import { DbModule } from './db/db.module';
 import { DocStore } from './docs/doc-store';
 import { DocsController } from './docs/docs.controller';
+import { PublishController } from './docs/publish.controller';
 import { DocsService } from './docs/docs.service';
 import { PdfRenderer } from './docs/pdf-renderer';
 import { EventsService } from './events/events.service';
@@ -25,7 +26,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, CommentsController, SearchController, FormsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController],
   providers: [
     PermissionsService,
     EventsService,

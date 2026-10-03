@@ -10,7 +10,12 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: root,
   // The browser talks to the API through this proxy: same origin, so the dev identity cookie and file downloads just work.
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${process.env.API_URL ?? 'http://localhost:4000'}/:path*` }];
+    const api = process.env.API_URL ?? 'http://localhost:4000';
+    return [
+      { source: '/api/:path*', destination: `${api}/:path*` },
+      // Published pages (File → Publish to web) live at /pub/<token>.
+      { source: '/pub/:token', destination: `${api}/pub/:token` },
+    ];
   },
 };
 

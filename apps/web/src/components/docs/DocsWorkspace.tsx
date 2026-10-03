@@ -2,6 +2,7 @@
 
 import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, CompareDialog, WatermarkDialog } from './DocFormatDialogs';
+import { PublishDialog } from '../editor/PublishDialog';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
 import { ChartDialog } from './doc-chart';
 import { copyAsMarkdown, markdownPasteEnabled, pasteMarkdown, setColumns, setMarkdownPaste } from './columns';
@@ -33,6 +34,7 @@ import {
   Printer,
   Replace,
   Search,
+  Globe,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -144,6 +146,7 @@ function DocBody({
   // ?panel=Suggestions opens a panel directly (a comparison opens on its suggestions).
   const [panel, setPanel] = useState<Panel | null>(() => ((typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('panel') : null) as Panel | null) ?? 'Comments');
   const [compareOpen, setCompareOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -260,6 +263,9 @@ function DocBody({
           </MenuItem>
           <MenuItem icon={<History />} onSelect={() => setPanel('History')}>
             Version history
+          </MenuItem>
+          <MenuItem icon={<Globe />} onSelect={() => setPublishOpen(true)}>
+            Publish to web…
           </MenuItem>
           <MenuSeparator />
           <MenuItem icon={<FileCog />} onSelect={() => setPageSetupOpen(true)}>
@@ -667,6 +673,7 @@ function DocBody({
       <BordersDialog open={bordersOpen} editor={editor} onClose={() => setBordersOpen(false)} />
       <ChartDialog open={chartOpen} editor={editor} onClose={() => setChartOpen(false)} />
       <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
+      <PublishDialog r={r} open={publishOpen} canEdit={canEdit} onClose={() => setPublishOpen(false)} />
       <PrintPreview open={preview2 !== null} nonce={preview2 ?? 0} resourceId={r.id} onClose={() => setPreview2(null)} />
     </>
   );

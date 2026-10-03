@@ -24,6 +24,12 @@ export class DocsController {
     private readonly resources: ResourcesService,
   ) {}
 
+  @Post(':id/publish')
+  publish(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    const { on } = parse(z.object({ on: z.boolean() }), b);
+    return this.docs.publish(a, id, on);
+  }
+
   @Post(':id/compare')
   compare(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     const { otherId } = parse(z.object({ otherId: z.string().uuid() }), b);

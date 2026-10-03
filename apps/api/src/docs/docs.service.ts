@@ -8,6 +8,7 @@ import type { ResourceType } from '@workos/shared';
 import { generateJSON } from '@tiptap/html/server';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import mammoth from 'mammoth';
+import { randomBytes } from 'node:crypto';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
@@ -30,6 +31,11 @@ import { FORM_MAP, ITEMS_MAP, ORDER_ARRAY as FORM_ORDER, readForm as readFormFro
 
 export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation', 'form'];
 export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png';
+/** Published pages: a thin top bar, and slides scaled to the window (presentations). */
+const PUBLISH_CSS = `.mo-pub-bar{position:sticky;top:0;z-index:10;font:13px/1.4 Inter,Arial,sans-serif;color:#475569;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 16px}@media screen{main{max-width:860px;margin:0 auto;padding:24px 16px 48px}}`;
+const PUBLISH_SLIDES_CSS = `@media screen{html,body{background:#0f172a}.page{margin:16px auto;box-shadow:0 8px 24px rgba(0,0,0,.35);transform-origin:top left}.mo-pub-bar{background:#1e293b;color:#cbd5e1;border-color:#334155}}`;
+const PUBLISH_SLIDES_JS = `(function(){function fit(){var p=document.querySelectorAll('.page');p.forEach(function(e){var w=e.offsetWidth||1;var k=Math.min(1,(window.innerWidth-32)/w);e.style.zoom=k;});}window.addEventListener('resize',fit);fit();})();`;
+
 const SHEET_FORMATS: ExportFormat[] = ['xlsx', 'csv', 'pdf', 'html'];
 const SLIDE_FORMATS: ExportFormat[] = ['pptx', 'pdf', 'png', 'html'];
 const TEXT_FORMATS: ExportFormat[] = ['docx', 'pdf', 'html', 'txt'];
@@ -211,19 +217,19 @@ export class DocsService {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number) {
+  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number, opts: { quiet?: boolean } = {}) {
     const { row } = await this.requireDoc(actor, id, 'viewer');
     if (row.type === 'form') throw new BadRequestException('Forms have no file format — download the responses as CSV (Responses tab) or link them to a spreadsheet');
     if (row.type === 'presentation') {
       if (!SLIDE_FORMATS.includes(format)) throw new BadRequestException(`Presentations export as ${SLIDE_FORMATS.join(', ')}`);
       const f = await this.slides.export(id, row.name, format as SlideExportFormat, this.imageLoader(id), { author: actor.name, slide });
-      await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
+      if (!opts.quiet) await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
       return f;
     }
     if (row.type === 'spreadsheet') {
       if (!SHEET_FORMATS.includes(format)) throw new BadRequestException(`Spreadsheets export as ${SHEET_FORMATS.join(', ')}`);
       const f = await this.sheets.export(id, row.name, format as SheetExportFormat, { author: actor.name, sheetId });
-      await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
+      if (!opts.quiet) await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
       return f;
     }
     if (!TEXT_FORMATS.includes(format)) throw new BadRequestException(`Documents export as ${TEXT_FORMATS.join(', ')}`);
@@ -264,7 +270,7 @@ export class DocsService {
       });
       body = format === 'pdf' ? await this.pdf.render(html, { pageSetup, title }) : Buffer.from(html, 'utf8');
     }
-    await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
+    if (!opts.quiet) await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
     return { name, mime: EXPORT_MIME[format as keyof typeof EXPORT_MIME], body };
   }
 
@@ -459,6 +465,42 @@ export class DocsService {
     const created = await create(`Comparison of ${baseName(row.name)} and ${baseName(other.name)}`, row.parentId ?? null, row.spaceId ?? null);
     await this.collab.replaceContent(created.id, json, { id: actor.id, name: actor.name });
     return { ...created, changes: changeCount(json) };
+  }
+
+  // ── Publish to web (docs/ARCHITECTURE.md §42) ───────────────────────────────
+
+  /** Publishes (or stops publishing) a document, spreadsheet or presentation; the link stays the same when republished. */
+  async publish(actor: Actor, id: string, on: boolean) {
+    const { row } = await this.requireDoc(actor, id, 'editor');
+    if (!['document', 'wiki', 'spreadsheet', 'presentation'].includes(row.type)) throw new BadRequestException('Only documents, spreadsheets and presentations can be published');
+    const meta = { ...((row.metadata as Record<string, unknown>) ?? {}) };
+    const current = meta.publish as { token: string } | undefined;
+    if (on) meta.publish = { token: current?.token ?? randomBytes(16).toString('base64url'), at: new Date().toISOString(), by: actor.id };
+    else delete meta.publish;
+    await this.db.update(resources).set({ metadata: meta }).where(eq(resources.id, id));
+    await this.events.emit(this.db, actor, on ? 'resource.published' : 'resource.unpublished', { resourceId: id, spaceId: row.spaceId }, { name: row.name });
+    return { published: on, token: on ? (meta.publish as { token: string }).token : null };
+  }
+
+  /** The published page: the current content as HTML, rendered on each request (always up to date). */
+  async published(token: string, embed: boolean): Promise<{ title: string; html: string }> {
+    if (!/^[\w-]{16,64}$/.test(token)) throw new NotFoundException('Not published');
+    const [row] = await this.db
+      .select({ id: resources.id, name: resources.name, type: resources.type, ownerId: resources.ownerId, workspaceId: resources.workspaceId, ownerName: users.name })
+      .from(resources)
+      .innerJoin(users, eq(users.id, resources.ownerId))
+      .where(and(sql`${resources.metadata}->'publish'->>'token' = ${token}`, sql`${resources.trashedAt} is null`));
+    if (!row) throw new NotFoundException('This page is not published (any more)');
+    // Rendered as the owner (the link is the permission), without logging an export each time it is opened.
+    const owner: Actor = { id: row.ownerId, name: row.ownerName, workspaceId: row.workspaceId };
+    const f = await this.export(owner, row.id, 'html', undefined, undefined, { quiet: true });
+    let html = f.body.toString('utf8');
+    const title = baseName(row.name);
+    const extra = `<meta name="robots" content="noindex"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${PUBLISH_CSS}${row.type === 'presentation' ? PUBLISH_SLIDES_CSS : ''}</style>`;
+    html = html.replace('</head>', `${extra}</head>`);
+    if (row.type === 'presentation') html = html.replace('</body>', `<script>${PUBLISH_SLIDES_JS}</script></body>`);
+    if (!embed) html = html.replace(/<body([^>]*)>/, `<body$1><div class="mo-pub-bar">Published with Master Office · <b>${title.replace(/</g, '&lt;')}</b> · updated automatically</div>`);
+    return { title, html };
   }
 
   async createVersion(actor: Actor, id: string, label: string | null) {

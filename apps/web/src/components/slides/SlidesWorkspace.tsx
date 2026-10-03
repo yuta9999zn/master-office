@@ -68,6 +68,7 @@ import {
   Underline,
   Undo2,
   X,
+  Globe,
   Group as GroupIcon,
   Network,
   WholeWord,
@@ -86,6 +87,7 @@ import * as Y from 'yjs';
 import { uploadFile } from '@/lib/api';
 import { useComments, useMe, useResourceActions, useResourceMembers, useVersionActions, useVersionContent } from '@/lib/queries';
 import { ShareDialog } from '../drive/dialogs';
+import { PublishDialog } from '../editor/PublishDialog';
 import { ImportBanner } from '../docs/DocsWorkspace';
 import { HistoryPanel } from '../docs/HistoryPanel';
 import { useCollab } from '../docs/useCollab';
@@ -162,6 +164,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const imageInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const [videoDialog, setVideoDialog] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [diagramDialog, setDiagramDialog] = useState(false);
   const replaceTarget = useRef<string | null>(null);
 
@@ -766,6 +769,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             )}
             <MenuItem icon={<Printer />} onSelect={() => window.open(exportUrl('pdf', '&inline=1'), '_blank')}>
               Print (PDF)
+            </MenuItem>
+            <MenuItem icon={<Globe />} onSelect={() => setPublishOpen(true)}>
+              Publish to web…
             </MenuItem>
             <MenuSeparator />
             <MenuItem icon={<History />} onSelect={() => setTab('History')}>
@@ -1413,6 +1419,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       </div>
 
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
       <Dialog open={shortcuts} onOpenChange={setShortcuts} title="Keyboard shortcuts" width={520}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
           {[
