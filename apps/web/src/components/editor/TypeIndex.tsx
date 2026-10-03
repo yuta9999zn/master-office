@@ -5,6 +5,7 @@ import { Plus, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { SlideTemplates } from '../slides/SlideTemplates';
+import { DocTemplates, SheetTemplates } from './TemplateGallery';
 import { appById } from '@/lib/apps';
 import { useResourceActions, useResources } from '@/lib/queries';
 import { hrefFor, TYPE_META } from '@/lib/resources';
@@ -26,7 +27,7 @@ export function TypeIndex({ appId, type }: { appId: string; type: ResourceType }
     const r = await create.mutateAsync({ type, name: `Untitled ${label}` });
     router.push(hrefFor(r));
   };
-  // Presentations start from the template gallery.
+  // Documents, spreadsheets and presentations start from the template gallery.
   const [busy, setBusy] = useState<string | null>(null);
   const fromTemplate = async (template: string | null, name: string) => {
     setBusy(template ?? 'blank');
@@ -58,6 +59,10 @@ export function TypeIndex({ appId, type }: { appId: string; type: ResourceType }
 
         {type === 'presentation' ? (
           <SlideTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
+        ) : type === 'document' ? (
+          <DocTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
+        ) : type === 'spreadsheet' ? (
+          <SheetTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
         ) : (
         <button onClick={createNew} className="card mt-6 flex w-56 flex-col items-center gap-3 p-6 transition hover:-translate-y-px hover:shadow-[var(--shadow-pop)]">
           <span className="flex size-14 items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: app.to, color: app.to }}>

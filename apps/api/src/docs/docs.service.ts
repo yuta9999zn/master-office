@@ -505,6 +505,11 @@ export class DocsService {
     return { title, html };
   }
 
+  /** A new document created from the template gallery (doc-model DOC_TEMPLATES). */
+  fillTemplate(id: string, json: JSONContent, actor: Actor) {
+    return this.collab.replaceContent(id, json, { id: actor.id, name: actor.name });
+  }
+
   // ── Activity dashboard (docs/ARCHITECTURE.md §43) ───────────────────────────
 
   private recordView(actor: Actor, id: string) {

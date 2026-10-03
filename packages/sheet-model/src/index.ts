@@ -284,3 +284,4 @@ export function workbookText(wb: PlainWorkbook, limit = 200_000): string {
 export * from './format';
 export * from './charts';
 export * from './pivots';
+export * from './templates';

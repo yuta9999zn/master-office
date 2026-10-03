@@ -144,7 +144,7 @@ export interface CreateResourceInput {
   type: ResourceType;
   parentId?: string | null;
   spaceId?: string | null;
-  /** Presentations: template id. */
+  /** Documents, spreadsheets, presentations: template id (doc-model / sheet-model / slide-model templates). */
   template?: string;
 }
 

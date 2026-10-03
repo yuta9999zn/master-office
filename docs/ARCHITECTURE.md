@@ -740,3 +740,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Endpoint | `GET /api/resources/:id/activity-dashboard` → `viewers` (lần xem cuối, tổng lượt), `trend` 30 ngày (`generate_series`: số người xem khác nhau + số bình luận mỗi ngày, ngày trống = 0), `sharing` (audit: created, acl.changed, published, unpublished, moved — 40 mục mới nhất). |
 | Giao diện | Tabs: Viewers (bảng + "Has access, not viewed yet" từ danh sách thành viên), Viewer trend, Comment trend (cột một chuỗi, đầu bo tròn, tooltip khi hover cả cột ngày — tự neo trái/phải để không tràn), Sharing history. |
 | Test | `publish-flow.mjs` bước 5: Mika mở tài liệu → Claudia thấy cả hai người xem, có cột hôm nay, lịch sử có "published it to the web". |
+
+## 44. Chung — Thư viện templates (Docs, Sheets): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Nguồn | Template là **code trong model dùng chung**, giống Slides (§35): `doc-model/templates.ts` (`DOC_TEMPLATES`: Meeting notes, Project proposal, Weekly report, Product spec, Business letter, Resume) và `sheet-model/templates.ts` (`SHEET_TEMPLATES`: To-do list, Monthly budget, Invoice, Project tracker, Weekly schedule, Expense report). Không lưu trong DB → không cần seed, có version theo git, thumbnail và file tạo ra luôn khớp nhau. |
+| Tạo file | `POST /api/resources {type, name, template}`. Spreadsheet: `sheets.init(id, templateWorkbook(...))`. Document: `docs.fillTemplate` → `collab.replaceContent` (giống import DOCX). Template không tồn tại → file trống. |
+| Bảng tính | Ô công thức chỉ lưu `f` (không có kết quả cache); lưới tự tính khi mở, XLSX export yêu cầu Excel tính lại. Ngày dùng serial date + định dạng `yyyy/mm/dd`; hàng tiêu đề tô màu nhấn của template, cố định hàng tiêu đề, màu tab. |
+| Thumbnail | Docs: HTML của `toHTML` (cùng bộ xuất) trong trang 640 px, thu nhỏ bằng `transform: scale` (`.mo-tpl-page`). Sheets: góc trên-trái sheet đầu (cột nguyên vẹn, tối đa 5 cột / ≥ 420 px, 14 hàng) với nền, đậm, màu, định dạng số; chữ tràn sang ô trống bên phải như lưới; ô công thức để trống. Slides vẫn dùng `SlideTemplates`. |
+| Giao diện | Trang Docs / Sheets: hàng "Start a new document / spreadsheet" (Blank + 6 template) thay cho nút Blank. |
+| Test | `apps/web/e2e/templates-flow.mjs` (4 bước): gallery Docs có đủ template và preview; mở Meeting notes → tài liệu có nội dung template (cả bản lưu trên server); gallery Sheets; Invoice → CSV có dòng hàng và "Total due". File tạo trong test bị xoá cuối bài. |

@@ -158,3 +158,15 @@ body {
 .mo-editor .mo-column { min-width: 0; border-radius: 4px; outline: 1px dashed transparent; outline-offset: 4px; }
 .mo-editor[contenteditable='true'] .mo-column { outline-color: #e2e8f0; }
 .mo-editor .mo-column > :first-child { margin-top: 0; }
+
+/* Template gallery: a document's first page, scaled down (components/editor/TemplateGallery.tsx). */
+.mo-tpl-page { padding: 44px 52px; color: #0f172a; font-size: 14px; line-height: 1.55; font-family: Inter, 'Segoe UI', Arial, sans-serif; }
+.mo-tpl-page h1 { font-size: 30px; font-weight: 700; line-height: 1.2; margin: 0 0 14px; }
+.mo-tpl-page h2 { font-size: 20px; font-weight: 600; margin: 20px 0 8px; }
+.mo-tpl-page h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; }
+.mo-tpl-page p { margin: 5px 0; min-height: 1em; }
+.mo-tpl-page ul, .mo-tpl-page ol { padding-left: 24px; margin: 4px 0; } .mo-tpl-page ul { list-style: disc; } .mo-tpl-page ol { list-style: decimal; }
+.mo-tpl-page ul.task-list { list-style: none; padding-left: 4px; } .mo-tpl-page .task-item { display: flex; gap: 6px; align-items: baseline; } .mo-tpl-page .task-item p { margin: 0; }
+.mo-tpl-page table { border-collapse: collapse; width: 100%; margin: 8px 0; } .mo-tpl-page th, .mo-tpl-page td { border: 1px solid #d7dde6; padding: 4px 8px; text-align: left; } .mo-tpl-page th { background: #eef4ff; }
+.mo-tpl-page .callout { background: #eff5ff; border: 1px solid #dbe7fe; border-radius: 10px; padding: 8px 14px; margin: 8px 0; }
+.mo-tpl-page hr { border: none; border-top: 1px solid #e6eaf0; margin: 14px 0; }

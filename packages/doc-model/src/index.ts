@@ -23,6 +23,7 @@ export * from './columns-md';
 import { chartText, DocChart, type ChartPainter, type DocChartSpec } from './doc-chart';
 export * from './doc-chart';
 export * from './compare';
+export * from './templates';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';

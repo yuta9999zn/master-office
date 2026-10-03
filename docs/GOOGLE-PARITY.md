@@ -81,7 +81,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 
 ## 5. Tính năng chung còn thiếu (mọi editor)
 
-Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewing** · publish to web / embed ✅ · email cho cộng tác viên · activity dashboard (ai đã xem) ✅ · cài đặt thông báo · thư viện templates · offline đầy đủ.
+Spelling & grammar · translate · explore / AI (Phase 6) · chế độ **Viewing** · publish to web / embed ✅ · email cho cộng tác viên · activity dashboard (ai đã xem) ✅ · cài đặt thông báo · thư viện templates ✅ · offline đầy đủ.
 
 ---
 

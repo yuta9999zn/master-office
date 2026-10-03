@@ -1,3 +1,5 @@
+import { templateDocument } from '@workos/doc-model';
+import { templateWorkbook } from '@workos/sheet-model';
 import { templateDeck } from '@workos/slide-model';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
 import {
@@ -268,7 +270,9 @@ export class ResourcesService {
       await this.events.emit(tx, actor, 'resource.created', { resourceId: id, spaceId: t.spaceId }, { name: row.name, type: row.type });
       return (await this.toDtos(actor, [row], tx))[0];
     });
-    if (dto.type === 'spreadsheet') await this.sheets.init(dto.id);
+    if (dto.type === 'spreadsheet') await this.sheets.init(dto.id, templateWorkbook(input.template, dto.name) ?? undefined);
+    const body = dto.type === 'document' ? templateDocument(input.template, dto.name) : null;
+    if (body) await this.docs.fillTemplate(dto.id, body, actor);
     if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name, templateDeck(input.template, dto.name));
     if (dto.type === 'form') await this.forms.init(dto.id, dto.name);
     return dto;
