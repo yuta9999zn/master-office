@@ -577,3 +577,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | UI | Insert → Pivot table (vùng chọn hoặc vùng dữ liệu) tạo sheet "Pivot table N" + panel editor; nút **Edit pivot table** hiện khi ô chọn nằm trong bảng; xoá sheet đích xoá luôn định nghĩa. |
 | Giới hạn | Chưa có calculated field, "show as % of", nhóm theo ngày/khoảng số, GETPIVOTDATA; server chưa tự tính lại khi nguồn đổi lúc không ai mở file. |
 | Test | `sheets-flow.mjs`: dựng bảng (rows, columns, values) → Mika sửa nguồn → Claudia nhận bảng mới → filter → xoá. |
+
+## 28. Phase 3.1 — Con trỏ cộng tác, named range, bảo vệ vùng: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Con trỏ người khác | Vùng chọn + sheet đang xem đi qua **awareness** (`sheet: {sheetId, range}`); mỗi người khác được vẽ bằng `FRange.highlight()` theo màu của họ (Univer lo cuộn / zoom / freeze) + nhãn tên qua canvas popup (`presence.tsx`). Vẽ lại khi awareness đổi, đổi sheet, đổi cấu trúc, và định kỳ 4 s (sau một lần dựng lại workbook). |
+| Named range, xoay chữ | Defined names là resource (`SHEET_DEFINED_NAME_PLUGIN`) → đồng bộ như plugin khác, công thức `=SUM(Tên)` tính đúng ở mọi máy. Xoay chữ là style `tr` → đồng bộ sẵn. |
+| Bảo vệ vùng / sheet | Authz mặc định của Univer chỉ dựa vai trò (mọi editor đều là "owner"). Thay bằng `MoAuthzService` (`authz.ts`, `override` của `createUniver`): mỗi rule lưu **người tạo**, danh sách được sửa, phạm vi xem/sửa; dữ liệu đi cùng workbook (resource). Chỉ người tạo đổi / gỡ được bảo vệ; viewer không bao giờ sửa. Sau khi workbook được dựng lại live, `refreshProtection` tính lại permission point (Univer chỉ tính lúc mở trang). |
+| Giới hạn | Bảo vệ được kiểm trong editor (như Google: chống sửa nhầm), server chưa chặn ghi Yjs vào vùng bảo vệ. |
+| Test | `sheets-flow.mjs`: Mika thấy con trỏ của Claudia, xoay chữ, `=SUM(Nums)`; vùng bảo vệ cho Mika sửa, Sora (editor ngoài danh sách) bị chặn, kể cả sau khi mở lại. |

@@ -18,6 +18,8 @@ import type * as Y from 'yjs';
 import { SheetBinding, type UniverAPI } from './binding';
 import { CHART_COMPONENT, chartContexts, SheetChart } from './charts/SheetChart';
 import { PivotEngine } from './pivots/pivot-engine';
+import { CURSOR_LABEL, CursorLabel } from './presence';
+import { MoAuthzService, refreshProtection } from './authz';
 
 export interface GridHandle {
   api: UniverAPI;
@@ -108,6 +110,8 @@ export function UniverGrid({
         if (disposed || !host.current) return;
         const { createUniver, LocaleType, mergeLocales } = presets;
         const { univer, univerAPI } = createUniver({
+          // Protected ranges know who made them and who may edit (see authz.ts).
+          override: [[presets.IAuthzIoService, { useFactory: (res: unknown, users: unknown) => new MoAuthzService(res, users), deps: [presets.IResourceManagerService, presets.UserManagerService] }]] as never,
           locale: LocaleType.EN_US,
           locales: {
             [LocaleType.EN_US]: mergeLocales(enCore.default, enFilter.default, enSort.default, enCf.default, enDv.default, enFr.default, enLink.default, enNote.default, enComment.default, enDrawing.default, enTable.default),
@@ -138,9 +142,12 @@ export function UniverGrid({
         // Charts are DOM drawings: the component must exist before the workbook (and its drawings) load.
         chartContexts.set(unitId, { doc, api: univerAPI });
         univerAPI.registerComponent(CHART_COMPONENT, SheetChart as never, { framework: 'react' } as never);
+        univerAPI.registerComponent(CURSOR_LABEL, CursorLabel as never, { framework: 'react' } as never);
         const binding = new SheetBinding(univerAPI, doc, unitId, {
           editable,
           resources: injector.get(presets.IResourceManagerService),
+          // A live rebuild does not re-check protected ranges: do it, or everyone would be locked out of them.
+          onReload: () => setTimeout(() => void refreshProtection(injector, { ...presets, ...core }, univerAPI, unitId).catch((e) => console.error('[sheets] protection', e)), 0),
           onError: (e) => console.error('[sheets] binding', e),
         });
         binding.start();

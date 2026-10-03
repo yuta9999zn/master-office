@@ -17,6 +17,7 @@ import { ChartEditor } from './charts/ChartEditor';
 import { insertChart } from './charts/chart-actions';
 import { insertCheckboxes, trimWhitespace } from './data-tools';
 import { PivotEditor } from './pivots/PivotEditor';
+import { RemoteCursors } from './presence';
 import { insertPivot, pivotAt } from './pivots/pivot-engine';
 import { ColumnStatsPanel, RemoveDuplicatesDialog, runSplit } from './DataTools';
 import type { GridHandle } from './UniverGrid';
@@ -98,6 +99,14 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     window.addEventListener('mo-chart-edit', onEdit);
     return () => window.removeEventListener('mo-chart-edit', onEdit);
   }, [r.id]);
+  // Other people's selections on the grid.
+  useEffect(() => {
+    const aw = collab.session?.provider.awareness;
+    if (!grid || !aw) return;
+    const cursors = new RemoteCursors(grid.api, r.id, aw as never);
+    cursors.start();
+    return () => cursors.destroy();
+  }, [grid, collab.session, r.id]);
   // "Edit pivot table" appears while the selection is inside one (like Google Sheets).
   useEffect(() => {
     const doc = collab.session?.doc;

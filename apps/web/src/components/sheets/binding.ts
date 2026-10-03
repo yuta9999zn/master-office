@@ -414,7 +414,7 @@ export class SheetBinding {
       default:
         // Plugin state (filters, conditional formats, data validation, hyperlinks, protection, notes, comments,
         // drawings, tables) is synced as resources.
-        if (/filter|conditional|data-validation|hyper-link|protection|range-theme|note|comment|drawing|table/i.test(id)) this.dirty.resources = true;
+        if (/filter|conditional|data-validation|hyper-link|protection|range-theme|note|comment|drawing|table|defined-name/i.test(id)) this.dirty.resources = true;
         else return;
     }
     this.scheduleFlush();
@@ -685,7 +685,7 @@ export class SheetBinding {
       });
       // Permission points are rebuilt with the workbook: unloading them alone breaks Univer's permission service.
       // Drawings (images, charts) are only rendered when the workbook loads: reloading the model alone draws nothing.
-      if (changed.some((n) => /PROTECTION|DRAWING/.test(n) || !hooks.some((h) => h.pluginName === n))) return false;
+      if (changed.some((n) => /PROTECTION|DRAWING|AuthzIo/.test(n) || !hooks.some((h) => h.pluginName === n))) return false;
       for (const name of changed) {
         const hook = hooks.find((h) => h.pluginName === name)!;
         hook.onUnLoad(this.unitId);

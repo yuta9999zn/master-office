@@ -227,6 +227,44 @@ await step('pivot tables: build, filter, follow the source, sync and delete', cl
   if (await mika.evaluate(() => window.__moSheet.binding.doc.getMap('pivots').size)) throw new Error('definition left behind');
 });
 
+await step('cursors, named ranges, text rotation and protected ranges between editors', claudia, async () => {
+  const wbk = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Collab ' + Date.now(), type: 'spreadsheet' } })).json();
+  const people = await (await claudia.request.get(`${BASE}/api/users`)).json();
+  const idOf = (email) => people.find((u) => u.email === email).id;
+  for (const email of ['mika@kaori.jp', 'sora@kaori.jp']) await claudia.request.post(`${BASE}/api/resources/${wbk.id}/members`, { data: { userId: idOf(email), role: 'editor' } });
+  const sora = await session('sora@kaori.jp');
+  for (const p of [claudia, mika, sora]) {
+    await p.goto(`${BASE}/sheets/${wbk.id}`);
+    await ready(p, wbk.id);
+  }
+  // Edits go through Univer's commands, which check the range permissions like typing does.
+  const setAt = (p, a1, v) => p.evaluate(([a, x]) => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange(a).setValue(x), [a1, v]);
+  await claudia.evaluate(async (mikaId) => {
+    const wb = window.__moSheet.api.getActiveWorkbook();
+    const ws = wb.getActiveSheet();
+    ws.getRange('A1:A3').setValues([[1], [2], [3]]);
+    ws.getRange('B1').setValue('Rotated').setTextRotation(45);
+    wb.insertDefinedName('Nums', 'Sheet1!$A$1:$A$3');
+    await ws.getRange('A1:A3').getRangePermission().protect({ name: 'Locked numbers', allowedUsers: [mikaId] });
+    ws.getRange('C3:D5').activate();
+  }, idOf('mika@kaori.jp'));
+  await mika.getByTestId('sheet-cursor').filter({ hasText: 'Claudia' }).waitFor();
+  await until(mika, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('B1').getCellStyleData()?.tr?.a === 45);
+  await mika.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('E1').setFormula('=SUM(Nums)'));
+  await until(claudia, () => window.__moSheet.value('Sheet1', 'E1') === 6);
+  // Mika is on the rule's list, Sora is not — also after reopening.
+  await until(sora, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('A2').getRangePermission().isProtected());
+  await sora.reload();
+  await ready(sora, wbk.id);
+  await sora.waitForTimeout(1000);
+  await setAt(sora, 'A2', 99);
+  await setAt(mika, 'A3', 30);
+  await until(claudia, () => window.__moSheet.value('Sheet1', 'A3') === 30);
+  await claudia.waitForTimeout(800);
+  if ((await value(claudia, 'Sheet1', 'A2')) !== 2) throw new Error('Sora edited a protected range');
+  await sora.close();
+});
+
 // ── Excel formula parity ─────────────────────────────────────────────────────
 const created = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Formula parity ' + Date.now(), type: 'spreadsheet' } })).json();
 const mismatches = [];
