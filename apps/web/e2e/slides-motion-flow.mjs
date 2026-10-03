@@ -290,6 +290,42 @@ await step('connectors: ends snap to shapes, follow them when moved, detach when
   }, [sid, conn]);
 });
 
+await step('diagram (hierarchy, 4 items) inserted as one group; a duplicate keeps its own connectors; word art', claudia, async () => {
+  const sid = await claudia.evaluate(() => window.__moDeck.addSlide('blank', 2));
+  await claudia.locator('[data-testid="slide-thumb"]').nth(2).click();
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Diagram…' }).click();
+  await claudia.getByTestId('diagram-hierarchy').click();
+  await claudia.getByLabel('More items').click();
+  if ((await claudia.getByTestId('diagram-count').innerText()) !== '4') throw new Error('count');
+  await claudia.getByTestId('insert-diagram').click();
+  const check = (expectedBoxes) =>
+    until(mika, ([s, n]) => {
+      const els = window.__moDeck.snapshot.slides.find((x) => x.id === s)?.elements ?? [];
+      const ids = new Set(els.map((e) => e.id));
+      const groups = new Map();
+      for (const e of els) if (e.group) groups.set(e.group, [...(groups.get(e.group) ?? []), e]);
+      if (groups.size !== n) return false;
+      // Every connector points at boxes of its own group.
+      return [...groups.values()].every((g) => {
+        const own = new Set(g.map((e) => e.id));
+        const conns = g.filter((e) => e.conn);
+        return g.length === 7 && conns.length === 3 && conns.every((c) => own.has(c.conn.from.id) && own.has(c.conn.to.id) && ids.has(c.conn.to.id));
+      });
+    }, [sid, expectedBoxes]);
+  await check(1);
+  await claudia.keyboard.press('Control+d');
+  await check(2);
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Word art' }).click();
+  await claudia.keyboard.type('Grand opening');
+  await claudia.keyboard.press('Escape');
+  await until(mika, (s) => {
+    const html = [...document.querySelectorAll('[data-testid="slide-thumb"]')].map((t) => t.innerHTML).join('');
+    return html.includes('Grand opening') && !html.includes('Word art') && html.includes('-webkit-text-stroke');
+  }, sid);
+});
+
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');
 if (errors.length) fails++;
 console.log(fails ? `${fails} failed` : 'all passed');

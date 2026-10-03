@@ -17,7 +17,7 @@
 //                                      }>
 //                          }
 import * as Y from 'yjs';
-import type { Connector } from './connectors';
+import { remapConnectors, type Connector } from './connectors';
 import type { MediaOptions } from './media';
 
 export const DECK_MAP = 'deck';
@@ -95,6 +95,9 @@ export interface ElementStyle {
   fontFamily?: string;
   color?: string;
   bold?: boolean;
+  /** Word art: outline around the letters (colour, width in px). */
+  outline?: string;
+  outlineWidth?: number;
   align?: 'left' | 'center' | 'right' | 'justify';
   vAlign?: 'top' | 'middle' | 'bottom';
   lineHeight?: number;
@@ -603,7 +606,8 @@ export function readDeck(doc: Y.Doc): PlainDeck {
 
 /** Fresh ids for a slide and its elements (duplicate slide, paste, copy of a deck). */
 export function cloneSlide(s: PlainSlide): PlainSlide {
-  return { ...structuredClone(s), id: newId(), elements: regroup(s.elements.map((e) => ({ ...structuredClone(e), id: newId() }))) };
+  const ids = new Map(s.elements.map((e) => [e.id, newId()]));
+  return { ...structuredClone(s), id: newId(), elements: remapConnectors(regroup(s.elements.map((e) => ({ ...structuredClone(e), id: ids.get(e.id)! }))), ids) };
 }
 
 /** Fresh group ids for copied elements, so a pasted copy never joins the original's group. */
@@ -703,5 +707,6 @@ export function slideTitle(s: PlainSlide): string {
 }
 
 export * from './connectors';
+export * from './diagrams';
 export * from './media';
 export * from './render';

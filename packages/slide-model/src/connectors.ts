@@ -50,3 +50,14 @@ export function resolveConnectors(slide: PlainSlide): PlainSlide {
     }),
   };
 }
+
+/** After copying elements under new ids: connectors point at the copies of the shapes copied with them. */
+export function remapConnectors(els: PlainElement[], ids: Map<string, string>): PlainElement[] {
+  return els.map((e) => {
+    if (!e.conn || !(e.conn.from || e.conn.to)) return e;
+    const end = (x?: { id: string; site: ConnSite }) => (x ? { ...x, id: ids.get(x.id) ?? x.id } : undefined);
+    const from = end(e.conn.from);
+    const to = end(e.conn.to);
+    return { ...e, conn: { ...e.conn, ...(from ? { from } : {}), ...(to ? { to } : {}) } };
+  });
+}

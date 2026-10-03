@@ -4,13 +4,16 @@ import type { Editor } from '@tiptap/react';
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import {
+  diagramElements,
   FONTS,
   isLine,
   LAYOUTS,
   SHAPES,
   slideTitle,
+  textDoc,
   textOf,
   type ChartSpec,
+  type DiagramKind,
   type Geometry,
   type LayoutId,
   type PlainDeck,
@@ -66,6 +69,8 @@ import {
   Undo2,
   X,
   Group as GroupIcon,
+  Network,
+  WholeWord,
   Spline,
   Music,
   Video as VideoIcon,
@@ -87,6 +92,7 @@ import { useCollab } from '../docs/useCollab';
 import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar';
 import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 import { allRunsHave, DeckStore, LOCAL, setAlignEverywhere, setMarkEverywhere, setTextStyleEverywhere, useDeck, type DeckSnapshot } from './deck-store';
+import { DiagramDialog } from './DiagramDialog';
 import { VideoDialog } from './MediaDialog';
 import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
@@ -156,6 +162,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const imageInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const [videoDialog, setVideoDialog] = useState(false);
+  const [diagramDialog, setDiagramDialog] = useState(false);
   const replaceTarget = useRef<string | null>(null);
 
   const slides = deck?.slides ?? [];
@@ -303,13 +310,35 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
     store.checkpoint();
   };
 
+  // ── Diagrams & word art ──────────────────────────────────────────────────
+  const insertDiagram = (kind: DiagramKind, count: number, color: number | 'multi') => {
+    if (!store || !slide || !deck) return;
+    setDiagramDialog(false);
+    store.checkpoint();
+    setSelection(store.addElements(slide.id, diagramElements(kind, { count, color }, deck.size)));
+    store.checkpoint();
+  };
+  const insertWordArt = () =>
+    insert(
+      {
+        type: 'text',
+        x: W / 2 - 360,
+        y: H / 2 - 70,
+        w: 720,
+        h: 140,
+        style: { fontSize: 66, bold: true, color: '@accent1', outline: '@title', outlineWidth: 1, align: 'center', vAlign: 'middle' },
+        text: textDoc('Word art', { align: 'center' }),
+      },
+      'selectAll',
+    );
+
   // ── Insert ───────────────────────────────────────────────────────────────
-  const insert = (el: Omit<PlainElement, 'id' | 'z'>, edit = false) => {
+  const insert = (el: Omit<PlainElement, 'id' | 'z'>, edit: boolean | 'selectAll' = false) => {
     if (!store || !slide || !editable) return;
     store.checkpoint();
     const ids = store.addElements(slide.id, [{ ...el, id: '', z: 0 }]);
     setSelection(ids);
-    if (edit) setEditing(ids[0]);
+    if (edit) setEditing(ids[0], edit === 'selectAll');
     store.checkpoint();
   };
   const W = deck?.size.w ?? 1280;
@@ -823,6 +852,12 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             <MenuItem icon={<ImageIcon />} disabled={!editable} onSelect={() => imageInput.current?.click()}>
               Picture…
             </MenuItem>
+            <MenuItem icon={<Network />} disabled={!editable} onSelect={() => setDiagramDialog(true)}>
+              Diagram…
+            </MenuItem>
+            <MenuItem icon={<WholeWord />} disabled={!editable} onSelect={insertWordArt}>
+              Word art
+            </MenuItem>
             <MenuItem icon={<VideoIcon />} disabled={!editable} onSelect={() => setVideoDialog(true)}>
               Video…
             </MenuItem>
@@ -1188,6 +1223,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
           if (f) void insertMedia('audio', f);
         }}
       />
+      {deck && <DiagramDialog open={diagramDialog} onOpenChange={setDiagramDialog} deck={deck} onInsert={insertDiagram} />}
       <VideoDialog open={videoDialog} onOpenChange={setVideoDialog} onLink={(u) => void insertMedia('video', u)} onFile={(f) => void insertMedia('video', f)} />
 
       <ImportBanner report={report} canEdit={editable} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />

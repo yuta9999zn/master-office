@@ -15,6 +15,7 @@ import {
   ORDER_ARRAY,
   readSlide,
   regroup,
+  remapConnectors,
   slideIds,
   SLIDES_MAP,
   type Crop,
@@ -290,8 +291,10 @@ export class DeckStore {
     this.tx(() => {
       const map = this.elements(slideId);
       if (!map) return;
-      for (const e of regroup(els)) {
-        const el = { ...structuredClone(e), id: newId(), z: ++z };
+      // Fresh ids; groups and connectors are re-linked among the copies.
+      const fresh = new Map(els.map((e) => [e.id, newId()]));
+      for (const e of remapConnectors(regroup(els), fresh)) {
+        const el = { ...structuredClone(e), id: fresh.get(e.id) ?? newId(), z: ++z };
         const y = createYElement(el);
         map.set(el.id, y.map);
         y.fill();

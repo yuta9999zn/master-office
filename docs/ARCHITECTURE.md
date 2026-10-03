@@ -637,3 +637,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Editor | Kéo đầu mút: hiện 4 điểm nối của hình gần nhất, bắt dính trong 14 px (Alt để bỏ bắt dính); thả ra ngoài thì tách. Kéo cả đường nối đi chỗ khác thì nhả các hình (trừ khi hình di chuyển cùng). Insert → Straight / Elbow / Curved connector; tab Format: kiểu đường nối, mũi tên. |
 | Vẽ | Elbow: ra vuông góc với cạnh đang bám, gấp ở giữa; curved: Bézier bậc ba với tay nắm theo pháp tuyến cạnh. PPTX: xuất đúng vị trí, elbow/curved thành đường thẳng (báo trong report). |
 | Test | `slides-motion-flow.mjs`: kéo hai đầu elbow connector vào cạnh phải / trái của hai hình → người kia thấy `from/to`; người kia di chuyển hình → đường nối của người này đi theo; kéo đường nối → tách. |
+
+## 34. Phase 4.1 — Slides: sơ đồ & word art: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Sơ đồ | `diagramElements(kind, {count, color}, size)` (`packages/slide-model/src/diagrams.ts`) sinh một **nhóm** hình + chữ + connector: Process (mũi tên nối các bước), Timeline (trục + mốc trên/dưới), Cycle (vòng tròn nối mũi tên theo chiều kim đồng hồ), Hierarchy (gốc → nhánh bằng elbow connector), Grid, Relationship (Venn). Màu là tham chiếu theme (`@accentN`) nên đổi theme là đổi màu; một màu hoặc "Multi". Sau khi chèn là hình thường: sửa chữ, kéo, bỏ nhóm. |
+| Hộp thoại | Insert → Diagram…: 6 kiểu có hình xem trước, số mục (+/−, giới hạn theo kiểu), màu, xem trước lớn. |
+| Sao chép | Dán / nhân bản / nhân bản slide cấp id mới và **nối lại connector** với bản sao của các hình được sao chép cùng (`remapConnectors`) — trước đây bản sao sẽ trỏ về hình gốc. |
+| Word art | `style.outline` + `outlineWidth` (viền chữ, vẽ sau phần tô bằng `paint-order` nên viền dày không ăn vào nét chữ). Insert → Word art chèn khung chữ lớn, chọn sẵn chữ mẫu; tab Format: "Text outline" cho mọi khung chữ. PPTX: viền chữ native (`a:ln` của run). |
+| Test | `slides-motion-flow.mjs`: hierarchy 4 mục → 7 phần tử một nhóm, 3 connector trỏ trong nhóm; Ctrl+D → nhóm thứ hai với connector của riêng nó; word art thay chữ mẫu, có viền. |

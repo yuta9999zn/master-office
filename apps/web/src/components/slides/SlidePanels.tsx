@@ -638,6 +638,12 @@ export function FormatTab({
               {(el.conn?.from || el.conn?.to) && <p className="text-[12px] text-muted">Attached to {[el.conn?.from, el.conn?.to].filter(Boolean).length === 2 ? 'two shapes' : 'a shape'}: it follows them when they move. Drag an end away to detach it.</p>}
             </>
           )}
+          {textual && !(one && isLine(el.geom)) && (
+            <Row label="Text outline">
+              <ColorPicker label="Text outline colour" allowNone value={S.outline} theme={deck.theme} onChange={(c) => style({ outline: c ?? undefined, outlineWidth: c ? S.outlineWidth ?? 2 : undefined })} />
+              {S.outline && <NumberField label="Text outline width" value={S.outlineWidth ?? 2} min={0.5} max={12} step={0.5} suffix="px" w={60} onCommit={(v) => style({ outlineWidth: v })} />}
+            </Row>
+          )}
           <Row label={one && isLine(el.geom) ? 'Line' : 'Border'}>
             <ColorPicker label="Border colour" allowNone value={S.stroke} theme={deck.theme} onChange={(c) => (el.type === 'text' && c ? upd({ type: 'shape', geom: 'rect', style: { stroke: c, strokeWidth: S.strokeWidth || 2 } }) : style({ stroke: c ?? undefined, strokeWidth: c ? S.strokeWidth || 2 : undefined }))} />
             <NumberField label="Border width" value={S.strokeWidth ?? (one && isLine(el.geom) ? 3 : 0)} min={0} max={40} suffix="px" w={60} onCommit={(v) => style({ strokeWidth: v })} />

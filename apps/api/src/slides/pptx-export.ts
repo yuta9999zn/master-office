@@ -83,6 +83,8 @@ export function textRuns(doc: TextNode | null | undefined, base: ElementStyle, t
   };
   walk(doc?.content, null);
   if (runs.length) delete runs[runs.length - 1].options!.breakLine;
+  const outline = hex(themeColor(base.outline, theme));
+  if (outline) for (const r of runs) r.options = { ...r.options, outline: { color: outline.color, size: base.outlineWidth ?? 2 } };
   return runs;
 }
 

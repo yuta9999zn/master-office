@@ -169,6 +169,9 @@ export function textBoxCss(style: ElementStyle | undefined, theme: Theme, ph?: s
   ];
   if (s.bold) css.push('font-weight:700');
   if (s.align) css.push(`text-align:${s.align}`);
+  const outline = themeColor(s.outline, theme);
+  // Word art: the outline is drawn behind the fill so thick outlines do not eat into the letters.
+  if (outline) css.push(`-webkit-text-stroke:${f((s.outlineWidth ?? 2) * 2)}px ${outline}`, 'paint-order:stroke fill');
   return css.join(';');
 }
 
