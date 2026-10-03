@@ -10,6 +10,7 @@ import type { ResourceType, SearchHit, UserSummary } from '@workos/shared';
 import {
   BookOpen,
   Bookmark,
+  ChartColumnBig,
   Columns2,
   Columns3,
   Footprints,
@@ -54,6 +55,7 @@ import { Avatar, cn, FileIcon } from '../ui/primitives';
 import { BookmarkWithView, DateChipWithView, DropdownChipWithView, PlaceChipWithView } from './chips';
 import { EquationWithView, FootnoteShortcut, FootnoteWithView, insertFootnote } from './notes-math';
 import { setColumns } from './columns';
+import { DocChartWithView } from './doc-chart';
 import { ResourceEmbedWithView } from './EmbedView';
 import { PageBreakWithView, TableOfContentsWithView } from './NodeViews';
 import { popupRender, type PopupItem } from './suggest-popup';
@@ -263,6 +265,8 @@ export interface SlashHandlers {
   embed: () => void;
   /** Opens the "link to a heading or bookmark" picker. */
   linkTo: () => void;
+  /** Opens Insert → Chart. */
+  chart: () => void;
 }
 
 // ── Building blocks (Google Docs: Insert → Building blocks) ──────────────────
@@ -363,6 +367,7 @@ function slashItems(h: SlashHandlers): SlashItem[] {
     { id: 'place', group: 'Smart chips', title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin />, run: (e, r) => c(e, r).insertContent([{ type: 'placeChip', attrs: { name: 'Place' } }, { type: 'text', text: ' ' }]).run() },
     { id: 'columns2', group: 'Basic', title: '2 columns', icon: <Columns2 />, run: (e, r) => (c(e, r).run(), setColumns(e, 2)) },
     { id: 'columns3', group: 'Basic', title: '3 columns', icon: <Columns3 />, run: (e, r) => (c(e, r).run(), setColumns(e, 3)) },
+    { id: 'chart', group: 'Insert', title: 'Chart', subtitle: 'From Sheets or sample data', icon: <ChartColumnBig />, run: (e, r) => (c(e, r).run(), h.chart()) },
     { id: 'footnote', group: 'Insert', title: 'Footnote', subtitle: 'Ctrl+Alt+F', icon: <Footprints />, run: (e, r) => (c(e, r).run(), insertFootnote(e)) },
     { id: 'equation', group: 'Insert', title: 'Equation', subtitle: 'LaTeX', icon: <Sigma />, run: (e, r) => c(e, r).insertContent({ type: 'equation', attrs: { latex: '' } }).run() },
     { id: 'bookmark', group: 'Insert', title: 'Bookmark', subtitle: 'A place links can jump to', icon: <Bookmark />, run: (e, r) => c(e, r).insertContent({ type: 'bookmark', attrs: { id: Math.random().toString(36).slice(2, 10) } }).run() },
@@ -376,7 +381,7 @@ const slashKey = new PluginKey('mo-slash');
 export const SlashCommands = Extension.create<{ handlers: SlashHandlers }>({
   name: 'slashCommands',
   addOptions() {
-    return { handlers: { image: () => undefined, embed: () => undefined, linkTo: () => undefined } };
+    return { handlers: { image: () => undefined, embed: () => undefined, linkTo: () => undefined, chart: () => undefined } };
   },
   addProseMirrorPlugins() {
     const all = slashItems(this.options.handlers);
@@ -466,7 +471,7 @@ export const CollapsibleHeadings = Extension.create({
 
 // ── Schema for the browser ───────────────────────────────────────────────────
 
-const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'bookmark', 'footnote', 'equation'];
+const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'bookmark', 'footnote', 'equation', 'docChart'];
 
 // ── Internal links ("#bm-<id>") ──────────────────────────────────────────────
 
@@ -521,6 +526,7 @@ export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
     BookmarkWithView,
     FootnoteWithView,
     EquationWithView,
+    DocChartWithView,
     FootnoteShortcut,
     InternalLinks,
   ];

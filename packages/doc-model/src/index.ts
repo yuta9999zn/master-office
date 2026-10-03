@@ -20,6 +20,9 @@ export * from './notes-math';
 export * from './tabs';
 import { Column, Columns } from './columns-md';
 export * from './columns-md';
+import { chartText, DocChart, type ChartPainter, type DocChartSpec } from './doc-chart';
+export * from './doc-chart';
+export * from './compare';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
 export const COLLAB_FIELD = 'default';
@@ -441,6 +444,7 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     Equation,
     Columns,
     Column,
+    DocChart,
   ];
 }
 
@@ -464,6 +468,7 @@ export function toPlainText(doc: JSONContent | null | undefined): string {
     if (n.type === 'placeChip') return n.attrs?.name ?? '';
     if (n.type === 'bookmark' || n.type === 'footnote') return '';
     if (n.type === 'equation') return String(n.attrs?.latex ?? '');
+    if (n.type === 'docChart') return chartText(n.attrs?.spec as DocChartSpec | null);
     if (n.type === 'resourceEmbed') return `[${n.attrs?.name ?? 'file'}]`;
     if (n.type === 'pageBreak' || n.type === 'tableOfContents') return '';
     const inner = (n.content ?? []).map((c) => walk(c, depth + 1));
@@ -575,7 +580,7 @@ function blockAttrs(n: JSONContent): string {
  * Self-contained HTML body for export / PDF rendering.
  * `resolveImage` lets the server inline stored images as data URIs.
  */
-export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage?: (src: string) => string } = {}): string {
+export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage?: (src: string) => string; renderChart?: ChartPainter } = {}): string {
   const headings = headingsOf(doc);
   let headingIndex = 0;
   let footnoteNo = 0;
@@ -650,6 +655,13 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return `<span class="equation">${equationHtml(String(n.attrs?.latex ?? ''), 'mathml')}</span>`;
       case 'resourceEmbed':
         return `<div class="embed">📎 ${esc(String(n.attrs?.name ?? 'Linked file'))}</div>`;
+      case 'docChart': {
+        const spec = n.attrs?.spec as DocChartSpec | null;
+        if (!spec) return '';
+        const w = Number(n.attrs?.width) || 640;
+        const h = Number(n.attrs?.height) || 360;
+        return `<figure class="chart" style="max-width:${w}px">${opts.renderChart ? opts.renderChart(spec, w, h) : `<figcaption>${esc(spec.title ?? 'Chart')}</figcaption>`}</figure>`;
+      }
       case 'columns':
         return `<div class="columns" style="grid-template-columns:repeat(${(n.content ?? []).length},minmax(0,1fr))">${inner()}</div>`;
       case 'column':
@@ -690,6 +702,7 @@ export const EXPORT_CSS = `
   .task-list { list-style: none; padding-left: 4px; } .task-item { display: flex; gap: 8px; } .task-item p { margin: 0; } .due { color: #64748b; font-size: 9pt; }
   .mention { color: #2563eb; background: #eff5ff; border-radius: 4px; padding: 0 3px; }
   .page-link { color: #2563eb; text-decoration: underline; } .status { font-weight: 600; }
+  figure.chart { margin: 1em auto; } figure.chart svg { width: 100%; height: auto; display: block; }
   .columns { display: grid; gap: 2em; margin: 1em 0; } .column > :first-child { margin-top: 0; }
   sup.fn a { text-decoration: none; color: #2563eb; } .footnotes { margin-top: 2em; border-top: 1px solid #cbd5e1; padding-top: 0.5em; font-size: 0.85em; color: #334155; } .footnotes ol { padding-left: 1.4em; }
   .chip { display: inline-block; border-radius: 999px; padding: 0 0.5em; background: #f1f5f9; color: #334155; font-size: 0.92em; text-decoration: none; }
@@ -705,7 +718,7 @@ export const EXPORT_CSS = `
 export function toHTMLDocument(
   title: string,
   doc: JSONContent | null | undefined,
-  opts: { resolveImage?: (src: string) => string; pageSetup?: PageSetup } = {},
+  opts: { resolveImage?: (src: string) => string; pageSetup?: PageSetup; renderChart?: ChartPainter } = {},
 ): string {
   const p = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
   const { w, h } = paperSize(p);

@@ -89,6 +89,7 @@ class DocxWriter {
   /** Word footnotes, numbered in document order. */
   readonly footnotes: Record<number, { children: Paragraph[] }> = {};
   private footnoteNo = 0;
+  private chartNo = 0;
   private revisionId = 1;
   constructor(
     private readonly images: Map<string, DocxImage>,
@@ -228,6 +229,13 @@ class DocxWriter {
         return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing, ...boxOf(n) })];
       case 'heading':
         return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_4, children: this.runs(n.content), alignment, spacing, ...boxOf(n) })];
+      case 'docChart': {
+        // Charts arrive rasterised (docs.service renders each one to PNG as "chart:<n>").
+        const no = ++this.chartNo;
+        const img = this.image({ type: 'image', attrs: { src: `chart:${no}` } });
+        const title = String((n.attrs?.spec as { title?: string } | null)?.title ?? 'Chart');
+        return [new Paragraph({ alignment: AlignmentType.CENTER, children: img ? [img] : [new TextRun({ text: `[${title}]`, italics: true })] })];
+      }
       case 'columns': {
         // Word columns belong to sections; a borderless one-row table keeps the side-by-side layout in place.
         const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
@@ -238,14 +246,15 @@ class DocxWriter {
             borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
             rows: [
               new TableRow({
-                children: cols.map(
-                  (col) =>
-                    new TableCell({
-                      width: { size: Math.floor(100 / Math.max(1, cols.length)), type: WidthType.PERCENTAGE },
-                      margins: { left: 120, right: 120 },
-                      children: this.cellBlocks(col.content).length ? this.cellBlocks(col.content) : [new Paragraph('')],
-                    }),
-                ),
+                children: cols.map((col) => {
+                  // Rendered once: footnote and chart numbering count every call.
+                  const blocks = this.cellBlocks(col.content);
+                  return new TableCell({
+                    width: { size: Math.floor(100 / Math.max(1, cols.length)), type: WidthType.PERCENTAGE },
+                    margins: { left: 120, right: 120 },
+                    children: blocks.length ? blocks : [new Paragraph('')],
+                  });
+                }),
               }),
             ],
           }),

@@ -1,8 +1,9 @@
 'use client';
 
 import { FootnotesList, insertFootnote } from './notes-math';
-import { BordersDialog, WatermarkDialog } from './DocFormatDialogs';
+import { BordersDialog, CompareDialog, WatermarkDialog } from './DocFormatDialogs';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
+import { ChartDialog } from './doc-chart';
 import { copyAsMarkdown, markdownPasteEnabled, pasteMarkdown, setColumns, setMarkdownPaste } from './columns';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { DEFAULT_TAB, expandTokens, paperSize, tabField, watermarkSvg, type JSONContent } from '@workos/doc-model';
@@ -140,7 +141,9 @@ function DocBody({
   const activeRef = useRef(active);
   activeRef.current = active;
 
-  const [panel, setPanel] = useState<Panel | null>('Comments');
+  // ?panel=Suggestions opens a panel directly (a comparison opens on its suggestions).
+  const [panel, setPanel] = useState<Panel | null>(() => ((typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('panel') : null) as Panel | null) ?? 'Comments');
+  const [compareOpen, setCompareOpen] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -155,6 +158,7 @@ function DocBody({
   const [viewing, setViewing] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
   const [bordersOpen, setBordersOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
   const [mdPaste, setMdPaste] = useState(true);
   useEffect(() => setMdPaste(markdownPasteEnabled()), []);
   const [zoom, setZoom] = useState(100);
@@ -190,6 +194,7 @@ function DocBody({
     onImage: () => imageInput.current?.click(),
     onEmbed: () => setEmbedOpen(true),
     field: tabField(currentTab),
+    onChart: () => setChartOpen(true),
   });
   // Viewing mode: the final text, nothing editable (suggestion marks hidden by CSS).
   useEffect(() => {
@@ -376,6 +381,9 @@ function DocBody({
           <MenuItem disabled={!canEdit} onSelect={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
             Table
           </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => setChartOpen(true)}>
+            Chart…
+          </MenuItem>
           <MenuItem disabled={!canEdit} shortcut="Ctrl+K" onSelect={openLink}>
             Link
           </MenuItem>
@@ -482,6 +490,7 @@ function DocBody({
       items: (
         <>
           <MenuItem onSelect={() => toast.info(`${words.w} words · ${words.c} characters`)}>Word count</MenuItem>
+          <MenuItem onSelect={() => setCompareOpen(true)}>Compare documents…</MenuItem>
           <MenuItem onSelect={() => (setMdPaste(!mdPaste), setMarkdownPaste(!mdPaste))}>
             {mdPaste ? '✓ ' : ''}Automatically detect Markdown
           </MenuItem>
@@ -656,6 +665,8 @@ function DocBody({
       <PageSetupDialog open={pageSetupOpen} value={pageSetup} readOnly={!canEdit} onClose={() => setPageSetupOpen(false)} onSave={updatePageSetup} />
       <WatermarkDialog open={watermarkOpen} value={pageSetup} resourceId={r.id} readOnly={!canEdit} onClose={() => setWatermarkOpen(false)} onSave={updatePageSetup} />
       <BordersDialog open={bordersOpen} editor={editor} onClose={() => setBordersOpen(false)} />
+      <ChartDialog open={chartOpen} editor={editor} onClose={() => setChartOpen(false)} />
+      <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
       <PrintPreview open={preview2 !== null} nonce={preview2 ?? 0} resourceId={r.id} onClose={() => setPreview2(null)} />
     </>
   );

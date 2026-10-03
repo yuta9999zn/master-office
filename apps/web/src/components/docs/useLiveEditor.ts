@@ -34,6 +34,7 @@ export interface LiveEditorOptions {
   onFind: (replace: boolean) => void;
   onImage: () => void;
   onEmbed: () => void;
+  onChart?: () => void;
   /** Yjs field of the body (document tabs); the editor is rebuilt when it changes. */
   field?: string;
 }
@@ -79,7 +80,7 @@ export function useLiveEditor(o: LiveEditorOptions) {
         SearchReplace,
         PageLinks,
         CollapsibleHeadings,
-        ...(canEdit ? [SlashCommands.configure({ handlers: { image: () => opts.current.onImage(), embed: () => opts.current.onEmbed(), linkTo: () => opts.current.onLink() } })] : []),
+        ...(canEdit ? [SlashCommands.configure({ handlers: { image: () => opts.current.onImage(), embed: () => opts.current.onEmbed(), linkTo: () => opts.current.onLink(), chart: () => opts.current.onChart?.() } })] : []),
         SuggestChanges.configure({ user: { id: me.id, name: me.name, color: me.avatarColor } }),
         CommentAnchors.configure({
           getThreads: () => opts.current.threadsRef.current,

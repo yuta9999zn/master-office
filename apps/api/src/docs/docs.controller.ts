@@ -24,6 +24,12 @@ export class DocsController {
     private readonly resources: ResourcesService,
   ) {}
 
+  @Post(':id/compare')
+  compare(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    const { otherId } = parse(z.object({ otherId: z.string().uuid() }), b);
+    return this.docs.compare(a, id, otherId, (name, parentId, spaceId) => this.resources.create(a, { name, type: 'document', parentId, spaceId }));
+  }
+
   @Get(':id/collab-token')
   token(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.docs.collabToken(a, id);

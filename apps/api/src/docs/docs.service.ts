@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { docExtensions, pageSetupOf, SETTINGS_MAP, toHTMLDocument, toPlainText, type JSONContent, type PageSetup } from '@workos/doc-model';
+import { changeCount, chartsOf, compareDocuments, docExtensions, pageSetupOf, SETTINGS_MAP, toHTMLDocument, toPlainText, type ChartPainter, type JSONContent, type PageSetup } from '@workos/doc-model';
+import { chartSvg, DEFAULT_THEME, SLIDE_CSS, type ChartSpec } from '@workos/slide-model';
+
+/** Document charts use the slide chart painter with the default theme. */
+const paintChart: ChartPainter = (spec, w, h) => chartSvg(spec as ChartSpec, w, h, DEFAULT_THEME);
 import type { ResourceType } from '@workos/shared';
 import { generateJSON } from '@tiptap/html/server';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -235,11 +239,24 @@ export class DocsService {
         const info = imageInfo(img.buf);
         if (info) images.set(src, { ...info, data: img.buf });
       }
+      // Word needs pictures: each chart is drawn in the headless browser and captured as PNG.
+      const charts = chartsOf(doc);
+      if (charts.length) {
+        const w = Math.max(...charts.map((c) => c.width));
+        const h = Math.max(...charts.map((c) => c.height));
+        const pages = charts.map((c) => `<div class="page" style="width:${c.width}px;height:${c.height}px;background:#fff">${paintChart(c.spec, c.width, c.height)}</div>`).join('');
+        const pngs = await this.pdf.screenshots(`<!doctype html><html><head><meta charset="utf-8"><style>${SLIDE_CSS} body{margin:0}</style></head><body>${pages}</body></html>`, { w, h });
+        pngs.forEach((png, i) => {
+          const info = imageInfo(png);
+          if (info) images.set(`chart:${i + 1}`, { ...info, width: charts[i].width, height: charts[i].height, data: png });
+        });
+      }
       body = await toDocx(title, doc, images, { author: actor.name, pageSetup });
     } else {
       const images = await this.loadImages(id, doc, [pageSetup.watermark?.image]);
       const html = toHTMLDocument(title, doc, {
         pageSetup,
+        renderChart: paintChart,
         resolveImage: (src) => {
           const img = images.get(src);
           return img ? `data:${img.mime};base64,${img.buf.toString('base64')}` : src;
@@ -429,6 +446,20 @@ export class DocsService {
   }
 
   // ── Versions ──────────────────────────────────────────────────────────────
+
+  /**
+   * Tools → Compare documents: a new document holding `otherId` written as suggestions against `id` (created by the
+   * caller-supplied `create`, so the resource lands next to the base document with the usual permissions).
+   */
+  async compare(actor: Actor, id: string, otherId: string, create: (name: string, parentId: string | null, spaceId: string | null) => Promise<{ id: string }>) {
+    const { row } = await this.requireDoc(actor, id, 'viewer');
+    const { row: other } = await this.requireDoc(actor, otherId, 'viewer');
+    if (!['document', 'wiki'].includes(row.type) || !['document', 'wiki'].includes(other.type)) throw new BadRequestException('Only documents can be compared');
+    const json = compareDocuments((await this.document(id)).json, (await this.document(otherId)).json, { authorId: actor.id, authorName: baseName(other.name) });
+    const created = await create(`Comparison of ${baseName(row.name)} and ${baseName(other.name)}`, row.parentId ?? null, row.spaceId ?? null);
+    await this.collab.replaceContent(created.id, json, { id: actor.id, name: actor.name });
+    return { ...created, changes: changeCount(json) };
+  }
 
   async createVersion(actor: Actor, id: string, label: string | null) {
     const { row } = await this.requireDoc(actor, id, 'editor');

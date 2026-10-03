@@ -10,6 +10,7 @@ const BASE = process.env.WEB_URL ?? 'http://localhost:3000';
 const browser = await chromium.launch();
 const errors = [];
 let fails = 0;
+let copy = null; // a copy made mid-way, compared with the final document later
 
 async function session(email) {
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 } });
@@ -212,7 +213,7 @@ await step('document tabs: a second tab has its own text and comments; export an
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const html = await (await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=html`)).text();
   if (!html.includes('Appendix text only here') || !html.includes('Shibuya Station') || !/<h1[^>]*>Appendix<\/h1>/.test(html)) throw new Error('export misses a tab');
-  const copy = await (await claudia.request.post(`${BASE}/api/resources/${doc.id}/copy`, { data: {} })).json();
+  copy = await (await claudia.request.post(`${BASE}/api/resources/${doc.id}/copy`, { data: {} })).json();
   const copyHtml = await (await claudia.request.get(`${BASE}/api/resources/${copy.id}/export?format=html`)).text();
   if (!copyHtml.includes('Appendix text only here') || !copyHtml.includes('class="watermark"')) throw new Error('copy lost a tab or the page setup');
 });
@@ -252,6 +253,34 @@ await step('Markdown: pasted Markdown becomes formatting; Copy as Markdown', cla
   if (!md.includes('## Imported plan')) throw new Error(`clipboard: ${md}`);
 });
 
+await step('chart from Sheets: linked range, updatable, both editors see it', claudia, async () => {
+  await editorOf(claudia).locator('h2', { hasText: 'Imported plan' }).click();
+  await claudia.keyboard.press('End');
+  await menu(claudia, 'Insert', 'Chart…');
+  const dlg = claudia.getByTestId('chart-dialog');
+  await dlg.getByLabel('Search spreadsheets').fill('Sales Report');
+  await dlg.getByRole('button', { name: /Sales Report - September 2026/ }).first().click();
+  await dlg.getByLabel('Sheet name').fill('Monthly Summary');
+  await dlg.getByLabel('Range').fill('A1:B4');
+  await dlg.getByRole('button', { name: 'Link', exact: true }).click();
+  await editorOf(mika).getByTestId('doc-chart').locator('svg').first().waitFor({ timeout: 15000 });
+  await editorOf(claudia).getByTestId('doc-chart').click();
+  await claudia.getByTestId('chart-update').waitFor();
+  await claudia.getByLabel('Chart type').selectOption('line');
+  await claudia.keyboard.press('Escape');
+});
+
+await step('compare documents: differences open as suggestions in a new document', claudia, async () => {
+  await menu(claudia, 'Tools', 'Compare documents…');
+  await claudia.getByLabel('Search documents to compare').fill('Copy');
+  await claudia.getByTestId('compare-list').getByRole('button', { name: /Copy/ }).first().click();
+  await claudia.waitForURL(/panel=Suggestions/, { timeout: 30000 });
+  await claudia.getByRole('heading', { name: /Comparison of/ }).waitFor();
+  await editorOf(claudia).locator('ins.mo-ins, del.mo-del').first().waitFor({ timeout: 15000 });
+  await claudia.goto(`${BASE}/docs/${doc.id}`);
+  await editorOf(claudia).waitFor();
+});
+
 await step('DOCX and HTML export carry chips, the bookmark and the internal link', claudia, async () => {
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const docx = await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`);
@@ -268,6 +297,8 @@ await step('DOCX and HTML export carry chips, the bookmark and the internal link
   if (!/<w:pBdr>/.test(docXml) || !/<w:shd [^>]*w:fill="FEF9C3"/i.test(docXml)) throw new Error('docx borders / shading');
   if (!html.includes('class="watermark"')) throw new Error('html watermark');
   if (!html.includes('class="columns"') || !html.includes('Right side')) throw new Error('html columns');
+  if (!/<figure class="chart"[^>]*><svg/.test(html)) throw new Error('html chart');
+  if (!Object.keys(zip.files).some((f) => /^word\/media\/.+\.png$/.test(f))) throw new Error(`docx chart picture: ${JSON.stringify(Object.keys(zip.files).filter((f) => f.includes('media')))} ${docXml.match(/\[[^\]]{0,40}\]/g)?.slice(0, 5)}`);
 });
 
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');

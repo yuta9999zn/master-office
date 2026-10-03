@@ -5,7 +5,9 @@ import { watermarkSvg, type BorderSides, type PageSetup, type Watermark } from '
 import { ImagePlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { uploadFile } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, uploadFile } from '@/lib/api';
+import { useResources, useSearch } from '@/lib/queries';
 import { Button, cn, Dialog } from '../ui/primitives';
 
 /** Insert → Watermark (Google Docs): a text or a picture behind every page. */
@@ -181,6 +183,46 @@ export function BordersDialog({ open, editor, onClose }: { open: boolean; editor
             </button>
           )}
         </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Tools → Compare documents: pick another document; the differences open as suggestions in a new document. */
+export function CompareDialog({ open, resourceId, onClose }: { open: boolean; resourceId: string; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const router = useRouter();
+  const { data: hits } = useSearch(q);
+  const { data: recent } = useResources(open ? { type: 'document' } : null);
+  const items = (q.trim() ? (hits ?? []).filter((h) => h.kind === 'resource' && h.type === 'document').map((h) => ({ id: h.id, name: h.title })) : (recent ?? []).map((r) => ({ id: r.id, name: r.name }))).filter((x) => x.id !== resourceId).slice(0, 12);
+  const compare = async (otherId: string) => {
+    setBusy(otherId);
+    try {
+      const r = await api<{ id: string; changes: { insertions: number; deletions: number } }>(`/resources/${resourceId}/compare`, { method: 'POST', json: { otherId } });
+      toast.success(`Comparison ready: ${r.changes.insertions} insertion${r.changes.insertions === 1 ? '' : 's'}, ${r.changes.deletions} deletion${r.changes.deletions === 1 ? '' : 's'}`);
+      onClose();
+      router.push(`/docs/${r.id}?panel=Suggestions`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()} title="Compare documents" description="Pick the document to compare with this one. Its differences open as suggestions in a new document." width={500}>
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search documents…" className="input h-9 w-full" aria-label="Search documents to compare" />
+      <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-line" data-testid="compare-list">
+        {items.length ? (
+          items.map((x) => (
+            <button key={x.id} disabled={!!busy} onClick={() => void compare(x.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-hover disabled:opacity-50">
+              <span className="min-w-0 flex-1 truncate">{x.name}</span>
+              {busy === x.id && <span className="text-[12px] text-muted">Comparing…</span>}
+            </button>
+          ))
+        ) : (
+          <p className="px-3 py-4 text-[13px] text-muted">No documents found.</p>
+        )}
       </div>
     </Dialog>
   );

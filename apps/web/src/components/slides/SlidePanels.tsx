@@ -1023,7 +1023,7 @@ export function chartFromRange(values: (string | number | boolean | null)[][]): 
   return { categories: rows.map((r) => String(r[0] ?? '')), series };
 }
 
-function LinkSheet({ onLink, onCancel }: { onLink: (s: NonNullable<ChartSpec['source']>) => void; onCancel: () => void }) {
+export function LinkSheet({ onLink, onCancel }: { onLink: (s: NonNullable<ChartSpec['source']>) => void; onCancel: () => void }) {
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
   const [range, setRange] = useState('A1:D5');

@@ -708,3 +708,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Markdown ra | `toMarkdown` (`packages/doc-model/src/columns-md.ts`): heading, đậm / nghiêng / gạch / code / link, danh sách, việc cần làm, trích dẫn, code block, bảng, ảnh, phương trình `$…$`, chip thành chữ; đề xuất xoá bị bỏ. Edit → Copy as Markdown: vùng chọn (dùng `doc.cut` để giữ khối bao quanh) hoặc cả tài liệu. |
 | Markdown vào | `markdownToHtml` → schema của editor. Dán chữ thường trông như Markdown (`looksLikeMarkdown`: heading, ≥ 2 dòng danh sách / bảng / link…) tự thành định dạng; tắt ở Tools → Automatically detect Markdown (lưu trên máy). Edit → Paste from Markdown để dán chủ động. Đã kiểm tra vòng Markdown → tài liệu → Markdown giữ nguyên. |
 | Test | `docs-chips-flow.mjs` +2 bước: Two columns (người kia thấy 2 cột, chữ gõ ở cột phải); dán Markdown → heading, chữ đậm trong danh sách, bảng ở máy người kia; Copy as Markdown → clipboard có `## …`; HTML export có cột. |
+
+## 41. Phase 2.2 — Docs: biểu đồ từ Sheets & so sánh tài liệu: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Biểu đồ | Node khối `docChart` (`packages/doc-model/src/doc-chart.ts`): thông số giống biểu đồ của Slides (loại, tiêu đề, danh mục, chuỗi số liệu, nguồn Sheets). `doc-model` không phụ thuộc `slide-model`: nơi vẽ truyền `chartSvg` vào (`renderChart`). Insert → Chart… / / → Chart: liên kết một vùng của bảng tính (dùng lại `LinkSheet` của Slides, đọc qua `/sheet-range`) hoặc biểu đồ mẫu. Chọn biểu đồ: đổi loại, tiêu đề, **Update** (đọc lại vùng liên kết), xoá. |
+| Xuất biểu đồ | HTML / PDF: SVG. DOCX: server vẽ từng biểu đồ trong trình duyệt headless của dịch vụ PDF và chụp PNG (`chart:<n>`), chèn như ảnh. |
+| So sánh | Tools → Compare documents…: chọn tài liệu khác → `POST /resources/:id/compare` tạo tài liệu "Comparison of A and B" cùng thư mục, mở thẳng panel Suggestions. `compareDocuments` (`compare.ts`): khớp khối bằng LCS; khối chứa khối (danh sách, callout, trích dẫn, cột) so **từng phần tử con**; đoạn sửa (≥ 40 % từ chung) so từng từ; còn lại là xoá / thêm cả khối. Khác biệt là đề xuất thật (Accept / Reject, Accept all) mang tên tài liệu so sánh. |
+| Sửa lỗi kèm theo | Xuất DOCX phần chia cột dựng nội dung cột hai lần → số footnote / biểu đồ trong cột bị lệch (biểu đồ trong cột mất ảnh). |
+| Giới hạn | Biểu đồ: chưa sửa bảng số liệu ngay trong Docs (dùng Sheets hoặc biểu đồ mẫu), chưa kéo đổi kích thước. So sánh: định dạng (đậm / nghiêng) và thuộc tính khối không được so, chỉ nội dung. |
+| Test | `docs-chips-flow.mjs` +2 bước: biểu đồ liên kết "Sales Report" → người kia thấy, nút Update, đổi sang Line; so sánh với bản sao cũ → tài liệu mới có `ins` / `del`; HTML có `<figure class="chart"><svg`, DOCX có ảnh PNG. |
