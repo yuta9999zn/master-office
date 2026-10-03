@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -16,6 +16,8 @@ import { SheetTabs } from './SheetTabs';
 import { ChartEditor } from './charts/ChartEditor';
 import { insertChart } from './charts/chart-actions';
 import { insertCheckboxes, trimWhitespace } from './data-tools';
+import { PivotEditor } from './pivots/PivotEditor';
+import { insertPivot, pivotAt } from './pivots/pivot-engine';
 import { ColumnStatsPanel, RemoveDuplicatesDialog, runSplit } from './DataTools';
 import type { GridHandle } from './UniverGrid';
 import { useCollab } from '../docs/useCollab';
@@ -49,7 +51,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const acts = useResourceActions();
   const versions = useVersionActions(r.id);
   const [share, setShare] = useState(false);
-  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | null>(null);
+  const [pivotId, setPivotId] = useState<string | null>(null);
+  const [pivotHere, setPivotHere] = useState<string | null>(null);
   const [dedupe, setDedupe] = useState(false);
   const [chartId, setChartId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MacroRecorder | null>(null);
@@ -94,6 +98,20 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     window.addEventListener('mo-chart-edit', onEdit);
     return () => window.removeEventListener('mo-chart-edit', onEdit);
   }, [r.id]);
+  // "Edit pivot table" appears while the selection is inside one (like Google Sheets).
+  useEffect(() => {
+    const doc = collab.session?.doc;
+    if (!grid || !doc) return;
+    const check = () => {
+      const ws = (grid.api.getWorkbook(r.id) as { getActiveSheet(): { getSheetId(): string; getSelection(): { getActiveRange(): { getRange(): { startRow: number; startColumn: number } } | null } | null } } | null)?.getActiveSheet();
+      const sel = ws?.getSelection()?.getActiveRange()?.getRange();
+      setPivotHere(ws && sel ? pivotAt(doc, ws.getSheetId(), sel.startRow, sel.startColumn) : null);
+    };
+    const sub = grid.api.addEvent(grid.api.Event.CommandExecuted, (e: { id: string }) => {
+      if (/set-selections|set-worksheet-activ|set-range-values/.test(e.id)) check();
+    });
+    return () => sub.dispose();
+  }, [grid, collab.session, r.id]);
   // Live action count in the recording bar.
   useEffect(() => {
     if (!recorder) return;
@@ -201,6 +219,19 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             >
               Chart
             </MenuItem>
+            <MenuItem
+              icon={<Table2 />}
+              disabled={!editable || !grid}
+              onSelect={() => {
+                if (!grid || !collab.session) return;
+                const id = insertPivot(grid.api, collab.session.doc, r.id);
+                if (!id) return void toast.error('Select the data (with a header row) for the pivot table first');
+                setPivotId(id);
+                setPanel('Pivot table');
+              }}
+            >
+              Pivot table
+            </MenuItem>
             <MenuItem icon={<CheckSquare />} disabled={!editable || !grid} onSelect={() => grid && insertCheckboxes(grid.api, r.id)}>
               Checkbox
             </MenuItem>
@@ -274,6 +305,16 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             ))}
           </MenuContent>
         </Menu>
+        {pivotHere && (
+          <button
+            onClick={() => (setPivotId(pivotHere), setPanel('Pivot table'))}
+            className="ml-2 flex h-7 items-center gap-1.5 rounded-md bg-brand-50 px-2.5 text-[13px] font-medium text-brand-700 hover:bg-brand-100"
+            data-testid="edit-pivot"
+          >
+            <Table2 size={14} />
+            Edit pivot table
+          </button>
+        )}
         {!editable && collab.session && <span className="ml-3 rounded-md bg-hover px-2 py-0.5 text-[12px] text-muted">View only</span>}
       </div>
 
@@ -334,7 +375,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         {panel && (
           <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
             <div className="flex items-center gap-4 border-b border-line px-4">
-              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : [])] as const).map((t) => (
+              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : []), ...(pivotId ? (['Pivot table'] as const) : [])] as const).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                 </button>
@@ -344,7 +385,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'Column stats' && grid ? (
+              {panel === 'Pivot table' && pivotId && grid && collab.session ? (
+                <PivotEditor doc={collab.session.doc} api={grid.api} unitId={r.id} pivotId={pivotId} editable={editable} onClose={() => (setPivotId(null), setPanel(null))} />
+              ) : panel === 'Column stats' && grid ? (
                 <ColumnStatsPanel api={grid.api} unitId={r.id} />
               ) : panel === 'Chart' && chartId && grid && collab.session ? (
                 <ChartEditor doc={collab.session.doc} api={grid.api} unitId={r.id} chartId={chartId} editable={editable} onClose={() => (setChartId(null), setPanel(null))} />

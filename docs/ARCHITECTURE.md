@@ -566,3 +566,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Công cụ dữ liệu | Menu **Data**: Column stats (panel theo ô đang chọn: số dòng, trống, giá trị khác nhau, sum/avg/median/min/max, tần suất), Remove duplicates (so sánh mọi cột của vùng chọn, không phân biệt hoa-thường/khoảng trắng; dòng duy nhất dồn lên, giữ công thức), Trim whitespace (bỏ qua ô công thức), Split text to columns (tự nhận dấu phân cách hoặc chọn , ; . khoảng trắng; số được chuyển thành số). **Insert → Checkbox** = data validation checkbox. Mỗi thao tác là một lệnh `setValues` / `setDataValidation` → một bước undo, đồng bộ như sửa ô. |
 | Giới hạn | Biểu đồ chưa xuất ra XLSX / PDF; chưa có scatter, combo, trục phụ, trendline. |
 | Test | `apps/web/e2e/sheets-flow.mjs`: note & comment đồng bộ không dựng lại lưới; chèn biểu đồ → người kia thấy → đổi loại → xoá. |
+
+## 27. Phase 3.1 — Pivot table: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Tự làm | Pivot của Univer là bản Pro. Định nghĩa trong `Y.Map 'pivots'` (`packages/sheet-model/src/pivots.ts`): vùng nguồn theo id dòng/cột (dòng đầu = tên trường), **trường là id cột** (chèn cột nơi khác không đổi nghĩa), Rows / Columns (thứ tự tăng-giảm), Values (SUM, COUNTA, COUNT, COUNTUNIQUE, AVERAGE, MIN, MAX, MEDIAN), Filters (giá trị bị ẩn), totals. `computePivot` thuần (không phụ thuộc UI) dựng lưới giống Google: hàng tiêu đề cho trường cột, tên trường hàng + nhãn giá trị, subtotal cho trường hàng ngoài, Grand Total hàng & cột, "(blank)". |
+| Kết quả là ô thật | Bảng được **ghi thành giá trị ô** trên sheet đích → công thức, biểu đồ, xuất XLSX/PDF dùng được. Ghi bằng mutation `set-range-values` (đồng bộ như sửa ô, **không vào undo**; undo sửa nguồn sẽ tính lại); chỉ ghi khi khác nội dung hiện có; ghi rỗng phần thừa khi bảng nhỏ lại (`out`). |
+| Ai tính lại | Chỉ editor **gây ra** thay đổi: sửa cục bộ (không phải replay `fromCollab`), kết quả công thức ngay sau sửa cục bộ, đổi định nghĩa cục bộ. Người khác nhận ô đã ghi → không ai bị chèn bước lạ vào lịch sử. Khi mở file, editor kiểm tra và làm mới bảng lỗi thời (ví dụ dòng do Forms nối từ server). Viewer không bao giờ ghi. |
+| UI | Insert → Pivot table (vùng chọn hoặc vùng dữ liệu) tạo sheet "Pivot table N" + panel editor; nút **Edit pivot table** hiện khi ô chọn nằm trong bảng; xoá sheet đích xoá luôn định nghĩa. |
+| Giới hạn | Chưa có calculated field, "show as % of", nhóm theo ngày/khoảng số, GETPIVOTDATA; server chưa tự tính lại khi nguồn đổi lúc không ai mở file. |
+| Test | `sheets-flow.mjs`: dựng bảng (rows, columns, values) → Mika sửa nguồn → Claudia nhận bảng mới → filter → xoá. |

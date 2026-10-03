@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { SheetBinding, type UniverAPI } from './binding';
 import { CHART_COMPONENT, chartContexts, SheetChart } from './charts/SheetChart';
+import { PivotEngine } from './pivots/pivot-engine';
 
 export interface GridHandle {
   api: UniverAPI;
@@ -143,6 +144,9 @@ export function UniverGrid({
           onError: (e) => console.error('[sheets] binding', e),
         });
         binding.start();
+        // Viewers never write: only editors keep pivot tables up to date.
+        const pivots = editable ? new PivotEngine(univerAPI, doc, unitId) : null;
+        pivots?.start();
         // Comments are signed with the signed-in Master Office user. Set it only once the workbook exists: on a user
         // change Univer rebuilds the permission points of the open workbooks — with none open yet, the protection
         // rules stay "not initialised" and every permission check (adding a comment…) fails.
@@ -158,6 +162,7 @@ export function UniverGrid({
         setState('ready');
         cleanup = () => {
           onReady?.(null);
+          pivots?.destroy();
           binding.destroy();
           chartContexts.delete(unitId);
           univer.dispose();

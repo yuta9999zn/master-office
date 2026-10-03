@@ -197,6 +197,36 @@ await step('data tools: trim, remove duplicates, split text, column stats, check
   if ((await sheet(`return ws.getRange('J2').getDataValidation()?.getCriteriaType()`)) !== 'checkbox') throw new Error('checkbox');
 });
 
+await step('pivot tables: build, filter, follow the source, sync and delete', claudia, async () => {
+  const wbk = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Pivot ' + Date.now(), type: 'spreadsheet' } })).json();
+  const mikaId = (await (await claudia.request.get(`${BASE}/api/users`)).json()).find((u) => u.email === 'mika@kaori.jp').id;
+  await claudia.request.post(`${BASE}/api/resources/${wbk.id}/members`, { data: { userId: mikaId, role: 'editor' } });
+  for (const p of [claudia, mika]) {
+    await p.goto(`${BASE}/sheets/${wbk.id}`);
+    await ready(p, wbk.id);
+  }
+  await claudia.evaluate(() => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet();
+    ws.getRange('A1:C7').setValues([['Region', 'Month', 'Sales'], ['East', 'Oct', 10], ['East', 'Nov', 5], ['West', 'Oct', 3], ['West', 'Nov', 4], ['East', 'Oct', 7], ['West', 'Nov', 1]]);
+    ws.getRange('A1').activate();
+  });
+  await claudia.getByRole('button', { name: 'Insert', exact: true }).click();
+  await claudia.getByRole('menuitem', { name: 'Pivot table' }).click();
+  await claudia.getByTestId('pivot-add-rows').selectOption({ label: 'Region' });
+  await claudia.getByTestId('pivot-add-columns').selectOption({ label: 'Month' });
+  await claudia.getByTestId('pivot-add-values').selectOption({ label: 'Sales' });
+  await until(mika, (r) => window.__moSheet.api.getActiveWorkbook().getSheetByName('Pivot table 1')?.getRange(r).getValues().flat().join(',') === 'Grand Total,10,20,30', 'A5:D5');
+  // Mika edits the source: her client refreshes the table, Claudia receives it.
+  await mika.evaluate(() => window.__moSheet.api.getActiveWorkbook().getSheetByName('Sheet1').getRange('C2').setValue(100));
+  await until(claudia, (r) => window.__moSheet.api.getActiveWorkbook().getSheetByName('Pivot table 1')?.getRange(r).getValues().flat().join(',') === 'East,5,107,112', 'A3:D3');
+  await claudia.getByTestId('pivot-add-filters').selectOption({ label: 'Region' });
+  await claudia.getByTestId('pivot-filters-item').getByLabel('West').uncheck();
+  await until(mika, (r) => window.__moSheet.api.getActiveWorkbook().getSheetByName('Pivot table 1')?.getRange(r).getValues().flat().join(',') === 'Grand Total,5,107,112', 'A4:D4');
+  await claudia.getByRole('button', { name: 'Delete pivot table' }).click();
+  await until(mika, (r) => window.__moSheet.api.getActiveWorkbook().getSheetByName('Pivot table 1')?.getRange(r).getValues().flat().every((v) => v === null || v === ''), 'A1:D5');
+  if (await mika.evaluate(() => window.__moSheet.binding.doc.getMap('pivots').size)) throw new Error('definition left behind');
+});
+
 // ── Excel formula parity ─────────────────────────────────────────────────────
 const created = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Formula parity ' + Date.now(), type: 'spreadsheet' } })).json();
 const mismatches = [];

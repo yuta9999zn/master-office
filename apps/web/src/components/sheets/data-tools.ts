@@ -19,7 +19,7 @@ function activeRange(api: UniverAPI, unitId: string): { ws: Any; range: Any; r: 
 }
 
 /** The selection, or the used data region when a single cell is selected. */
-function dataRange(api: UniverAPI, unitId: string) {
+export function dataRange(api: UniverAPI, unitId: string) {
   const a = activeRange(api, unitId);
   if (!a) return null;
   if (a.r.endRow > a.r.startRow || a.r.endColumn > a.r.startColumn) return a;

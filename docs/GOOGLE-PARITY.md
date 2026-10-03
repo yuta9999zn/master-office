@@ -39,8 +39,8 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Format | Number formats (đầy đủ), bold/italic/…, alignment, wrapping, font size, merge, conditional formatting, clear formatting | ✅ |
 | | **Theme**, **text rotation**, **convert to table / table formatting**, **alternating colors**, smart chip formats, RTL | ❌ |
 | Insert | Rows/columns/cells, sheet, function, link | ✅ |
-| | Chart (column, bar, line, area, pie, doughnut), checkbox, image over cells, comment, note, table | ✅ |
-| | **Pivot table**, **image in cell**, drawing, **dropdown** (◐ qua data validation), emoji, smart chips | ❌ |
+| | Chart (column, bar, line, area, pie, doughnut), pivot table, checkbox, image over cells, comment, note, table | ✅ |
+| | **image in cell**, drawing, **dropdown** (◐ qua data validation), emoji, smart chips | ❌ |
 | Data | Sort sheet/range, filter, data validation, column stats, remove duplicates, trim whitespace, split text to columns | ✅ |
 | | **Filter views**, **group-by views**, **slicer**, **protect sheets & ranges**, **named ranges**, **named functions**, randomize range, data extraction, data connectors | ❌ |
 | Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ❌ trigger, import macro từ file khác · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications, activity dashboard | ❌ |
