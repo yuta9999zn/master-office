@@ -1,6 +1,7 @@
 // Phase 3 end-to-end: Sheets editor (Univer + Yjs) with two people, export round-trip and Excel formula parity.
 // node e2e/sheets-flow.mjs   (needs pnpm dev + API + seeded data)
 import { chromium } from 'playwright';
+import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FORMULA_CASES, PARITY_DATA } from './formula-cases.mjs';
@@ -263,6 +264,39 @@ await step('cursors, named ranges, text rotation and protected ranges between ed
   await claudia.waitForTimeout(800);
   if ((await value(claudia, 'Sheet1', 'A2')) !== 2) throw new Error('Sora edited a protected range');
   await sora.close();
+});
+
+await step('Excel conditional formats, validation, notes and named ranges survive import and export', claudia, async () => {
+  const src = new ExcelJS.Workbook();
+  const ws = src.addWorksheet('Data');
+  [5, 15, 25].forEach((v, i) => (ws.getCell(i + 1, 1).value = v));
+  ws.addConditionalFormatting({ ref: 'A1:A3', rules: [{ type: 'cellIs', operator: 'greaterThan', formulae: ['10'], style: { font: { bold: true } }, priority: 1 }] });
+  ws.addConditionalFormatting({ ref: 'B1:B3', rules: [{ type: 'colorScale', cfvo: [{ type: 'min' }, { type: 'max' }], color: [{ argb: 'FFF8696B' }, { argb: 'FF63BE7B' }], priority: 2 }] });
+  ws.dataValidations.add('C1:C3', { type: 'list', allowBlank: true, formulae: ['"Low,High"'] });
+  ws.getCell('D1').value = 'see note';
+  ws.getCell('D1').note = 'Imported note';
+  src.definedNames.add('Data!$A$1:$A$3', 'Amounts');
+  const res = await claudia.request.post(`${BASE}/api/resources/upload`, {
+    multipart: { file: { name: 'Rules.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(await src.xlsx.writeBuffer()) } },
+  });
+  const up = await res.json();
+  await claudia.goto(`${BASE}/sheets/${up.id}`);
+  await ready(claudia, up.id);
+  await until(claudia, () => {
+    const wb = window.__moSheet.api.getActiveWorkbook();
+    const s = wb.getSheetByName('Data');
+    return s.getConditionalFormattingRules().length === 2 && s.getRange('C1').getDataValidation()?.getCriteriaType() === 'list' && s.getRange('D1').getNote()?.note === 'Imported note' && !!wb.getDefinedName('Amounts');
+  });
+  await claudia.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('E1').setFormula('=SUM(Amounts)'));
+  await until(claudia, () => window.__moSheet.value('Data', 'E1') === 45);
+  // And back out to Excel.
+  const x = await claudia.request.get(`${BASE}/api/resources/${up.id}/export?format=xlsx`);
+  const back = new ExcelJS.Workbook();
+  await back.xlsx.load(await x.body());
+  const bws = back.getWorksheet('Data');
+  if (bws.conditionalFormattings.length !== 2) throw new Error('conditional formats not exported');
+  if (!Object.values(bws.dataValidations.model).some((v) => v.type === 'list')) throw new Error('validation not exported');
+  if (!back.definedNames.model.some((n) => n.name === 'Amounts')) throw new Error('named range not exported');
 });
 
 // ── Excel formula parity ─────────────────────────────────────────────────────

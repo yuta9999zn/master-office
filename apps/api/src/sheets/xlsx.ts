@@ -1,4 +1,5 @@
 import { cellValue, newId, usedRange, type Cell, type CellStyle, type PlainSheet, type PlainWorkbook } from '@workos/sheet-model';
+import { applyResources, readResources } from './xlsx-resources';
 import ExcelJS from 'exceljs';
 
 /** XLSX ⇄ internal workbook (docs/ARCHITECTURE.md §8). Univer style codes are used on the internal side. */
@@ -118,8 +119,9 @@ export interface XlsxReport {
 export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: PlainWorkbook; report: XlsxReport }> {
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(buf as unknown as ArrayBuffer);
-  const counts = { sheets: 0, cells: 0, formulas: 0, styled: 0, merges: 0, images: 0, validations: 0, conditional: 0 };
+  const counts = { sheets: 0, cells: 0, formulas: 0, styled: 0, merges: 0, images: 0 };
   const sheets: PlainSheet[] = [];
+  const pairs: { id: string; ws: ExcelJS.Worksheet }[] = [];
   book.eachSheet((ws) => {
     counts.sheets++;
     const cells: PlainSheet['cells'] = {};
@@ -151,11 +153,11 @@ export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: Plain
     }
     counts.merges += merges.length;
     counts.images += ws.getImages?.().length ?? 0;
-    counts.validations += Object.keys((ws as unknown as { dataValidations?: { model?: object } }).dataValidations?.model ?? {}).length;
-    counts.conditional += ((ws as unknown as { conditionalFormattings?: unknown[] }).conditionalFormattings ?? []).length;
     const view = ws.views?.[0] as { state?: string; xSplit?: number; ySplit?: number } | undefined;
+    const id = newId();
+    pairs.push({ id, ws });
     sheets.push({
-      id: newId(),
+      id,
       meta: {
         name: ws.name,
         tabColor: argbToHex(ws.properties?.tabColor) ?? null,
@@ -172,15 +174,17 @@ export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: Plain
     });
   });
   if (!sheets.length) throw new Error('The workbook has no worksheets');
+  // Conditional formats, data validation, notes and named ranges become Univer plugin state.
+  const extra = readResources(book, pairs);
   const degraded: string[] = [];
-  if (counts.validations) degraded.push(`data validation rules: ${counts.validations} (not imported yet)`);
-  if (counts.conditional) degraded.push(`conditional formats: ${counts.conditional} (not imported yet)`);
+  if (extra.counts.conditionalSkipped) degraded.push(`conditional formats without an equivalent: ${extra.counts.conditionalSkipped} (icon sets, dates…)`);
+  if (extra.counts.validationsSkipped) degraded.push(`data validation rules without an equivalent: ${extra.counts.validationsSkipped}`);
   const dropped = ['charts and pivot tables', 'macros (VBA)', 'external data connections'];
   if (counts.images) dropped.unshift(`images: ${counts.images}`);
   return {
-    wb: { name: name.replace(/\.(xlsx|xlsm|xls|csv)$/i, ''), sheets },
+    wb: { name: name.replace(/\.(xlsx|xlsm|xls|csv)$/i, ''), sheets, resources: extra.resources },
     report: {
-      preserved: [`sheets: ${counts.sheets}`, `cells: ${counts.cells}`, `formulas: ${counts.formulas}`, `styled cells: ${counts.styled}`, `merged ranges: ${counts.merges}`, 'column widths, row heights, frozen panes, tab colours, number formats'],
+      preserved: [`sheets: ${counts.sheets}`, `cells: ${counts.cells}`, `formulas: ${counts.formulas}`, `styled cells: ${counts.styled}`, `merged ranges: ${counts.merges}`, 'column widths, row heights, frozen panes, tab colours, number formats', `conditional formats: ${extra.counts.conditional}`, `data validation rules: ${extra.counts.validations}`, `notes: ${extra.counts.notes}`, `named ranges: ${extra.counts.names}`],
       degraded,
       dropped,
       warnings: [],
@@ -217,6 +221,7 @@ export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string } = 
   book.created = new Date();
   // Excel recalculates every formula on open, so cached results can never be stale.
   book.calcProperties.fullCalcOnLoad = true;
+  const byId = new Map<string, ExcelJS.Worksheet>();
   for (const s of wb.sheets) {
     const ws = book.addWorksheet(s.meta.name.slice(0, 31) || 'Sheet', {
       properties: s.meta.tabColor ? { tabColor: { argb: hexToArgb(s.meta.tabColor) } } : {},
@@ -228,6 +233,7 @@ export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string } = 
       ],
       state: s.meta.hidden ? 'hidden' : 'visible',
     });
+    byId.set(s.id, ws);
     const { maxR, maxC } = usedRange(s);
     for (const [c, m] of Object.entries(s.colMeta)) {
       if (Number(c) > Math.max(maxC, 50)) continue;
@@ -263,5 +269,7 @@ export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string } = 
       }
     }
   }
+  // Conditional formats, data validation, notes, hyperlinks and named ranges (Univer plugin state).
+  applyResources(book, byId, wb.resources);
   return Buffer.from(await book.xlsx.writeBuffer());
 }

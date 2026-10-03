@@ -587,3 +587,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Bảo vệ vùng / sheet | Authz mặc định của Univer chỉ dựa vai trò (mọi editor đều là "owner"). Thay bằng `MoAuthzService` (`authz.ts`, `override` của `createUniver`): mỗi rule lưu **người tạo**, danh sách được sửa, phạm vi xem/sửa; dữ liệu đi cùng workbook (resource). Chỉ người tạo đổi / gỡ được bảo vệ; viewer không bao giờ sửa. Sau khi workbook được dựng lại live, `refreshProtection` tính lại permission point (Univer chỉ tính lúc mở trang). |
 | Giới hạn | Bảo vệ được kiểm trong editor (như Google: chống sửa nhầm), server chưa chặn ghi Yjs vào vùng bảo vệ. |
 | Test | `sheets-flow.mjs`: Mika thấy con trỏ của Claudia, xoay chữ, `=SUM(Nums)`; vùng bảo vệ cho Mika sửa, Sora (editor ngoài danh sách) bị chặn, kể cả sau khi mở lại. |
+
+## 29. Phase 3.1 — Plugin state ⇄ XLSX: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Xuất | `apps/api/src/sheets/xlsx-resources.ts` đọc JSON plugin của Univer trong `resources`: conditional format (cellIs, text, công thức, duplicate/unique → COUNTIF, top/bottom, trên/dưới trung bình, color scale, data bar, icon set mặc định), data validation (list — mảng JSON hoặc tham chiếu, checkbox → list TRUE/FALSE, số, ngày, độ dài, custom), note, hyperlink, named range → ExcelJS. Thứ tự ưu tiên CF giữ nguyên (Univer: rule mới nhất trước). |
+| Nhập | Chiều ngược lại cho cùng các loại; validation ExcelJS trả về từng ô → gộp lại thành dải theo cột; báo cáo import liệt kê số CF/validation/note/named range giữ được và phần không có tương đương. |
+| Giới hạn | Biểu đồ, pivot (Excel PivotCache), slicer, sparkline, icon set tuỳ chỉnh, CF theo ngày chưa đi qua XLSX; bảng pivot vẫn ra Excel dưới dạng giá trị ô. |
+| Test | `sheets-flow.mjs`: upload XLSX có CF + validation + note + named range → Univer hiển thị, `=SUM(Amounts)` = 45 → export lại có đủ. |
