@@ -187,8 +187,8 @@ export class DocsService {
   }
 
   /** Loads the images a document embeds — only assets registered to that document. */
-  private async loadImages(id: string, doc: JSONContent) {
-    const wanted = [...collectImages(doc)]
+  private async loadImages(id: string, doc: JSONContent, extra: (string | null | undefined)[] = []) {
+    const wanted = [...collectImages(doc), ...extra.filter((x): x is string => !!x)]
       .map((src) => ({ src, m: src.match(ASSET_SRC) }))
       .filter((x): x is { src: string; m: RegExpMatchArray } => !!x.m && x.m[1] === id);
     const out = new Map<string, { buf: Buffer; mime: string }>();
@@ -237,7 +237,7 @@ export class DocsService {
       }
       body = await toDocx(title, doc, images, { author: actor.name, pageSetup });
     } else {
-      const images = await this.loadImages(id, doc);
+      const images = await this.loadImages(id, doc, [pageSetup.watermark?.image]);
       const html = toHTMLDocument(title, doc, {
         pageSetup,
         resolveImage: (src) => {

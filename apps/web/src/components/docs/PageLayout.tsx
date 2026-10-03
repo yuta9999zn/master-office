@@ -82,6 +82,23 @@ export function PageSetupDialog({ open, value, onClose, onSave, readOnly }: { op
       }
     >
       <div className="space-y-4">
+        <div>
+          <span className="mb-1 block text-[12px] text-muted">Format</span>
+          <div className="flex gap-2">
+            {([false, true] as const).map((pl) => (
+              <button
+                key={String(pl)}
+                disabled={readOnly}
+                onClick={() => set('pageless', pl)}
+                className={cn('flex-1 rounded-lg border px-3 py-2 text-left text-[13px]', !!p.pageless === pl ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-line hover:bg-hover')}
+                data-testid={pl ? 'format-pageless' : 'format-pages'}
+              >
+                <span className="block font-medium">{pl ? 'Pageless' : 'Pages'}</span>
+                <span className="block text-[12px] text-muted">{pl ? 'One continuous page that uses your window width' : 'Pages with margins, header and footer'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label>
             <span className="mb-1 block text-[12px] text-muted">Paper size</span>

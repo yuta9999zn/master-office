@@ -32,6 +32,21 @@ import {
 
 /** Internal document JSON → Office Open XML (.docx). docs/ARCHITECTURE.md §8. */
 
+/** Paragraph borders and shading (Format → Borders and shading) as Word paragraph properties. */
+function boxOf(n: JSONContent) {
+  const a = n.attrs ?? {};
+  const out: { border?: Record<string, { style: (typeof BorderStyle)[keyof typeof BorderStyle]; size: number; color: string; space: number }>; shading?: { type: (typeof ShadingType)[keyof typeof ShadingType]; fill: string; color: string } } = {};
+  const sides = a.border as string | null;
+  if (sides) {
+    const line = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round((Number(a.borderWidth) || 1) * 6)), color: hex(a.borderColor) ?? '94A3B8', space: 4 };
+    const list = sides === 'all' ? ['top', 'bottom', 'left', 'right'] : sides === 'topBottom' ? ['top', 'bottom'] : [sides];
+    out.border = Object.fromEntries(list.map((k) => [k, line]));
+  }
+  const fill = hex(a.shading);
+  if (fill) out.shading = { type: ShadingType.CLEAR, fill, color: 'auto' };
+  return out;
+}
+
 export interface DocxImage {
   data: Buffer;
   type: 'png' | 'jpg' | 'gif' | 'bmp';
@@ -210,9 +225,9 @@ class DocxWriter {
       case 'paragraph':
         if (n.attrs?.docStyle === 'title') return [new Paragraph({ heading: HeadingLevel.TITLE, children: this.runs(n.content), alignment, spacing })];
         if (n.attrs?.docStyle === 'subtitle') return [new Paragraph({ children: this.runs(n.content, { size: 28, color: '64748B' }), alignment, spacing })];
-        return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing })];
+        return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing, ...boxOf(n) })];
       case 'heading':
-        return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_4, children: this.runs(n.content), alignment, spacing })];
+        return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_4, children: this.runs(n.content), alignment, spacing, ...boxOf(n) })];
       case 'pageBreak':
         return [new Paragraph({ children: [new PageBreak()] })];
       case 'tableOfContents': {

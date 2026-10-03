@@ -141,6 +141,52 @@ await step('equation: typed as LaTeX, typeset for both editors', claudia, async 
   await editorOf(mika).getByTestId('equation').locator('.katex').waitFor({ timeout: 10000 });
 });
 
+const menu = async (page, top, item) => {
+  await page.getByRole('button', { name: top, exact: true }).click();
+  await page.getByRole('menuitem', { name: item }).click();
+};
+
+await step('borders and shading on a paragraph sync', claudia, async () => {
+  await editorOf(claudia).locator('p', { hasText: 'Status' }).click({ position: { x: 3, y: 8 } });
+  await menu(claudia, 'Format', 'Borders and shading…');
+  await claudia.getByRole('button', { name: 'Box', exact: true }).click();
+  await claudia.getByLabel('Background colour').fill('#fef9c3');
+  await claudia.getByTestId('borders-apply').click();
+  await until(mika, () => {
+    const p = [...document.querySelectorAll('[data-testid="doc-editor"] p')].find((x) => x.textContent.includes('Status'));
+    const cs = p && getComputedStyle(p);
+    return !!cs && cs.borderTopStyle === 'solid' && cs.borderLeftStyle === 'solid' && cs.backgroundColor === 'rgb(254, 249, 195)';
+  });
+});
+
+await step('pageless format, then a text watermark in print layout', claudia, async () => {
+  await menu(claudia, 'File', 'Page setup');
+  await claudia.getByTestId('format-pageless').click();
+  await claudia.getByRole('button', { name: 'Apply' }).click();
+  await mika.locator('[data-testid="doc-page"][data-pageless]').waitFor({ timeout: 10000 });
+  await mika.getByRole('button', { name: 'View', exact: true }).click();
+  if (!(await mika.getByRole('menuitem', { name: /Print layout/ }).isDisabled())) throw new Error('print layout should be off for a pageless document');
+  await mika.keyboard.press('Escape');
+  // Back to pages, add a watermark, show it in print layout.
+  await menu(claudia, 'File', 'Page setup');
+  await claudia.getByTestId('format-pages').click();
+  await claudia.getByRole('button', { name: 'Apply' }).click();
+  await menu(claudia, 'Insert', 'Watermark…');
+  await claudia.getByLabel('Watermark text').fill('DRAFT');
+  await claudia.getByTestId('watermark-save').click();
+  await menu(mika, 'View', /Print layout/);
+  await mika.getByTestId('doc-watermark').waitFor({ timeout: 10000 });
+});
+
+await step('viewing mode: nothing editable, back to editing', claudia, async () => {
+  await claudia.getByTestId('mode-switch').click();
+  await claudia.getByRole('menuitem', { name: /Viewing/ }).click();
+  if ((await editorOf(claudia).getAttribute('contenteditable')) !== 'false') throw new Error('still editable');
+  await claudia.getByTestId('mode-switch').click();
+  await claudia.getByRole('menuitem', { name: /^Editing/ }).click();
+  if ((await editorOf(claudia).getAttribute('contenteditable')) !== 'true') throw new Error('not editable again');
+});
+
 await step('DOCX and HTML export carry chips, the bookmark and the internal link', claudia, async () => {
   await claudia.getByTestId('save-status').getByText('Saved to cloud').waitFor({ timeout: 15000 });
   const docx = await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`);
@@ -153,6 +199,9 @@ await step('DOCX and HTML export carry chips, the bookmark and the internal link
   const zip = await JSZip.loadAsync(await (await claudia.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body());
   const notesXml = await zip.file('word/footnotes.xml')?.async('string');
   if (!notesXml?.includes('First note') || !notesXml.includes('Second note')) throw new Error('docx footnotes');
+  const docXml = await zip.file('word/document.xml').async('string');
+  if (!/<w:pBdr>/.test(docXml) || !/<w:shd [^>]*w:fill="FEF9C3"/i.test(docXml)) throw new Error('docx borders / shading');
+  if (!html.includes('class="watermark"')) throw new Error('html watermark');
 });
 
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');

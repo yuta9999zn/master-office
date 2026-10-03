@@ -209,6 +209,28 @@ export const ParagraphFormat = Extension.create({
             parseHTML: (el) => (el.style.marginBottom.endsWith('pt') ? parseFloat(el.style.marginBottom) : null),
             renderHTML: (a) => (a.spaceAfter != null ? { style: `margin-bottom:${a.spaceAfter}pt` } : {}),
           },
+          // Borders and shading (Format → Paragraph styles → Borders and shading).
+          shading: {
+            default: null,
+            parseHTML: (el) => el.getAttribute('data-shading'),
+            renderHTML: (a) => (a.shading ? { 'data-shading': a.shading } : {}),
+          },
+          border: {
+            default: null,
+            parseHTML: (el) => el.getAttribute('data-border'),
+            renderHTML: (a) => (a.border ? { 'data-border': a.border } : {}),
+          },
+          borderColor: { default: null, parseHTML: (el) => el.getAttribute('data-border-color'), renderHTML: (a) => (a.borderColor ? { 'data-border-color': a.borderColor } : {}) },
+          borderWidth: { default: null, parseHTML: (el) => Number(el.getAttribute('data-border-width')) || null, renderHTML: (a) => (a.borderWidth ? { 'data-border-width': a.borderWidth } : {}) },
+          boxStyle: {
+            // Not stored: turns the attributes above into CSS for the editor.
+            default: null,
+            parseHTML: () => null,
+            renderHTML: (a) => {
+              const css = borderShadingCss(a);
+              return css ? { style: css } : {};
+            },
+          },
         },
       },
       {
@@ -224,6 +246,24 @@ export const ParagraphFormat = Extension.create({
     ];
   },
 });
+
+export type BorderSides = 'all' | 'left' | 'top' | 'bottom' | 'topBottom';
+
+/** CSS for a paragraph's borders and shading (editor, HTML / PDF export). */
+export function borderShadingCss(a: Record<string, unknown>): string {
+  const out: string[] = [];
+  const sides = a.border as BorderSides | null;
+  const width = Number(a.borderWidth) || 1;
+  const color = (a.borderColor as string) || '#94a3b8';
+  if (sides) {
+    const line = `${width}px solid ${color}`;
+    const map: Record<BorderSides, string[]> = { all: ['border'], left: ['border-left'], top: ['border-top'], bottom: ['border-bottom'], topBottom: ['border-top', 'border-bottom'] };
+    for (const p of map[sides] ?? []) out.push(`${p}:${line}`);
+  }
+  if (a.shading) out.push(`background-color:${a.shading}`);
+  if (sides || a.shading) out.push(sides === 'left' ? 'padding:2px 0 2px 10px' : 'padding:4px 8px');
+  return out.join(';');
+}
 
 /** Attributes carried by suggestion marks (track changes). */
 export interface SuggestionAttrs {
@@ -285,6 +325,24 @@ export interface PageSetup {
   footer: string;
   headerAlign: 'left' | 'center' | 'right';
   footerAlign: 'left' | 'center' | 'right';
+  /** Pageless (Google Docs): no pages on screen, the text uses the window's width. Export is still paged. */
+  pageless?: boolean;
+  /** Watermark shown behind every page (print layout, PDF). */
+  watermark?: Watermark | null;
+}
+
+export interface Watermark {
+  text?: string;
+  image?: string;
+  opacity?: number; // 0..1
+}
+
+/** Diagonal text watermark as an SVG data URL sized to a page (w × h, any unit-free ratio). */
+export function watermarkSvg(text: string, w: number, h: number, opacity = 0.15): string {
+  const size = Math.min(w, h) / Math.max(4, text.length * 0.55);
+  const escText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-weight="700" font-size="${size.toFixed(1)}" fill="#64748b" fill-opacity="${opacity}" transform="rotate(-35 ${w / 2} ${h / 2})">${escText}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 /** Paper sizes in millimetres (portrait). */
@@ -498,6 +556,8 @@ function markStyle(marks: JSONContent['marks']): { open: string; close: string }
 function blockAttrs(n: JSONContent): string {
   const s: string[] = [];
   const a = n.attrs ?? {};
+  const box = borderShadingCss(a);
+  if (box) s.push(box);
   if (a.textAlign && a.textAlign !== 'left') s.push(`text-align:${a.textAlign}`);
   if (a.lineHeight) s.push(`line-height:${a.lineHeight}`);
   if (a.spaceBefore != null) s.push(`margin-top:${a.spaceBefore}pt`);
@@ -641,6 +701,12 @@ export function toHTMLDocument(
   const { w, h } = paperSize(p);
   const m = p.margins;
   const page = `@page { size: ${w}mm ${h}mm; margin: ${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm; }`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body><main><div class="doc-title">${esc(title)}</div>${toHTML(doc, opts)}</main></body></html>`;
+  // A fixed element is repeated on every printed page by Chromium: the watermark sits behind the text.
+  const wm = p.watermark;
+  const wmSrc = wm?.image ? (opts.resolveImage ? opts.resolveImage(wm.image) : wm.image) : wm?.text ? watermarkSvg(wm.text, w, h, wm.opacity ?? 0.15) : null;
+  const watermark = wmSrc
+    ? `<div class="watermark" style="position:fixed;inset:-${m.top}mm -${m.right}mm -${m.bottom}mm -${m.left}mm;z-index:-1;background:url('${esc(wmSrc)}') center/${wm?.image ? '60% auto' : 'contain'} no-repeat;${wm?.image ? `opacity:${wm.opacity ?? 0.2};` : ''}"></div>`
+    : '';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body>${watermark}<main><div class="doc-title">${esc(title)}</div>${toHTML(doc, opts)}</main></body></html>`;
 }
 export * from './mindmap';

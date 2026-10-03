@@ -1,8 +1,9 @@
 'use client';
 
 import { FootnotesList, insertFootnote } from './notes-math';
+import { BordersDialog, WatermarkDialog } from './DocFormatDialogs';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
-import { expandTokens, paperSize, type JSONContent } from '@workos/doc-model';
+import { expandTokens, paperSize, watermarkSvg, type JSONContent } from '@workos/doc-model';
 import type { ImportReport, ResourceDetail, ResourceType } from '@workos/shared';
 import { can } from '@workos/shared';
 import {
@@ -132,6 +133,9 @@ function DocBody({
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [preview2, setPreview2] = useState<number | null>(null);
   const [printLayout, setPrintLayout] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const [watermarkOpen, setWatermarkOpen] = useState(false);
+  const [bordersOpen, setBordersOpen] = useState(false);
   const [zoom, setZoom] = useState(100);
   const { pageSetup, update: updatePageSetup } = useDocSettings(session.doc);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -163,6 +167,10 @@ function DocBody({
     onImage: () => imageInput.current?.click(),
     onEmbed: () => setEmbedOpen(true),
   });
+  // Viewing mode: the final text, nothing editable (suggestion marks hidden by CSS).
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.setEditable(canEdit && !viewing);
+  }, [editor, canEdit, viewing]);
 
   // Comments: reload when another client signals a change, re-resolve anchors when data changes.
   useEffect(() => onStateless((p) => p.type === 'comments' && void refetchComments()), [onStateless, refetchComments]);
@@ -195,6 +203,8 @@ function DocBody({
     editor.view.dispatch(tr);
   };
   const paper = paperSize(pageSetup);
+  // Pageless documents never show pages (Google Docs); print layout is a per-viewer option otherwise.
+  const paged = printLayout && !pageSetup.pageless;
   const hf = (t: string) => expandTokens(t, { title: r.name, page: '#', pages: '#' });
 
   const menus: { label: string; items: ReactNode }[] = [
@@ -306,8 +316,8 @@ function DocBody({
             Suggestions
           </MenuItem>
           <MenuSeparator />
-          <MenuItem icon={<FileCog />} onSelect={() => setPrintLayout(!printLayout)}>
-            {printLayout ? '✓ ' : ''}Print layout
+          <MenuItem icon={<FileCog />} disabled={!!pageSetup.pageless} onSelect={() => setPrintLayout(!printLayout)}>
+            {printLayout && !pageSetup.pageless ? '✓ ' : ''}Print layout{pageSetup.pageless ? ' (pageless document)' : ''}
           </MenuItem>
           <MenuLabel>Zoom</MenuLabel>
           {[75, 100, 125, 150].map((z) => (
@@ -356,6 +366,9 @@ function DocBody({
           </MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => c().insertContent({ type: 'tableOfContents' }).run()}>
             Table of contents
+          </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => setWatermarkOpen(true)}>
+            Watermark…
           </MenuItem>
           <MenuItem disabled={!canEdit} shortcut="Ctrl+Alt+F" onSelect={() => insertFootnote(editor)}>
             Footnote
@@ -411,6 +424,10 @@ function DocBody({
             </MenuItem>
           ))}
           <MenuSeparator />
+          <MenuItem disabled={!canEdit} onSelect={() => setBordersOpen(true)}>
+            Borders and shading…
+          </MenuItem>
+          <MenuSeparator />
           <MenuItem disabled={!canEdit} onSelect={() => c().unsetAllMarks().clearNodes().run()}>
             Clear formatting
           </MenuItem>
@@ -465,7 +482,7 @@ function DocBody({
       </div>
 
       <div className="shrink-0 px-5 pt-2">
-        <DocToolbar editor={editor} readOnly={!canEdit || !!preview} actions={{ suggesting, setSuggesting, link: openLink, image: () => imageInput.current?.click(), embed: () => setEmbedOpen(true), comment: () => startComment(editor), canComment: canComment && !preview }} />
+        <DocToolbar editor={editor} readOnly={!canEdit || !!preview || viewing} actions={{ suggesting, setSuggesting, viewing, setViewing: canEdit ? setViewing : undefined, link: openLink, image: () => imageInput.current?.click(), embed: () => setEmbedOpen(true), comment: () => startComment(editor), canComment: canComment && !preview }} />
       </div>
 
       <ImportBanner report={report} canEdit={canEdit} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />
@@ -480,13 +497,15 @@ function DocBody({
           ) : (
             <article
               data-testid="doc-page"
+              data-pageless={pageSetup.pageless ? '' : undefined}
               className={cn(
-                'relative mx-auto mb-10 min-h-full rounded-sm bg-white shadow-[0_1px_3px_rgba(15,23,42,0.08),0_0_0_1px_rgba(15,23,42,0.04)]',
-                !printLayout && 'w-full max-w-[860px] px-16 pb-24 pt-14',
+                'relative isolate mx-auto mb-10 min-h-full rounded-sm bg-white shadow-[0_1px_3px_rgba(15,23,42,0.08),0_0_0_1px_rgba(15,23,42,0.04)]',
+                !paged && (pageSetup.pageless ? 'mo-pageless w-full max-w-[1180px] px-20 pb-24 pt-14' : 'w-full max-w-[860px] px-16 pb-24 pt-14'),
+                viewing && 'mo-viewing',
               )}
               style={{
                 zoom: zoom / 100,
-                ...(printLayout
+                ...(paged
                   ? {
                       width: paper.w * MM_TO_PX,
                       minHeight: paper.h * MM_TO_PX,
@@ -495,7 +514,22 @@ function DocBody({
                   : {}),
               }}
             >
-              {printLayout && pageSetup.header && (
+              {paged && pageSetup.watermark && (pageSetup.watermark.text || pageSetup.watermark.image) && (
+                // One watermark per page height, behind the text (the article is its own stacking context).
+                <div
+                  aria-hidden
+                  data-testid="doc-watermark"
+                  className="pointer-events-none absolute inset-0 -z-10"
+                  style={{
+                    backgroundImage: `url("${pageSetup.watermark.image ?? watermarkSvg(pageSetup.watermark.text!, paper.w, paper.h, pageSetup.watermark.opacity ?? 0.15)}")`,
+                    backgroundSize: pageSetup.watermark.image ? `60% auto` : `100% ${paper.h * MM_TO_PX}px`,
+                    backgroundRepeat: 'repeat-y',
+                    backgroundPosition: pageSetup.watermark.image ? `center ${(paper.h * MM_TO_PX) / 3}px` : 'top center',
+                    opacity: pageSetup.watermark.image ? pageSetup.watermark.opacity ?? 0.2 : 1,
+                  }}
+                />
+              )}
+              {paged && pageSetup.header && (
                 <div
                   className="absolute inset-x-0 top-0 truncate pt-5 text-[11px] text-muted"
                   style={{ textAlign: pageSetup.headerAlign, paddingLeft: pageSetup.margins.left * MM_TO_PX, paddingRight: pageSetup.margins.right * MM_TO_PX }}
@@ -517,7 +551,7 @@ function DocBody({
               <div className="mt-16 text-right text-[12px] text-subtle" data-testid="word-count">
                 {words.w} words
               </div>
-              {printLayout && pageSetup.footer && (
+              {paged && pageSetup.footer && (
                 <div
                   className="absolute inset-x-0 bottom-0 truncate pb-5 text-[11px] text-muted"
                   style={{ textAlign: pageSetup.footerAlign, paddingLeft: pageSetup.margins.left * MM_TO_PX, paddingRight: pageSetup.margins.right * MM_TO_PX }}
@@ -574,6 +608,8 @@ function DocBody({
       <EmbedDialog open={embedOpen} currentId={r.id} onClose={() => setEmbedOpen(false)} onPick={(x) => c().insertContent({ type: 'resourceEmbed', attrs: x }).run()} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <PageSetupDialog open={pageSetupOpen} value={pageSetup} readOnly={!canEdit} onClose={() => setPageSetupOpen(false)} onSave={updatePageSetup} />
+      <WatermarkDialog open={watermarkOpen} value={pageSetup} resourceId={r.id} readOnly={!canEdit} onClose={() => setWatermarkOpen(false)} onSave={updatePageSetup} />
+      <BordersDialog open={bordersOpen} editor={editor} onClose={() => setBordersOpen(false)} />
       <PrintPreview open={preview2 !== null} nonce={preview2 ?? 0} resourceId={r.id} onClose={() => setPreview2(null)} />
     </>
   );

@@ -676,3 +676,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Phương trình | Node inline `equation` (LaTeX), dàn trang bằng **KaTeX** (thêm vào `doc-model`). Editor: popover gõ LaTeX, nút ký hiệu (x², phân số, căn, Σ, ∫, chữ Hy Lạp…), xem trước trực tiếp. Xuất HTML / PDF: MathML (không cần CSS / font). |
 | Xuất | HTML: `<sup class="fn">` + mục `footnotes` cuối bài có link qua lại. DOCX: **footnote thật của Word** (`footnotes.xml`); phương trình là mã LaTeX đặt font Cambria Math (chưa chuyển được sang OMML). |
 | Test | `docs-chips-flow.mjs` +2 bước: hai footnote chèn ngược thứ tự → đánh số theo vị trí, chữ không lọt vào thân bài; phương trình LaTeX → KaTeX ở máy người kia; HTML có `<math>` và mục footnotes, DOCX có `footnotes.xml`. |
+
+## 38. Phase 2.2 — Docs: pageless, watermark, viewing, viền & nền đoạn văn: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Pageless | Thiết lập của tài liệu `pageSetup.pageless` (File → Page setup → Pages / Pageless, như Google Docs) — khác "Print layout" là tuỳ chọn hiển thị của từng người. Pageless: không trang, không header/footer, chữ rộng theo cửa sổ (tối đa 1180 px), ẩn page break; Print layout bị khoá. Xuất PDF / DOCX vẫn chia trang. |
+| Watermark | `pageSetup.watermark = {text | image, opacity}` (Insert → Watermark…). Editor (print layout): lớp nền lặp mỗi chiều cao trang, nằm sau chữ (`isolate` + `-z-10`). PDF / HTML: phần tử `position: fixed` — Chromium in lặp lại ở mọi trang; chữ là SVG xoay chéo (`watermarkSvg`), ảnh được server nạp kèm khi xuất. DOCX chưa có watermark. |
+| Viewing | Chế độ thứ ba bên cạnh Editing / Suggesting (chỉ hiện cho người có quyền sửa): editor không sửa được, thanh công cụ khoá, đề xuất hiển thị như đã chấp nhận (ẩn phần bị xoá, bỏ tô phần thêm). Chỉ ảnh hưởng người đang xem. |
+| Viền & nền | Thuộc tính đoạn văn / heading `border` (all / left / top / bottom / topBottom), `borderWidth`, `borderColor`, `shading` (Format → Borders and shading…). CSS dùng chung (`borderShadingCss`) cho editor và HTML / PDF; DOCX: `w:pBdr` + `w:shd`. |
+| Sửa lỗi kèm theo | Một hook mới đặt sau lệnh `return` sớm làm trang Docs không mở được (React: thứ tự hook) — đã chuyển lên trước. |
+| Test | `docs-chips-flow.mjs` +3 bước: viền + nền đồng bộ; pageless (Print layout bị khoá ở máy người kia) → về Pages + watermark DRAFT hiện trong print layout; Viewing → không sửa được → Editing. Export: DOCX có `w:pBdr`/`w:shd`, HTML có watermark. |

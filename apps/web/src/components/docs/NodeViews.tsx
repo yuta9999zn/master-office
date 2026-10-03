@@ -7,7 +7,7 @@ import { cn } from '../ui/primitives';
 
 function PageBreakView({ selected }: ReactNodeViewProps) {
   return (
-    <NodeViewWrapper contentEditable={false} className={cn('my-4 flex items-center gap-3 text-[11px] font-medium uppercase tracking-wider text-subtle', selected && 'text-brand-600')}>
+    <NodeViewWrapper contentEditable={false} className={cn('mo-page-break my-4 flex items-center gap-3 text-[11px] font-medium uppercase tracking-wider text-subtle', selected && 'text-brand-600')}>
       <span className="h-px flex-1 border-t border-dashed border-current" />
       Page break
       <span className="h-px flex-1 border-t border-dashed border-current" />

@@ -147,3 +147,8 @@ body {
 /* Footnote references are numbered in document order (Docs 2.2). */
 .mo-editor .mo-fn-ref { position: relative; color: #2563eb; font-weight: 600; padding: 0 1px; cursor: pointer; }
 .mo-editor .mo-fn-ref::after { counter-increment: mo-fn; content: counter(mo-fn); }
+
+/* Viewing mode shows the document as it reads with suggestions applied; pageless hides page breaks. */
+.mo-viewing .mo-del { display: none; }
+.mo-viewing .mo-ins { background: none; color: inherit; text-decoration: none; }
+.mo-pageless .mo-page-break { display: none; }

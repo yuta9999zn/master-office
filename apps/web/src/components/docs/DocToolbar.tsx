@@ -36,6 +36,7 @@ import {
   Rows3,
   Subscript as SubscriptIcon,
   Superscript as SuperscriptIcon,
+  Eye,
 } from 'lucide-react';
 import { LINE_HEIGHTS } from '@workos/doc-model';
 import { DropdownMenu as DM } from 'radix-ui';
@@ -50,6 +51,9 @@ export const HIGHLIGHTS = ['#fef08a', '#fed7aa', '#fecaca', '#bbf7d0', '#bae6fd'
 export interface ToolbarActions {
   suggesting: boolean;
   setSuggesting: (on: boolean) => void;
+  /** Viewing mode (read the final document, nothing editable); only offered to people who can edit. */
+  viewing?: boolean;
+  setViewing?: (on: boolean) => void;
   link: () => void;
   image: () => void;
   embed: () => void;
@@ -282,22 +286,27 @@ export function DocToolbar({ editor, actions, readOnly }: { editor: Editor; acti
       )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-l border-line pl-1.5">
-      {!ro && (
+      {(!ro || actions.viewing) && (
         <Drop
           label="Editing mode"
           trigger={
-            <span className={cn('flex items-center gap-1.5 font-medium', actions.suggesting ? 'text-emerald-700' : 'text-ink-2')} data-testid="mode-switch">
-              {actions.suggesting ? <GitPullRequestArrow size={15} /> : <PencilLine size={15} />}
-              {actions.suggesting ? 'Suggesting' : 'Editing'}
+            <span className={cn('flex items-center gap-1.5 font-medium', actions.viewing ? 'text-ink-2' : actions.suggesting ? 'text-emerald-700' : 'text-ink-2')} data-testid="mode-switch">
+              {actions.viewing ? <Eye size={15} /> : actions.suggesting ? <GitPullRequestArrow size={15} /> : <PencilLine size={15} />}
+              {actions.viewing ? 'Viewing' : actions.suggesting ? 'Suggesting' : 'Editing'}
             </span>
           }
         >
-          <Item active={!actions.suggesting} onSelect={() => actions.setSuggesting(false)}>
+          <Item active={!actions.viewing && !actions.suggesting} onSelect={() => (actions.setViewing?.(false), actions.setSuggesting(false))}>
             <PencilLine size={15} /> Editing — change the document directly
           </Item>
-          <Item active={actions.suggesting} onSelect={() => actions.setSuggesting(true)}>
+          <Item active={!actions.viewing && actions.suggesting} onSelect={() => (actions.setViewing?.(false), actions.setSuggesting(true))}>
             <GitPullRequestArrow size={15} /> Suggesting — edits become suggestions
           </Item>
+          {actions.setViewing && (
+            <Item active={!!actions.viewing} onSelect={() => actions.setViewing?.(true)}>
+              <Eye size={15} /> Viewing — read or print the final document
+            </Item>
+          )}
         </Drop>
       )}
       {actions.canComment && <Btn label="Add comment" shortcut="Ctrl+Alt+M" icon={<MessageSquarePlus size={17} />} disabled={!s.hasSelection} onClick={actions.comment} />}
