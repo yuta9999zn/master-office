@@ -1,8 +1,11 @@
 'use client';
 
 import {
+  DEFAULT_SIZE,
+  DEFAULT_THEME,
   FONTS,
   isLine,
+  layoutElements,
   LAYOUTS,
   SHAPES,
   SLIDE_SIZES,
@@ -11,6 +14,7 @@ import {
   THEMES,
   type Background,
   type ChartSpec,
+  type DeckSize,
   type ElementStyle,
   type Geometry,
   type LayoutId,
@@ -50,7 +54,7 @@ import {
   Unlink,
 } from 'lucide-react';
 import { Popover } from 'radix-ui';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useSearch } from '@/lib/queries';
@@ -369,41 +373,17 @@ export function DesignTab({ store, deck, slide, editable, onUploadImage }: { sto
 
 // ── Layout tab ───────────────────────────────────────────────────────────────
 
-export function LayoutWire({ layout }: { layout: LayoutId }) {
-  const bar = 'rounded-[2px] bg-slate-300';
+/** Thumbnail of a layout: its placeholders drawn with the deck's theme, prompts included. */
+export function LayoutWire({ layout, deck }: { layout: LayoutId; deck?: { size: DeckSize; theme: Theme } }) {
+  const d = deck ?? { size: DEFAULT_SIZE, theme: DEFAULT_THEME };
+  const slide = useMemo(() => ({ id: `layout-${layout}`, meta: { layout }, notes: '', elements: layoutElements(layout, d.size, d.theme) }), [layout, d.size, d.theme]);
   return (
-    <div className="relative aspect-video w-full rounded-md border border-line bg-white p-[8%]">
-      {layout === 'title' && (
-        <div className="flex h-full flex-col items-center justify-center gap-1.5">
-          <div className={cn(bar, 'h-2.5 w-3/4 bg-slate-400')} />
-          <div className={cn(bar, 'h-1.5 w-1/2')} />
-        </div>
-      )}
-      {layout === 'section' && (
-        <div className="flex h-full flex-col justify-center gap-1.5">
-          <div className={cn(bar, 'h-2.5 w-3/4 bg-slate-400')} />
-          <div className={cn(bar, 'h-1.5 w-1/3')} />
-        </div>
-      )}
-      {(layout === 'titleContent' || layout === 'twoContent' || layout === 'titleOnly') && (
-        <div className="flex h-full flex-col gap-1.5">
-          <div className={cn(bar, 'h-2 w-2/3 bg-slate-400')} />
-          {layout !== 'titleOnly' && (
-            <div className="flex flex-1 gap-1.5">
-              {(layout === 'twoContent' ? [0, 1] : [0]).map((i) => (
-                <div key={i} className="flex flex-1 flex-col gap-1 rounded-[2px] border border-dashed border-slate-300 p-1">
-                  <div className={cn(bar, 'h-1 w-4/5')} />
-                  <div className={cn(bar, 'h-1 w-3/5')} />
-                  <div className={cn(bar, 'h-1 w-2/3')} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+    <div className="overflow-hidden rounded-md border border-line bg-white">
+      <SlideView slide={slide} deck={d} width={136} opts={LAYOUT_OPTS} />
     </div>
   );
 }
+const LAYOUT_OPTS = { prompts: true };
 
 export function LayoutTab({ store, slide, editable, onNewSlide }: { store: DeckStore; slide: PlainSlide; editable: boolean; onNewSlide: (l: LayoutId) => void }) {
   return (
@@ -441,10 +421,11 @@ export function LayoutTab({ store, slide, editable, onNewSlide }: { store: DeckS
 export function ThemeTab({ store, deck, editable }: { store: DeckStore; deck: DeckSnapshot; editable: boolean }) {
   const sample = deck.slides[0];
   return (
+    <>
     <Section title="Themes">
       <p className="text-[12px] text-muted">A theme sets the colours and fonts of the whole presentation. Shapes using theme colours follow it.</p>
       <div className="grid grid-cols-2 gap-2.5">
-        {(deck.theme.id === 'imported' ? [deck.theme, ...THEMES] : THEMES).map((t) => (
+        {(deck.theme.id === 'imported' || deck.theme.id === 'custom' ? [deck.theme, ...THEMES] : THEMES).map((t) => (
           <button
             key={t.id}
             disabled={!editable}
@@ -467,6 +448,43 @@ export function ThemeTab({ store, deck, editable }: { store: DeckStore; deck: De
         ))}
       </div>
     </Section>
+    <ThemeBuilder store={store} deck={deck} editable={editable} />
+    </>
+  );
+}
+
+/** Edit theme (Google Slides' theme builder, simplified): the deck's own colours and fonts. */
+function ThemeBuilder({ store, deck, editable }: { store: DeckStore; deck: DeckSnapshot; editable: boolean }) {
+  const t = deck.theme;
+  const set = (patch: Partial<Theme['colors']> | { fonts: Theme['fonts'] }) =>
+    store.setTheme({ ...t, id: 'custom', name: t.id === 'custom' ? t.name : `${t.name} (custom)`, ...('fonts' in patch ? { fonts: patch.fonts as Theme['fonts'] } : { colors: { ...t.colors, ...patch } }) });
+  const swatch = (label: string, value: string, onChange: (v: string) => void) => (
+    <label key={label} className="flex flex-col items-center gap-1 text-[11px] text-muted">
+      <input type="color" value={value} disabled={!editable} onChange={(e) => onChange(e.target.value.toUpperCase())} className="size-8 cursor-pointer rounded-md border border-line bg-surface p-0.5" aria-label={label} />
+      {label}
+    </label>
+  );
+  return (
+    <fieldset disabled={!editable}>
+      <Section title="Customize theme">
+        <p className="text-[12px] text-muted">Changes apply to every slide; shapes and text that use theme colours update too.</p>
+        <div className="flex flex-wrap gap-2.5" data-testid="theme-colors">
+          {swatch('Background', t.colors.bg, (v) => set({ bg: v }))}
+          {swatch('Title', t.colors.title, (v) => set({ title: v }))}
+          {swatch('Text', t.colors.text, (v) => set({ text: v }))}
+          {swatch('Muted', t.colors.muted, (v) => set({ muted: v }))}
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {t.colors.accents.map((c, i) => swatch(`Accent ${i + 1}`, c, (v) => set({ accents: t.colors.accents.map((x, j) => (j === i ? v : x)) })))}
+        </div>
+        <Row label="Headings">
+          <Select<string> label="Heading font" value={t.fonts.heading} options={FONTS.map((f) => ({ value: f, label: f }))} onChange={(f) => set({ fonts: { ...t.fonts, heading: f } })} />
+        </Row>
+        <Row label="Body">
+          <Select<string> label="Body font" value={t.fonts.body} options={FONTS.map((f) => ({ value: f, label: f }))} onChange={(f) => set({ fonts: { ...t.fonts, body: f } })} />
+        </Row>
+      </Section>
+    </fieldset>
   );
 }
 

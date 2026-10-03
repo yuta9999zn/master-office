@@ -25,6 +25,8 @@ const createBody = z.object({
   type: z.enum(RESOURCE_TYPES),
   parentId: uuid.nullish(),
   spaceId: uuid.nullish(),
+  /** Presentations: start from a template (slide-model TEMPLATES). */
+  template: z.string().max(40).optional(),
 });
 const updateBody = z.object({
   name: z.string().trim().min(1).max(255).optional(),

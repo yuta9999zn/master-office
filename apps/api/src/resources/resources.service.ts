@@ -1,3 +1,4 @@
+import { templateDeck } from '@workos/slide-model';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
 import {
   can,
@@ -268,7 +269,7 @@ export class ResourcesService {
       return (await this.toDtos(actor, [row], tx))[0];
     });
     if (dto.type === 'spreadsheet') await this.sheets.init(dto.id);
-    if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name);
+    if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name, templateDeck(input.template, dto.name));
     if (dto.type === 'form') await this.forms.init(dto.id, dto.name);
     return dto;
   }

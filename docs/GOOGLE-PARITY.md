@@ -53,9 +53,9 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Menu Google | Tính năng | MO |
 |---|---|---|
 | Insert | Image, text box, shapes (16), table, chart (◐ native; from Sheets ✅ liên kết), new slide, comment, line, arrow | ✅ |
-| | Video (YouTube, file) ✅, audio ✅, diagram (grid, hierarchy, timeline, process, relationship, cycle) ✅, word art ✅, shape sets (arrows, callouts, equation), elbow / curved connectors (bám vào shape) ✅, curve, polyline, scribble, special characters, link tới slide khác, **templates / building blocks**, placeholder | ❌ |
+| | Video (YouTube, file) ✅, audio ✅, diagram (grid, hierarchy, timeline, process, relationship, cycle) ✅, word art ✅, shape sets (arrows, callouts, equation), elbow / curved connectors (bám vào shape) ✅, curve, polyline, scribble, special characters, link tới slide khác, templates ✅ (5), building blocks, placeholder | ❌ |
 | Slide | New, duplicate, delete, skip (hide), move, change background, apply layout (6/11), transition, change theme | ✅ |
-| | Thêm layout (main point, big number, caption, one column…), **edit theme (theme builder: master + layouts)**, import slides từ bản trình chiếu khác | ❌ |
+| | Thêm layout (main point, big number, caption, one column, section + description) ✅, edit theme (màu, font) ✅ · master + layout tuỳ chỉnh, import slides từ bản trình chiếu khác ❌ | ◐ |
 | Arrange | Order, align, distribute, center on page | ✅ |
 | | Group / ungroup | ✅ |
 | | Rotate 90° / flip menu | ◐ flip |

@@ -326,6 +326,25 @@ await step('diagram (hierarchy, 4 items) inserted as one group; a duplicate keep
   }, sid);
 });
 
+await step('template gallery → new deck; new layouts; theme builder synced', claudia, async () => {
+  await claudia.goto(`${BASE}/slides`);
+  await claudia.getByTestId('template-workshop').click();
+  await claudia.waitForURL(/\/slides\/[0-9a-f-]{36}/, { timeout: 60000 });
+  await until(claudia, () => window.__moDeck?.snapshot.slides.length === 6 && window.__moDeck.snapshot.theme.id === 'forest', null, 60000);
+  const id = claudia.url().split('/slides/')[1].split(/[?#]/)[0];
+  await claudia.request.post(`${BASE}/api/resources/${id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+  await mika.goto(`${BASE}/slides/${id}`);
+  await until(mika, () => window.__moDeck?.snapshot.slides.length === 6, null, 60000);
+  // Big number layout on the first slide.
+  await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Layout', exact: true }).click();
+  await claudia.getByTestId('layout-bigNumber').click();
+  await until(mika, () => window.__moDeck.snapshot.slides[0].meta.layout === 'bigNumber');
+  // Theme builder: a custom accent colour reaches the other editor.
+  await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Theme', exact: true }).click();
+  await claudia.getByLabel('Accent 1').fill('#ff6600');
+  await until(mika, () => window.__moDeck.snapshot.theme.id === 'custom' && window.__moDeck.snapshot.theme.colors.accents[0] === '#FF6600');
+});
+
 console.log(errors.length ? `browser errors:\n  ${errors.join('\n  ')}` : 'no browser errors');
 if (errors.length) fails++;
 console.log(fails ? `${fails} failed` : 'all passed');

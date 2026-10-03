@@ -144,6 +144,8 @@ export interface CreateResourceInput {
   type: ResourceType;
   parentId?: string | null;
   spaceId?: string | null;
+  /** Presentations: template id. */
+  template?: string;
 }
 
 export interface UpdateResourceInput {

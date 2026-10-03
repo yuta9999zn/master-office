@@ -753,7 +753,7 @@ export async function importPptx(buf: Buffer, fileName: string, storeImage: Imag
     const transition = kid(doc.documentElement, 'transition');
     const trKind = transition ? kids(transition)[0]?.localName : null;
     const layoutType = attr(kid(layoutDoc?.documentElement, 'cSld'), 'name')?.toLowerCase() ?? '';
-    const layout: LayoutId = /title slide|^title$/.test(layoutType) ? 'title' : /section/.test(layoutType) ? 'section' : /two/.test(layoutType) ? 'twoContent' : /title only/.test(layoutType) ? 'titleOnly' : /blank/.test(layoutType) ? 'blank' : 'titleContent';
+    const layout: LayoutId = /title slide|^title$/.test(layoutType) ? 'title' : /big ?number/.test(layoutType) ? 'bigNumber' : /main ?point/.test(layoutType) ? 'mainPoint' : /caption/.test(layoutType) ? 'caption' : /section/.test(layoutType) ? 'section' : /two/.test(layoutType) ? 'twoContent' : /title only/.test(layoutType) ? 'titleOnly' : /blank/.test(layoutType) ? 'blank' : 'titleContent';
     slides.push({
       id: newId(),
       meta: {

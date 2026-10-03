@@ -47,7 +47,7 @@ export type Background =
   | { type: 'gradient'; from: string; to: string; angle: number }
   | { type: 'image'; src: string };
 
-export type LayoutId = 'title' | 'titleContent' | 'section' | 'twoContent' | 'titleOnly' | 'blank';
+export type LayoutId = 'title' | 'titleContent' | 'section' | 'twoContent' | 'titleOnly' | 'blank' | 'sectionDesc' | 'oneColumn' | 'mainPoint' | 'bigNumber' | 'caption';
 export type Transition = 'none' | 'fade' | 'push' | 'wipe';
 
 export interface SlideMeta {
@@ -363,6 +363,11 @@ export const LAYOUTS: { id: LayoutId; label: string }[] = [
   { id: 'section', label: 'Section header' },
   { id: 'twoContent', label: 'Two content' },
   { id: 'titleOnly', label: 'Title only' },
+  { id: 'sectionDesc', label: 'Section title and description' },
+  { id: 'oneColumn', label: 'One column text' },
+  { id: 'mainPoint', label: 'Main point' },
+  { id: 'bigNumber', label: 'Big number' },
+  { id: 'caption', label: 'Caption' },
   { id: 'blank', label: 'Blank' },
 ];
 
@@ -667,6 +672,26 @@ export function layoutElements(layout: LayoutId, size: DeckSize, theme: Theme): 
     }
     case 'titleOnly':
       return [ph('title', mx, h * 0.06, w - 2 * mx, h * 0.15, title, 1)];
+    case 'sectionDesc': {
+      // Title on the left half, description on the right (Google Slides "Section title and description").
+      const half = w / 2;
+      return [
+        ph('title', mx, h * 0.3, half - mx * 1.5, h * 0.24, { ...title, fontSize: 40 }, 1),
+        ph('subtitle', mx, h * 0.56, half - mx * 1.5, h * 0.16, { ...body, fontSize: 20 }, 2),
+        ph('body', half + mx * 0.5, h * 0.12, half - mx * 1.5, h * 0.76, { ...body, vAlign: 'middle' }, 3, bullets),
+      ];
+    }
+    case 'oneColumn':
+      return [ph('title', mx, h * 0.08, w * 0.4, h * 0.14, { ...title, fontSize: 30 }, 1), ph('body', mx, h * 0.26, w * 0.4, h * 0.64, { ...body, fontSize: 18 }, 2, bullets)];
+    case 'mainPoint':
+      return [ph('title', mx, h * 0.2, w - 2 * mx, h * 0.6, { ...title, fontSize: 54, vAlign: 'middle' }, 1)];
+    case 'bigNumber':
+      return [
+        ph('title', mx, h * 0.14, w - 2 * mx, h * 0.46, { ...title, fontSize: 140, vAlign: 'bottom', align: 'center' }, 1),
+        ph('body', mx, h * 0.62, w - 2 * mx, h * 0.18, { ...body, fontSize: 24, align: 'center' }, 2),
+      ];
+    case 'caption':
+      return [ph('body', mx, h * 0.8, w - 2 * mx, h * 0.12, { ...body, fontSize: 20, vAlign: 'middle' }, 1)];
     default:
       return [];
   }
@@ -708,5 +733,6 @@ export function slideTitle(s: PlainSlide): string {
 
 export * from './connectors';
 export * from './diagrams';
+export * from './templates';
 export * from './media';
 export * from './render';

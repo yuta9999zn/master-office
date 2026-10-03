@@ -647,3 +647,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Sao chép | Dán / nhân bản / nhân bản slide cấp id mới và **nối lại connector** với bản sao của các hình được sao chép cùng (`remapConnectors`) — trước đây bản sao sẽ trỏ về hình gốc. |
 | Word art | `style.outline` + `outlineWidth` (viền chữ, vẽ sau phần tô bằng `paint-order` nên viền dày không ăn vào nét chữ). Insert → Word art chèn khung chữ lớn, chọn sẵn chữ mẫu; tab Format: "Text outline" cho mọi khung chữ. PPTX: viền chữ native (`a:ln` của run). |
 | Test | `slides-motion-flow.mjs`: hierarchy 4 mục → 7 phần tử một nhóm, 3 connector trỏ trong nhóm; Ctrl+D → nhóm thứ hai với connector của riêng nó; word art thay chữ mẫu, có viền. |
+
+## 35. Phase 4.1 — Slides: layout, template, theme builder: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Layout | Thêm 5 layout của Google Slides: Section title and description, One column text, Main point, Big number, Caption (placeholder có sẵn: title / subtitle / body / body2). Ảnh thu nhỏ layout giờ được **vẽ từ chính placeholder** bằng renderer chung thay vì vẽ tay. Nhập PPTX nhận thêm tên layout "big number", "main point", "caption". |
+| Template | `packages/slide-model/src/templates.ts`: Pitch deck, Project status, Marketing plan, Workshop, Team meeting — mỗi cái là theme + các slide đã điền (layout, sơ đồ, bảng, biểu đồ). `POST /resources {type:'presentation', template}` → server dựng deck bằng `templateDeck`. Trang Slides có hàng "Start a new presentation" (Blank + template, ảnh xem trước dựng sau khi mount để tránh lệch hydration do id ngẫu nhiên). |
+| Theme builder | Tab Theme → "Customize theme": màu nền, tiêu đề, chữ, muted, 6 accent, font tiêu đề / nội dung. Sửa là ghi theme `id: 'custom'` của bài (đồng bộ như mọi thay đổi theme); mọi màu tham chiếu `@accentN`, `@title`… đổi theo. |
+| Test | `slides-motion-flow.mjs`: tạo từ template Workshop (6 slide, theme Forest) → layout Big number → accent 1 tuỳ chỉnh, người kia thấy. |
