@@ -19,11 +19,13 @@ import { Equation, equationHtml, Footnote, footnotesOf } from './notes-math';
 export * from './notes-math';
 export * from './tabs';
 import { Column, Columns } from './columns-md';
+import { Bibliography, Citation } from './citations';
 export * from './columns-md';
 import { chartText, DocChart, type ChartPainter, type DocChartSpec } from './doc-chart';
 export * from './doc-chart';
 export * from './compare';
 export * from './templates';
+export * from './citations';
 export * from './spelling';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
@@ -470,6 +472,8 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     PlaceChip,
     PlaceholderChip,
     EventChip,
+    Citation,
+    Bibliography,
     Bookmark,
     Footnote,
     Equation,

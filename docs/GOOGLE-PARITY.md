@@ -31,7 +31,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | | Small caps ✅, H5–H6 ✅, **paragraph styles options (update style to match, save as default)**, borders & shading ✅, indentation options (first line, hanging) ✅, **columns**, page orientation per section, RTL text, keep with next / prevent single lines | ❌ |
 | Tools | Word count, review suggested edits | ✅ |
 | | ✅ **Spelling & grammar** (en_US + personal dictionary + rule-based grammar) | ✅ |
-| | **compare documents**, citations, line numbers ✅, explore, linked objects, dictionary, **translate document**, voice typing, notification settings | ❌ |
+| | **compare documents**, citations ✅, line numbers ✅, explore, linked objects, dictionary, **translate document**, voice typing, notification settings | ❌ |
 | | ✅ **Activity dashboard** (viewers, trends, sharing history) | ✅ |
 
 ## 2. Google Sheets → Master Sheets
@@ -99,5 +99,5 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
 | 8 ✅ | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · group rows/columns ✅ (§50) · filter views ✅ (§51) — Sheets 3.3 xong |
 | 9 ✅ | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide ✅, autofit ✅ (§53), spelling trong Slides ✅ (§54), Q&A khán giả ✅ (§55) — Slides 4.2 xong |
-| 10 | **2.3** | Docs: H5–H6 ✅, small caps ✅, thụt lề ✅, line numbers ✅ (§56), calendar-event / placeholder chip ✅ (§57) · drawing, section break & hướng trang theo section, citations |
+| 10 | **2.3** | Docs: H5–H6 ✅, small caps ✅, thụt lề ✅, line numbers ✅ (§56), calendar-event / placeholder chip ✅ (§57), citations ✅ (§58) · drawing, section break & hướng trang theo section |
 | 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |

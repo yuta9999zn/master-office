@@ -891,3 +891,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Event chip | Node `eventChip {title, date, start, end, location}` hiện "📅 Title · Oct 5, 2026, 10:00–10:30". Bấm → sửa tiêu đề, ngày, giờ bắt đầu/kết thúc, địa điểm; **Add to calendar** = tải file `.ics` (iCalendar: giờ "floating" theo giờ máy, không có giờ → sự kiện cả ngày). Chưa liên kết module Calendar (chưa có) — khi có sẽ trỏ tới sự kiện thật. Xuất: chữ "📅 …". |
 | Chèn | Menu `/` (Smart chips: Placeholder, Calendar event) và `@` (placeholder, event / meeting / calendar). |
 | Test | `docs-format-flow.mjs` (+2): `/placeholder` → điền "Acme Corp" → thành chữ; `/event` → đổi tiêu đề / địa điểm → nhãn đổi, `.ics` có VEVENT, SUMMARY, LOCATION, giờ 10:00; DOCX có cả hai. |
+
+## 58. Phase 2.3 — Docs: trích dẫn (citations): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Lưu | Nguồn và kiểu trích dẫn trong settings map của tài liệu (`citations: {style, sources[]}`) → đồng bộ, vào lịch sử phiên bản. Nguồn: loại (Book / Website / Journal article), tác giả (họ, tên), tiêu đề, nhà xuất bản / tên website / tạp chí, năm, volume / issue / pages, URL. |
+| Kiểu | `doc-model/citations.ts`: **APA 7**, **MLA 9**, **Chicago author-date** — trích dẫn trong câu "(Tanaka, 2024, p. 12)" / "(Tanaka 12)" / "(Tanaka 2024, 12)", 2 tác giả & / and, ≥3 et al.; danh mục tài liệu (References / Works Cited / Bibliography) theo đúng thứ tự tên, **in nghiêng** tên sách / website / tạp chí, thụt treo, không tác giả → tiêu đề lên đầu. |
+| Node | `citation {sourceId, page}` (inline) và `bibliography` (block) — chữ hiển thị tính từ nguồn + kiểu nên **đổi kiểu là mọi trích dẫn và danh mục đổi theo**; node view đọc settings qua React context (`CitationsProvider` quanh `EditorContent`). Danh mục chỉ liệt kê nguồn **đã được trích**, chưa trích nguồn nào thì liệt kê tất cả; tự cập nhật khi thêm / xoá trích dẫn. |
+| Xuất | `resolveCitations()` thay node bằng chữ / tiêu đề + đoạn (thụt treo, in nghiêng) trước khi xuất → DOCX, PDF, HTML, text đều đúng mà không exporter nào phải biết citations. |
+| Giao diện | **Tools → Citations**: chọn kiểu, Add citation source (form theo loại), danh sách nguồn với **Cite** (chèn tại con trỏ), Edit, Delete, **Insert bibliography** (một lần, cuối tài liệu). Bấm trích dẫn → thêm số trang / Remove. |
+| Test | `docs-format-flow.mjs` (+2): sách + website không tác giả, Cite → "(Tanaka, 2024)", trang 12 → "(Tanaka, 2024, p. 12)", danh mục "References" chỉ có sách; đổi MLA → "(Tanaka 12)", "Works Cited"; DOCX có chữ đã định dạng và tên sách in nghiêng. |

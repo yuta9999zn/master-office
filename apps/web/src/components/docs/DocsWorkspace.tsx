@@ -3,6 +3,7 @@
 import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, CompareDialog, IndentDialog, WatermarkDialog } from './DocFormatDialogs';
 import { LineNumbers } from './LineNumbers';
+import { CitationsPanel, CitationsProvider } from './citations';
 import { PublishDialog } from '../editor/PublishDialog';
 import { ActivityDashboard } from '../editor/ActivityDashboard';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
@@ -38,6 +39,7 @@ import {
   Search,
   Globe,
   SpellCheck,
+  BookOpen,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -60,7 +62,7 @@ import { PersonalDictionaryDialog, setUnderlinePref, SpellingCard, underlinePref
 import { MM_TO_PX, PageSetupDialog, PrintPreview, useDocSettings } from './PageLayout';
 import { SuggestionsPanel } from './SuggestionsPanel';
 
-type Panel = 'Comments' | 'Suggestions' | 'AI Assistant' | 'History';
+type Panel = 'Comments' | 'Suggestions' | 'AI Assistant' | 'History' | 'Citations';
 
 
 export function DocsWorkspace({ r, kind }: { r: ResourceDetail; kind: 'docs' | 'wiki' }) {
@@ -524,6 +526,9 @@ function DocBody({
           <MenuSeparator />
           <MenuItem onSelect={() => toast.info(`${words.w} words · ${words.c} characters`)}>Word count</MenuItem>
           <MenuItem onSelect={() => setCompareOpen(true)}>Compare documents…</MenuItem>
+          <MenuItem icon={<BookOpen />} onSelect={() => setPanel('Citations')}>
+            Citations
+          </MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => setActivityOpen(true)}>
             Activity dashboard
           </MenuItem>
@@ -643,7 +648,9 @@ function DocBody({
                 {r.name}
               </h1>
               {pageSetup.lineNumbers && <LineNumbers editor={editor} page={pageRef} zoom={zoom} />}
-              <EditorContent editor={editor} />
+              <CitationsProvider doc={session.doc}>
+                <EditorContent editor={editor} />
+              </CitationsProvider>
               <FootnotesList editor={editor} />
               <div className="mt-16 text-right text-[12px] text-subtle" data-testid="word-count">
                 {words.w} words
@@ -663,7 +670,7 @@ function DocBody({
         {panel && (
           <aside className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-surface">
             <div className="flex items-center gap-4 overflow-x-auto border-b border-line px-4">
-              {(['Comments', 'Suggestions', 'AI Assistant', 'History'] as Panel[]).map((t) => (
+              {(['Comments', 'Suggestions', 'AI Assistant', 'History', ...(panel === 'Citations' ? (['Citations'] as Panel[]) : [])] as Panel[]).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                   {t === 'Comments' && threads.some((x) => !x.resolvedAt) && <span className="ml-1.5 rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-600">{threads.filter((x) => !x.resolvedAt).length}</span>}
@@ -690,6 +697,7 @@ function DocBody({
               )}
               {panel === 'Suggestions' && <SuggestionsPanel editor={editor} canEdit={canEdit} />}
               {panel === 'History' && <HistoryPanel resourceId={r.id} canEdit={canEdit} previewing={preview} onPreview={setPreview} />}
+              {panel === 'Citations' && <CitationsPanel doc={session.doc} editor={editor} canEdit={canEdit} />}
               {panel === 'AI Assistant' && (
                 <EmptyState icon={<Sparkles size={28} />} title="AI Assistant — Phase 6">
                   Summarize this document, rewrite a selection, draft sections from company knowledge, or turn it into slides.

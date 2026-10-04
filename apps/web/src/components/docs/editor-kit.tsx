@@ -55,6 +55,7 @@ import { useResource, useUsers } from '@/lib/queries';
 import { hrefFor } from '@/lib/resources';
 import { Avatar, cn, FileIcon } from '../ui/primitives';
 import { BookmarkWithView, DateChipWithView, DropdownChipWithView, EventChipWithView, PlaceChipWithView, PlaceholderChipWithView } from './chips';
+import { BibliographyWithView, CitationWithView } from './citations';
 import { EquationWithView, FootnoteShortcut, FootnoteWithView, insertFootnote } from './notes-math';
 import { setColumns } from './columns';
 import { DocChartWithView } from './doc-chart';
@@ -475,7 +476,7 @@ export const CollapsibleHeadings = Extension.create({
 
 // ── Schema for the browser ───────────────────────────────────────────────────
 
-const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'placeholderChip', 'eventChip', 'bookmark', 'footnote', 'equation', 'docChart'];
+const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'placeholderChip', 'eventChip', 'citation', 'bibliography', 'bookmark', 'footnote', 'equation', 'docChart'];
 
 // ── Internal links ("#bm-<id>") ──────────────────────────────────────────────
 
@@ -529,6 +530,8 @@ export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
     PlaceChipWithView,
     PlaceholderChipWithView,
     EventChipWithView,
+    CitationWithView,
+    BibliographyWithView,
     BookmarkWithView,
     FootnoteWithView,
     EquationWithView,

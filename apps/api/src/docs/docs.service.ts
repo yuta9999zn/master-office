@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { changeCount, chartsOf, compareDocuments, docExtensions, pageSetupOf, SETTINGS_MAP, toHTMLDocument, toPlainText, type ChartPainter, type JSONContent, type PageSetup } from '@workos/doc-model';
+import { changeCount, chartsOf, CITATIONS_KEY, compareDocuments, docExtensions, pageSetupOf, resolveCitations, SETTINGS_MAP, toHTMLDocument, toPlainText, type ChartPainter, type JSONContent, type PageSetup } from '@workos/doc-model';
 import { chartSvg, DEFAULT_THEME, SLIDE_CSS, type ChartSpec } from '@workos/slide-model';
 
 /** Document charts use the slide chart painter with the default theme. */
@@ -112,7 +112,9 @@ export class DocsService {
     if (!state) return { json: { type: 'doc', content: [] }, pageSetup: pageSetupOf(null) };
     const doc = new Y.Doc();
     Y.applyUpdate(doc, state);
-    return { json: documentJSON(doc), pageSetup: pageSetupOf(doc.getMap(SETTINGS_MAP).toJSON()) };
+    const settings = doc.getMap(SETTINGS_MAP);
+    // Citations are resolved to formatted text / a reference list here, so every exporter shows them (§58).
+    return { json: resolveCitations(documentJSON(doc), settings.get(CITATIONS_KEY)), pageSetup: pageSetupOf(settings.toJSON()) };
   }
 
   /** Formatted-free values of A1:D5 in a spreadsheet the viewer can read. */

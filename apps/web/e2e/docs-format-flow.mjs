@@ -1,5 +1,5 @@
 // Docs 2.3 end-to-end: Heading 5–6, small caps, indentation options, line numbers (editor, DOCX, PDF / HTML),
-// placeholder and calendar event chips.
+// placeholder and calendar event chips, citations (APA / MLA, bibliography).
 // node e2e/docs-format-flow.mjs   (needs pnpm dev + API)
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
@@ -128,6 +128,52 @@ await step('/calendar event chip: details, label and an .ics file', async () => 
   await page.waitForTimeout(2500);
   const xml = await (await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body())).file('word/document.xml').async('string');
   if (!xml.includes('Board review') || !xml.includes('Acme Corp')) throw new Error('docx misses the chips');
+});
+
+await step('Tools → Citations: sources, in-text citation with a page, bibliography of cited sources', async () => {
+  await menu('Tools', 'Citations');
+  const panel = page.getByTestId('citations-panel');
+  await panel.getByTestId('source-add').click();
+  await panel.getByLabel('Author 1 first name').fill('Aya');
+  await panel.getByLabel('Author 1 last name').fill('Tanaka');
+  await panel.getByLabel('Title').fill('Salon Operations');
+  await panel.getByLabel('Publisher').fill('Kaori Press');
+  await panel.getByLabel('Year').fill('2024');
+  await panel.getByTestId('source-save').click();
+  await panel.getByTestId('source-add').click();
+  await panel.getByLabel('Source type').selectOption('website');
+  await panel.getByRole('button', { name: 'Remove author 1' }).click();
+  await panel.getByLabel('Title').fill('Skin care trends 2026');
+  await panel.getByLabel('Website name').fill('Beauty Weekly');
+  await panel.getByLabel('Year').fill('2026');
+  await panel.getByTestId('source-save').click();
+  await panel.getByTestId('sources').getByText('Skin care trends 2026').first().waitFor();
+  // Cite the book at the end of the last paragraph.
+  await editor.locator('p').last().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' as shown ');
+  await panel.getByRole('button', { name: 'Cite Salon Operations' }).click();
+  const cite = editor.getByTestId('citation');
+  await cite.getByText('(Tanaka, 2024)').waitFor();
+  await cite.getByText('(Tanaka, 2024)').click();
+  await page.getByLabel('Citation page').fill('12');
+  await page.getByLabel('Citation page').press('Enter');
+  await cite.getByText('(Tanaka, 2024, p. 12)').waitFor();
+  await panel.getByTestId('insert-bibliography').click();
+  const bib = editor.getByTestId('bibliography');
+  await bib.getByText('References').waitFor();
+  await bib.getByText('Salon Operations').waitFor();
+  if (await bib.getByText('Skin care trends').count()) throw new Error('uncited source listed');
+});
+
+await step('switching to MLA restyles citations and the list; DOCX has the formatted text', async () => {
+  await page.getByTestId('citations-panel').getByLabel('Citation style').selectOption('mla');
+  await editor.getByTestId('citation').getByText('(Tanaka 12)').waitFor();
+  await editor.getByTestId('bibliography').getByText('Works Cited').waitFor();
+  await page.waitForTimeout(2500);
+  const xml = await (await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body())).file('word/document.xml').async('string');
+  for (const want of ['(Tanaka 12)', 'Works Cited', 'Tanaka, Aya. ', 'Salon Operations']) if (!xml.includes(want)) throw new Error(`docx missing ${want}`);
+  if (!/<w:i\/>[\s\S]{0,200}Salon Operations/.test(xml)) throw new Error('book title not italic');
 });
 
 await page.request.delete(`${BASE}/api/resources/${doc.id}`);
