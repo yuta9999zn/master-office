@@ -21,6 +21,7 @@ import { PivotEngine } from './pivots/pivot-engine';
 import { CURSOR_LABEL, CursorLabel } from './presence';
 import { MoAuthzService, refreshProtection } from './authz';
 import { installShowFormulas, showFormulasPref } from './show-formulas';
+import { installRowFilter } from './filter-views';
 
 export interface GridHandle {
   api: UniverAPI;
@@ -29,6 +30,8 @@ export interface GridHandle {
   value: (sheet: string, a1: string) => unknown;
   /** View → Show formulas (this person only). */
   showFormulas: { set: (on: boolean) => void; get: () => boolean };
+  /** Rows hidden on this screen only (filter views). */
+  rowFilter: { set: (sheetId: string | null, rows: Set<number>) => void };
 }
 
 const rawValue = (api: UniverAPI, unitId: string) => (sheet: string, a1: string) => {
@@ -168,13 +171,15 @@ export function UniverGrid({
         if (user) users.setCurrentUser({ userID: `${editable ? 'Owner' : 'Reader'}_${user.id}`, name: user.name, avatar: '', color: user.color } as never);
         const formulasView = installShowFormulas(injector, core, univerAPI, unitId);
         if (showFormulasPref()) formulasView.set(true, false);
-        const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId), showFormulas: formulasView };
+        const rowFilter = installRowFilter(injector, core, univerAPI, unitId);
+        const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId), showFormulas: formulasView, rowFilter };
         (window as unknown as { __moSheet?: GridHandle }).__moSheet = handle; // e2e hooks (formula parity tests)
         onReady?.(handle);
         setState('ready');
         cleanup = () => {
           onReady?.(null);
           formulasView.dispose();
+          rowFilter.dispose();
           pivots?.destroy();
           binding.destroy();
           chartContexts.delete(unitId);

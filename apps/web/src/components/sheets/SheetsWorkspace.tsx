@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma, ListTree } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma, ListTree, Filter } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -34,6 +34,7 @@ import { macrosOf, saveMacro, useMacros, type MacroDef } from './macros/store';
 import { ImportMacrosDialog } from './macros/ImportMacrosDialog';
 import { BandingPanel, openBanding } from './banding';
 import { addGroup, GroupGutter, removeGroup, selectionSpan, setAll, type Axis } from './groups';
+import { createFilterView, FilterViewBar, FilterViewPanel, useApplyFilterView, useFilterViews } from './filter-views';
 import { findTriggers, setTriggerEnabled, TriggerRunner, useDisabledTriggers, type Execution } from './macros/triggers';
 
 // Univer touches the DOM at import time: load it on the client only.
@@ -60,7 +61,8 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const [share, setShare] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | 'Alternating colors' | null>(null);
+  const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | 'Alternating colors' | 'Filter view' | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [bandingId, setBandingId] = useState<string | null>(null);
   const [formulasShown, setFormulasShown] = useState(false);
   const [pivotId, setPivotId] = useState<string | null>(null);
@@ -85,6 +87,21 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const titleRef = useRef<TitleBarHandle>(null);
   const activeSheet = useRef<string | null>(null);
   const [grid, setGrid] = useState<GridHandle | null>(null);
+  // Filter views: definitions are shared, the one turned on is this person's own.
+  const filterViews = useFilterViews(collab.session?.doc ?? null);
+  const activeView = filterViews.find((v) => v.id === viewId) ?? null;
+  useApplyFilterView(grid?.api ?? null, collab.session?.doc ?? null, r.id, activeView, grid?.rowFilter ?? null);
+  const openView = (id: string) => {
+    const v = filterViews.find((x) => x.id === id);
+    const wb = grid?.api.getWorkbook(r.id) as { getSheetBySheetId(id: string): unknown; setActiveSheet(s: unknown): void } | null;
+    if (v && wb) wb.setActiveSheet(wb.getSheetBySheetId(v.sheetId));
+    setViewId(id);
+    setPanel('Filter view');
+  };
+  const closeView = () => {
+    setViewId(null);
+    if (panel === 'Filter view') setPanel(null);
+  };
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
   const report = (r.metadata as { import?: ImportReport } | undefined)?.import;
   const run = async (m: MacroDef) => {
@@ -390,6 +407,26 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Data</button>
           </MenuTrigger>
           <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuItem
+              icon={<Filter />}
+              disabled={!grid}
+              onSelect={() => {
+                if (!grid || !collab.session) return;
+                const v = createFilterView(grid.api, collab.session.doc, r.id);
+                if (typeof v === 'string') return void toast.error(v);
+                openView(v.id);
+              }}
+            >
+              Create filter view
+            </MenuItem>
+            {filterViews.map((v) => (
+              <MenuItem key={v.id} icon={<Filter />} disabled={!grid} onSelect={() => openView(v.id)}>
+                {v.id === viewId ? '✓ ' : ''}
+                {v.name}
+              </MenuItem>
+            ))}
+            {activeView && <MenuItem onSelect={closeView}>Close filter view</MenuItem>}
+            <MenuSeparator />
             <MenuItem icon={<BarChartHorizontal />} disabled={!grid} onSelect={() => setPanel('Column stats')}>
               Column stats
             </MenuItem>
@@ -491,6 +528,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                 </div>
               )}
               <SheetTabs grid={grid} unitId={r.id} doc={collab.session.doc} editable={editable} />
+              {activeView && <FilterViewBar doc={collab.session.doc} view={activeView} onClose={closeView} />}
               <div className="relative min-h-0 flex-1">
               <UniverGrid
                 key={r.id}
@@ -524,7 +562,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
         {panel && (
           <aside className={cn('flex shrink-0 flex-col rounded-xl border border-line bg-surface', panel === 'Macros' ? 'w-[520px]' : 'w-[320px]')}>
             <div className="flex items-center gap-4 border-b border-line px-4">
-              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : []), ...(pivotId ? (['Pivot table'] as const) : []), ...(bandingId ? (['Alternating colors'] as const) : [])] as const).map((t) => (
+              {(['Macros', 'History', ...(chartId ? (['Chart'] as const) : []), ...(panel === 'Column stats' ? (['Column stats'] as const) : []), ...(pivotId ? (['Pivot table'] as const) : []), ...(bandingId ? (['Alternating colors'] as const) : []), ...(activeView ? (['Filter view'] as const) : [])] as const).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                 </button>
@@ -534,7 +572,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'Alternating colors' && bandingId && grid && collab.session ? (
+              {panel === 'Filter view' && activeView && grid && collab.session ? (
+                <FilterViewPanel api={grid.api} doc={collab.session.doc} unitId={r.id} view={activeView} editable={editable} onClose={closeView} />
+              ) : panel === 'Alternating colors' && bandingId && grid && collab.session ? (
                 <BandingPanel api={grid.api} doc={collab.session.doc} unitId={r.id} id={bandingId} editable={editable} onClose={() => (setBandingId(null), setPanel(null))} />
               ) : panel === 'Pivot table' && pivotId && grid && collab.session ? (
                 <PivotEditor doc={collab.session.doc} api={grid.api} unitId={r.id} pivotId={pivotId} editable={editable} onClose={() => (setPivotId(null), setPanel(null))} />

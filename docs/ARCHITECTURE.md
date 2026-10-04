@@ -820,3 +820,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Thao tác | Menu **View**: Group rows / Group columns, Ungroup rows / columns (nhóm trong cùng chứa vùng chọn), Expand all / Collapse all row groups. **Alt+Shift+→ / ←** (chọn cả cột → cột, còn lại → dòng). Chỉ editor. |
 | Giới hạn | Dòng/cột đóng băng (freeze) chưa được tính khi vẽ; chưa xuất outline sang XLSX (Excel outline level). |
 | Test | `sheets-format-flow.mjs` (+3): nhóm dòng 3–5, thu gọn, Mika thấy dòng ẩn và nút +; chèn dòng → nhóm thành 4–6, nhóm lồng 5–5, collapse/expand all; Alt+Shift+← gỡ nhóm trong; nhóm cột C–D ẩn cột. |
+
+## 51. Phase 3.3 — Sheets: filter views: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Ý nghĩa | Như Google: bộ lọc **có tên, lưu chung**, nhưng **ai bật thì chỉ màn hình người đó** bị lọc — cộng tác viên, dữ liệu, xuất file không đổi (khác Data → Filter của Univer, vốn áp cho mọi người). |
+| Lưu | Map `filterViews` trong Y.Doc: `{id, sheetId, name, r0, r1, c0, c1 (id dòng/cột → theo khi chèn/xoá), hidden: {colId: giá trị bị ẩn}}`. Sửa tiêu chí = sửa view đã lưu (ai dùng view đó cũng thấy tiêu chí mới, như Google). View đang bật là state cục bộ. |
+| Lọc | Interceptor `ROW_FILTERED` (cài một lần cho mỗi lưới, `priority: 1000` để chạy **trước** interceptor của plugin filter vốn không chuyển tiếp, rồi tự chuyển tiếp → bộ lọc thường vẫn hoạt động). Tập dòng ẩn tính lại khi dữ liệu đổi (debounce 150 ms) hoặc tiêu chí đổi, rồi `refreshCanvas`. So sánh theo giá trị lưu dạng chữ; ô trống = "(Blanks)". |
+| Giao diện | **Data → Create filter view** (vùng chọn / vùng dữ liệu, tên "Filter N"), danh sách view để mở (✓ view đang bật), Close filter view. Thanh tối phía trên lưới (tên, vùng, "only you see this filtering", ×). Panel: đổi tên, vùng, chọn cột, lọc theo giá trị (tìm kiếm, Select all / Clear, đếm), Delete view. |
+| Giới hạn | Chưa lọc theo điều kiện (lớn hơn, chứa…), chưa sắp xếp trong view, chưa có link chia sẻ `?fvid=`. |
+| Test | `sheets-format-flow.mjs` (+2): tạo view, bỏ 625 → dòng 3,5 ẩn với Claudia, Mika không bị lọc nhưng thấy "Filter 1"; sửa B7 = 625 → ẩn ngay; đóng / mở lại từ menu; xoá view. |

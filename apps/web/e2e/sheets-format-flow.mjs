@@ -1,4 +1,4 @@
-// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors, show formulas, groups.
+// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors, show formulas, groups, filter views.
 // node e2e/sheets-format-flow.mjs   (needs pnpm dev + API + seeded data)
 import { chromium } from 'playwright';
 import { tmpdir } from 'node:os';
@@ -181,6 +181,46 @@ await step('Alt+Shift+← ungroups the innermost group; column groups hide colum
   await claudia.getByRole('button', { name: 'Collapse columns 3–4' }).click();
   await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getColVisible(2));
   if ((await hiddenCols(claudia)) !== '3,4') throw new Error(`hidden cols ${await hiddenCols(claudia)}`);
+});
+
+const filtered = (page) => page.evaluate(() => { const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet(); const out = []; for (let r = 0; r < 10; r++) if (ws.getRowFiltered(r)) out.push(r + 1); return out.join(','); });
+
+await step('Data → Create filter view filters by values on this screen only', claudia, async () => {
+  await claudia.evaluate(() => {
+    const wb = window.__moSheet.api.getActiveWorkbook();
+    wb.insertSheet('Views');
+    const ws = wb.getActiveSheet();
+    ws.getRange('A1:C7').setValues([['Name', 'Branch', 'Sales'], ['Aya', '575', 120], ['Ken', '625', 90], ['Mika', 'S2', 140], ['Sora', '625', 75], ['Rina', '575', 110], ['Hana', 'S2', 95]]);
+    ws.getRange('B2').activate();
+  });
+  await menu(claudia, 'Data', 'Create filter view');
+  await claudia.getByTestId('filter-view-bar').getByText('A1:C7').waitFor();
+  const panel = claudia.getByTestId('filter-view-panel');
+  await panel.getByLabel('Filter column').selectOption({ label: 'Branch' });
+  await panel.getByTestId('filter-values').getByRole('checkbox', { name: '625' }).uncheck();
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(2));
+  if ((await filtered(claudia)) !== '3,5') throw new Error(`filtered ${await filtered(claudia)}`);
+  const mika = await session('mika@kaori.jp');
+  await mika.goto(`${BASE}/sheets/${book.id}`);
+  await ready(mika, book.id);
+  await mika.evaluate(() => { const wb = window.__moSheet.api.getActiveWorkbook(); wb.setActiveSheet(wb.getSheetByName('Views')); });
+  await mika.waitForTimeout(1500);
+  if ((await filtered(mika)) !== '') throw new Error(`Mika's rows are filtered: ${await filtered(mika)}`);
+  await mika.getByRole('button', { name: 'Data', exact: true }).click();
+  await mika.getByRole('menuitem', { name: 'Filter 1' }).waitFor();
+  await mika.context().close();
+});
+
+await step('the view follows edits, closes, and reopens from the Data menu', claudia, async () => {
+  await claudia.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('B7').setValue('625'));
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(6));
+  await claudia.getByRole('button', { name: 'Close filter view' }).click();
+  await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(2));
+  await menu(claudia, 'Data', 'Filter 1');
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(2));
+  if ((await filtered(claudia)) !== '3,5,7') throw new Error(`filtered ${await filtered(claudia)}`);
+  await claudia.getByTestId('filter-view-delete').click();
+  await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(2));
 });
 
 await claudia.request.delete(`${BASE}/api/resources/${book.id}`);
