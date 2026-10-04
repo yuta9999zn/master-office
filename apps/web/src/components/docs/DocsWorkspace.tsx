@@ -1,7 +1,8 @@
 'use client';
 
 import { FootnotesList, insertFootnote } from './notes-math';
-import { BordersDialog, CompareDialog, WatermarkDialog } from './DocFormatDialogs';
+import { BordersDialog, CompareDialog, IndentDialog, WatermarkDialog } from './DocFormatDialogs';
+import { LineNumbers } from './LineNumbers';
 import { PublishDialog } from '../editor/PublishDialog';
 import { ActivityDashboard } from '../editor/ActivityDashboard';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
@@ -169,6 +170,8 @@ function DocBody({
   const [viewing, setViewing] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
   const [bordersOpen, setBordersOpen] = useState(false);
+  const [indentOpen, setIndentOpen] = useState(false);
+  const pageRef = useRef<HTMLElement>(null);
   const [chartOpen, setChartOpen] = useState(false);
   const [mdPaste, setMdPaste] = useState(true);
   useEffect(() => setMdPaste(markdownPasteEnabled()), []);
@@ -467,6 +470,9 @@ function DocBody({
           <MenuItem disabled={!canEdit} shortcut="Ctrl+," onSelect={() => c().toggleSubscript().run()}>
             Subscript
           </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => c().toggleMark('smallCaps').run()}>
+            {editor.isActive('smallCaps') ? '✓ ' : ''}Small caps
+          </MenuItem>
           <MenuSeparator />
           <MenuLabel>Change case</MenuLabel>
           <MenuItem disabled={!canEdit} onSelect={() => changeCase('upper')}>
@@ -487,6 +493,9 @@ function DocBody({
           <MenuSeparator />
           <MenuItem disabled={!canEdit} onSelect={() => setBordersOpen(true)}>
             Borders and shading…
+          </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => setIndentOpen(true)}>
+            Indentation options…
           </MenuItem>
           <MenuLabel>Columns</MenuLabel>
           {([1, 2, 3] as const).map((n) => (
@@ -517,6 +526,9 @@ function DocBody({
           <MenuItem onSelect={() => setCompareOpen(true)}>Compare documents…</MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => setActivityOpen(true)}>
             Activity dashboard
+          </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => updatePageSetup({ ...pageSetup, lineNumbers: !pageSetup.lineNumbers })}>
+            {pageSetup.lineNumbers ? '✓ ' : ''}Line numbers
           </MenuItem>
           <MenuItem onSelect={() => (setMdPaste(!mdPaste), setMarkdownPaste(!mdPaste))}>
             {mdPaste ? '✓ ' : ''}Automatically detect Markdown
@@ -579,6 +591,7 @@ function DocBody({
             <VersionPreview resourceId={r.id} versionId={preview} canEdit={canEdit} onClose={() => setPreview(null)} />
           ) : (
             <article
+              ref={pageRef}
               data-testid="doc-page"
               data-pageless={pageSetup.pageless ? '' : undefined}
               className={cn(
@@ -629,6 +642,7 @@ function DocBody({
               <h1 className="mb-6 cursor-text text-[34px] font-bold leading-tight tracking-tight text-ink" onClick={() => canEdit && onRename()}>
                 {r.name}
               </h1>
+              {pageSetup.lineNumbers && <LineNumbers editor={editor} page={pageRef} zoom={zoom} />}
               <EditorContent editor={editor} />
               <FootnotesList editor={editor} />
               <div className="mt-16 text-right text-[12px] text-subtle" data-testid="word-count">
@@ -694,6 +708,7 @@ function DocBody({
       <WatermarkDialog open={watermarkOpen} value={pageSetup} resourceId={r.id} readOnly={!canEdit} onClose={() => setWatermarkOpen(false)} onSave={updatePageSetup} />
       <BordersDialog open={bordersOpen} editor={editor} onClose={() => setBordersOpen(false)} />
       <ChartDialog open={chartOpen} editor={editor} onClose={() => setChartOpen(false)} />
+      <IndentDialog open={indentOpen} editor={editor} onClose={() => setIndentOpen(false)} />
       <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={canEdit} onClose={() => setPublishOpen(false)} />
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />

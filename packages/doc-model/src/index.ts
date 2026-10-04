@@ -191,6 +191,13 @@ export const TableOfContents = Node.create({
 
 export const LINE_HEIGHTS = ['1', '1.15', '1.5', '2', '2.5', '3'];
 
+/** Format → Text → Small caps (a mark, so it exports as Word's small caps). §56. */
+export const SmallCaps = Mark.create({
+  name: 'smallCaps',
+  parseHTML: () => [{ tag: 'span[data-small-caps]' }, { style: 'font-variant=small-caps' }, { style: 'font-variant-caps=small-caps' }],
+  renderHTML: ({ HTMLAttributes }) => ['span', mergeAttributes(HTMLAttributes, { 'data-small-caps': '', style: 'font-variant:small-caps' }), 0],
+});
+
 /**
  * Paragraph formatting from Word's Paragraph group: line spacing, space before/after (pt) and the Title / Subtitle styles.
  * Stored as node attributes so they survive collaboration and export 1:1.
@@ -216,6 +223,23 @@ export const ParagraphFormat = Extension.create({
             default: null,
             parseHTML: (el) => (el.style.marginBottom.endsWith('pt') ? parseFloat(el.style.marginBottom) : null),
             renderHTML: (a) => (a.spaceAfter != null ? { style: `margin-bottom:${a.spaceAfter}pt` } : {}),
+          },
+          // Format → Align & indent → Indentation options (points; firstLine < 0 = hanging). §56.
+          indentLeft: {
+            default: null,
+            parseHTML: (el) => (el.style.marginLeft.endsWith('pt') ? parseFloat(el.style.marginLeft) : null),
+            renderHTML: (a) => (a.indentLeft ? { style: `margin-left:${a.indentLeft}pt` } : {}),
+          },
+          indentRight: {
+            default: null,
+            parseHTML: (el) => (el.style.marginRight.endsWith('pt') ? parseFloat(el.style.marginRight) : null),
+            renderHTML: (a) => (a.indentRight ? { style: `margin-right:${a.indentRight}pt` } : {}),
+          },
+          firstLine: {
+            default: null,
+            parseHTML: (el) => (el.style.textIndent.endsWith('pt') ? parseFloat(el.style.textIndent) : null),
+            // A hanging indent pulls the first line out: the paragraph needs at least that much left indent.
+            renderHTML: (a) => (a.firstLine ? { style: `text-indent:${a.firstLine}pt${a.firstLine < 0 && !a.indentLeft ? `;margin-left:${-a.firstLine}pt` : ''}` } : {}),
           },
           // Borders and shading (Format → Paragraph styles → Borders and shading).
           shading: {
@@ -337,6 +361,8 @@ export interface PageSetup {
   pageless?: boolean;
   /** Watermark shown behind every page (print layout, PDF). */
   watermark?: Watermark | null;
+  /** Tools → Line numbers: numbers every visual line in the margin (editor, PDF, DOCX). §56. */
+  lineNumbers?: boolean;
 }
 
 export interface Watermark {
@@ -415,7 +441,7 @@ export interface DocExtensionOptions {
 export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
   return [
     StarterKit.configure({
-      heading: { levels: [1, 2, 3, 4] },
+      heading: { levels: [1, 2, 3, 4, 5, 6] },
       link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' } },
       ...(opts.collaboration ? { undoRedo: false as const } : {}),
     }),
@@ -434,6 +460,7 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     PageBreak,
     TableOfContents,
     ParagraphFormat,
+    SmallCaps,
     Insertion,
     Deletion,
     ResourceLink,
@@ -557,6 +584,7 @@ function markStyle(marks: JSONContent['marks']): { open: string; close: string }
         break;
     }
   }
+  if (marks?.some((mk) => mk.type === 'smallCaps')) style.push('font-variant:small-caps');
   if (style.length) {
     open = `<span style="${esc(style.join(';'))}">` + open;
     close += '</span>';
@@ -574,6 +602,9 @@ function blockAttrs(n: JSONContent): string {
   if (a.lineHeight) s.push(`line-height:${a.lineHeight}`);
   if (a.spaceBefore != null) s.push(`margin-top:${a.spaceBefore}pt`);
   if (a.spaceAfter != null) s.push(`margin-bottom:${a.spaceAfter}pt`);
+  if (a.indentLeft) s.push(`margin-left:${a.indentLeft}pt`);
+  if (a.indentRight) s.push(`margin-right:${a.indentRight}pt`);
+  if (a.firstLine) s.push(`text-indent:${a.firstLine}pt`, ...(a.firstLine < 0 && !a.indentLeft ? [`margin-left:${-a.firstLine}pt`] : []));
   const cls = a.docStyle === 'title' ? ' class="doc-style-title"' : a.docStyle === 'subtitle' ? ' class="doc-style-subtitle"' : '';
   return (s.length ? ` style="${s.join(';')}"` : '') + cls;
 }
@@ -717,6 +748,39 @@ export const EXPORT_CSS = `
   .doc-title { font-size: 28pt; font-weight: 700; margin: 0 0 18px; }
 `;
 
+/**
+ * Tools → Line numbers (§56): the top of every visual line of text inside `root`, relative to `base`, in CSS
+ * pixels of `base` (divided by `scale` when the page is zoomed). Self-contained — the PDF export serialises it into
+ * the page — so it must not reference anything outside its body. Tables and footnotes are not numbered (Word).
+ */
+export function lineBoxes(root: HTMLElement, base: HTMLElement, scale = 1): { top: number; height: number }[] {
+  const out: { top: number; height: number }[] = [];
+  const b = base.getBoundingClientRect();
+  const blocks = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre');
+  for (const el of Array.from(blocks)) {
+    if (el.closest('table, .footnotes, [data-no-line-numbers]') || (el.parentElement && el.parentElement.closest('p, h1, h2, h3, h4, h5, h6, pre'))) continue;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0).sort((x, y) => x.top - y.top);
+    if (!rects.length) {
+      const r = el.getBoundingClientRect();
+      if (r.height > 0) out.push({ top: (r.top - b.top) / scale, height: r.height / scale });
+      continue;
+    }
+    let last = -1e9;
+    let lastH = 0;
+    for (const r of rects) {
+      // Fragments of one line share (almost) its top; a new line starts more than half a line below.
+      if (r.top - last > Math.max(4, lastH * 0.5)) {
+        out.push({ top: (r.top - b.top) / scale, height: r.height / scale });
+        last = r.top;
+        lastH = r.height;
+      }
+    }
+  }
+  return out;
+}
+
 export function toHTMLDocument(
   title: string,
   doc: JSONContent | null | undefined,
@@ -732,6 +796,10 @@ export function toHTMLDocument(
   const watermark = wmSrc
     ? `<div class="watermark" style="position:fixed;inset:-${m.top}mm -${m.right}mm -${m.bottom}mm -${m.left}mm;z-index:-1;background:url('${esc(wmSrc)}') center/${wm?.image ? '60% auto' : 'contain'} no-repeat;${wm?.image ? `opacity:${wm.opacity ?? 0.2};` : ''}"></div>`
     : '';
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body>${watermark}<main><div class="doc-title">${esc(title)}</div>${toHTML(doc, opts)}</main></body></html>`;
+  // Line numbers: laid out by the browser that renders the PDF, with the same function as the editor.
+  const numbers = p.lineNumbers
+    ? `<style>main{position:relative}.ln{position:absolute;left:-12mm;width:8mm;text-align:right;font:8pt Inter,Arial,sans-serif;color:#94a3b8}</style><script>(function(){var lineBoxes=${lineBoxes.toString()};var m=document.querySelector('main');var go=function(){var n=1;lineBoxes(m,m,1).forEach(function(l){var d=document.createElement('div');d.className='ln';d.style.top=(l.top+Math.max(0,(l.height-11)/2))+'px';d.textContent=String(n++);m.appendChild(d);});};if(document.fonts&&document.fonts.ready)document.fonts.ready.then(go);else go();})();</script>`
+    : '';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body>${watermark}<main><div class="doc-title" data-no-line-numbers>${esc(title)}</div>${toHTML(doc, opts)}</main>${numbers}</body></html>`;
 }
 export * from './mindmap';

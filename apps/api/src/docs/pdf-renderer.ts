@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationShutdown, ServiceUnavailableException } from '@nestjs/common';
-import { DEFAULT_PAGE_SETUP, expandTokens, type PageSetup } from '@workos/doc-model';
+import { DEFAULT_PAGE_SETUP, expandTokens, type PageSetup, paperSize } from '@workos/doc-model';
 import type { Browser } from 'playwright';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -38,7 +38,15 @@ export class PdfRenderer implements OnApplicationShutdown {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
+      if (p.lineNumbers) {
+        // Line numbers are measured in the page itself: lay it out as printed (print CSS, the text width of the
+        // paper) so lines wrap where they will on paper, and let the numbering script finish before printing.
+        const { w } = paperSize(p);
+        await page.emulateMedia({ media: 'print' });
+        await page.setViewportSize({ width: Math.round(((w - p.margins.left - p.margins.right) * 96) / 25.4), height: 1000 });
+      }
       await page.setContent(html, { waitUntil: 'load' });
+      if (p.lineNumbers) await page.evaluate(() => (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready).catch(() => undefined);
       const withHF = !!(p.header || p.footer);
       return await page.pdf({
         preferCSSPageSize: true,

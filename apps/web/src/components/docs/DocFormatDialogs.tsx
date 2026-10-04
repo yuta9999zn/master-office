@@ -227,3 +227,62 @@ export function CompareDialog({ open, resourceId, onClose }: { open: boolean; re
     </Dialog>
   );
 }
+
+const PT_PER_CM = 28.3465;
+const cm = (pt: unknown) => (Number(pt) ? Math.round((Number(pt) / PT_PER_CM) * 100) / 100 : 0);
+
+/** Format → Align & indent → Indentation options (Google Docs): left, right, first line / hanging (cm). §56. */
+export function IndentDialog({ open, editor, onClose }: { open: boolean; editor: Editor; onClose: () => void }) {
+  const [left, setLeft] = useState(0);
+  const [right, setRight] = useState(0);
+  const [special, setSpecial] = useState<'none' | 'first' | 'hanging'>('none');
+  const [by, setBy] = useState(1.27);
+  useEffect(() => {
+    if (!open) return;
+    const a = editor.isActive('heading') ? editor.getAttributes('heading') : editor.getAttributes('paragraph');
+    const first = Number(a.firstLine) || 0;
+    setSpecial(first > 0 ? 'first' : first < 0 ? 'hanging' : 'none');
+    setBy(first ? cm(Math.abs(first)) : 1.27);
+    // A hanging indent without its own left indent sits at the hang: show that as the left indent.
+    setLeft(cm(a.indentLeft) || (first < 0 ? cm(-first) : 0));
+    setRight(cm(a.indentRight));
+  }, [open, editor]);
+  const apply = () => {
+    const pt = (v: number) => (v ? Math.round(v * PT_PER_CM * 10) / 10 : null);
+    const attrs = { indentLeft: pt(left), indentRight: pt(right), firstLine: special === 'none' ? null : special === 'first' ? pt(by) : -(pt(by) ?? 0) || null };
+    editor.chain().focus().updateAttributes('paragraph', attrs).updateAttributes('heading', attrs).run();
+    onClose();
+  };
+  const field = (label: string, value: number, set: (v: number) => void, disabled = false) => (
+    <label className={cn('flex items-center justify-between gap-3 text-[13px]', disabled && 'opacity-40')}>
+      <span>{label}</span>
+      <span className="flex items-center gap-1.5">
+        <input type="number" step={0.1} min={0} max={20} disabled={disabled} value={value} onChange={(e) => set(Math.max(0, Number(e.target.value) || 0))} className="input h-8 w-20 text-right" aria-label={label} />
+        <span className="w-6 text-muted">cm</span>
+      </span>
+    </label>
+  );
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()} title="Indentation options" width={380}>
+      <div className="space-y-3" data-testid="indent-dialog">
+        {field('Left', left, setLeft)}
+        {field('Right', right, setRight)}
+        <label className="flex items-center justify-between gap-3 text-[13px]">
+          <span>Special indent</span>
+          <select value={special} onChange={(e) => setSpecial(e.target.value as typeof special)} className="input h-8 w-36" aria-label="Special indent">
+            <option value="none">None</option>
+            <option value="first">First line</option>
+            <option value="hanging">Hanging</option>
+          </select>
+        </label>
+        {field('By', by, setBy, special === 'none')}
+      </div>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="primary" onClick={apply} data-testid="indent-apply">
+          Apply
+        </Button>
+      </div>
+    </Dialog>
+  );
+}

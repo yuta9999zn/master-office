@@ -872,3 +872,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | API | Người trình bày (cần quyền với bản trình chiếu): `GET/POST/DELETE /api/resources/:id/qa`, `PATCH /api/qa-questions/:qid {presenting, hidden}`. Khán giả (chỉ cần link): `GET /api/qa/:token`, `POST /api/qa/:token/questions`, `POST /api/qa/:token/questions/:qid/vote`. Phiên đã kết thúc → 403. |
 | Cập nhật | Poll 3 s (Presenter view, slide show, trang khán giả) — đủ cho hỏi đáp, không cần kênh realtime công khai. |
 | Test | `apps/web/e2e/qa-flow.mjs` (4 bước): F5 + Presenter view → Start → dải link trên slide show; khán giả ẩn danh hỏi, vote / bỏ vote / vote lại, người thứ hai vote → 2; Present → câu hỏi trên màn chiếu, Hide → biến mất cả với khán giả; Stop → dải link biến mất, khán giả thấy "ended", hỏi tiếp → 403. |
+
+## 56. Phase 2.3 — Docs: H5–H6, small caps, thụt lề, đánh số dòng: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Heading 5–6 | `heading.levels` 1–6 (toolbar Text style, CSS, DOCX `Heading5/6`, mục lục / outline dùng chung `headingsOf`). |
+| Small caps | Mark `smallCaps` (Format → Small caps) → `font-variant:small-caps` trong editor / HTML / PDF, `w:smallCaps` trong DOCX. |
+| Thụt lề | Thuộc tính đoạn `indentLeft`, `indentRight`, `firstLine` (pt; **âm = hanging**) qua `ParagraphFormat` → `margin-left/right`, `text-indent` (hanging không có lề trái thì tự lấy lề trái bằng độ treo). Hộp **Format → Indentation options…** như Google: Left / Right / Special (None, First line, Hanging) + By, hiển thị **cm**, lưu pt. DOCX: `w:ind left/right/firstLine/hanging` (twip), cộng với lề của danh sách. |
+| Đánh số dòng | **Tools → Line numbers** (lưu trong page setup — chung cho tài liệu). Đánh số **dòng hiển thị** (như Word/Google), không phải đoạn: `lineBoxes()` trong doc-model gom `Range.getClientRects()` theo dòng của từng đoạn / tiêu đề / code (bỏ bảng, chú thích cuối trang, tiêu đề tài liệu); editor vẽ cột số trong lề trái, đo lại khi sửa / đổi cỡ / tải font (chia cho zoom). **PDF**: cùng hàm được nhúng vào trang (script) và chạy trong Chromium với layout in (media print, bề rộng = khổ giấy trừ lề) trước khi in. **DOCX**: `w:lnNumType` liên tục. Đánh số liên tục cả tài liệu ở mọi nơi (chưa có "bắt đầu lại mỗi trang"). |
+| Test | `apps/web/e2e/docs-format-flow.mjs` (4 bước): Heading 5, small caps; first line 1,5 cm → `text-indent:42.5pt`, hanging; line numbers ≥ 6, số cuối = số dòng, nằm trong lề; DOCX có Heading5, smallCaps, `w:hanging="850"`, `lnNumType`, HTML có script đánh số, PDF xuất được. |

@@ -128,13 +128,15 @@ const BLOCKS = [
   { id: 'h2', label: 'Heading 2' },
   { id: 'h3', label: 'Heading 3' },
   { id: 'h4', label: 'Heading 4' },
+  { id: 'h5', label: 'Heading 5' },
+  { id: 'h6', label: 'Heading 6' },
 ];
 
 export function DocToolbar({ editor, actions, readOnly }: { editor: Editor; actions: ToolbarActions; readOnly: boolean }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
-      block: e.isActive('paragraph', { docStyle: 'title' }) ? 'title' : e.isActive('paragraph', { docStyle: 'subtitle' }) ? 'subtitle' : e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : e.isActive('heading', { level: 4 }) ? 'h4' : 'p',
+      block: e.isActive('paragraph', { docStyle: 'title' }) ? 'title' : e.isActive('paragraph', { docStyle: 'subtitle' }) ? 'subtitle' : e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : e.isActive('heading', { level: 4 }) ? 'h4' : e.isActive('heading', { level: 5 }) ? 'h5' : e.isActive('heading', { level: 6 }) ? 'h6' : 'p',
       font: (e.getAttributes('textStyle').fontFamily as string | undefined)?.split(',')[0].replace(/['"]/g, '') ?? 'Inter',
       size: (e.getAttributes('textStyle').fontSize as string | undefined) ?? '15px',
       color: (e.getAttributes('textStyle').color as string | undefined) ?? '#0f172a',
@@ -184,7 +186,7 @@ export function DocToolbar({ editor, actions, readOnly }: { editor: Editor; acti
                     ? c().setParagraph().updateAttributes('paragraph', { docStyle: null }).run()
                     : b.id === 'title' || b.id === 'subtitle'
                       ? c().setParagraph().updateAttributes('paragraph', { docStyle: b.id }).run()
-                      : c().toggleHeading({ level: Number(b.id[1]) as 1 | 2 | 3 | 4 }).run()
+                      : c().toggleHeading({ level: Number(b.id[1]) as 1 | 2 | 3 | 4 | 5 | 6 }).run()
                 }
               >
                 <span className={cn(b.id === 'title' && 'text-[22px] font-bold', b.id === 'subtitle' && 'text-[15px] text-muted', b.id === 'h1' && 'text-[20px] font-bold', b.id === 'h2' && 'text-[17px] font-bold', b.id === 'h3' && 'text-[15px] font-semibold', b.id === 'h4' && 'font-semibold')}>{b.label}</span>

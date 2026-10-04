@@ -13,6 +13,7 @@ import {
   Document,
   ExternalHyperlink,
   HeadingLevel,
+  LineNumberRestartFormat,
   ImageRun,
   LevelFormat,
   Packer,
@@ -56,7 +57,7 @@ export interface DocxImage {
 
 type Block = Paragraph | Table | TableOfContents;
 
-const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4];
+const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
 const ALIGN: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
   left: AlignmentType.LEFT,
   center: AlignmentType.CENTER,
@@ -175,6 +176,9 @@ class DocxWriter {
           case 'superscript':
             opts.superScript = true;
             break;
+          case 'smallCaps':
+            opts.smallCaps = true;
+            break;
           case 'insertion':
           case 'deletion':
             revision = { kind: m.type, author: String(m.attrs?.authorName ?? 'Master Office'), date: String(m.attrs?.at ?? new Date().toISOString()) };
@@ -212,8 +216,18 @@ class DocxWriter {
 
   private block(n: JSONContent, ctx: { indent?: number; list?: { reference: string; level: number; instance?: number } }): Block[] {
     const alignment = n.attrs?.textAlign ? ALIGN[n.attrs.textAlign] : undefined;
-    const indent = ctx.indent ? { left: ctx.indent } : undefined;
     const a = n.attrs ?? {};
+    // Paragraph indents are in points (twips = pt × 20) on top of a list's own indent; firstLine < 0 = hanging.
+    const pt = (v: unknown) => Math.round(Number(v) * 20);
+    const own = a.indentLeft || a.indentRight || a.firstLine;
+    const indent =
+      ctx.indent || own
+        ? {
+            left: (ctx.indent ?? 0) + (a.indentLeft ? pt(a.indentLeft) : a.firstLine < 0 ? pt(-a.firstLine) : 0),
+            ...(a.indentRight ? { right: pt(a.indentRight) } : {}),
+            ...(a.firstLine > 0 ? { firstLine: pt(a.firstLine) } : a.firstLine < 0 ? { hanging: pt(-a.firstLine) } : {}),
+          }
+        : undefined;
     const spacing =
       a.lineHeight || a.spaceBefore != null || a.spaceAfter != null
         ? {
@@ -228,7 +242,7 @@ class DocxWriter {
         if (n.attrs?.docStyle === 'subtitle') return [new Paragraph({ children: this.runs(n.content, { size: 28, color: '64748B' }), alignment, spacing })];
         return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing, ...boxOf(n) })];
       case 'heading':
-        return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_4, children: this.runs(n.content), alignment, spacing, ...boxOf(n) })];
+        return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_6, children: this.runs(n.content), alignment, spacing, indent, ...boxOf(n) })];
       case 'docChart': {
         // Charts arrive rasterised (docs.service renders each one to PNG as "chart:<n>").
         const no = ++this.chartNo;
@@ -465,6 +479,8 @@ export async function toDocx(
             size: { width: mmToTwip(paper.w), height: mmToTwip(paper.h), orientation: p.orientation === 'landscape' ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
             margin: { top: mmToTwip(p.margins.top), right: mmToTwip(p.margins.right), bottom: mmToTwip(p.margins.bottom), left: mmToTwip(p.margins.left) },
           },
+          // Tools → Line numbers: every line, continuous through the document (as in the editor and the PDF).
+          ...(p.lineNumbers ? { lineNumbers: { countBy: 1, restart: LineNumberRestartFormat.CONTINUOUS, distance: 360 } } : {}),
         },
         headers: p.header ? { default: new Header({ children: [headerFooter(p.header, p.headerAlign, title)] }) } : undefined,
         footers: p.footer ? { default: new Footer({ children: [headerFooter(p.footer, p.footerAlign, title)] }) } : undefined,
