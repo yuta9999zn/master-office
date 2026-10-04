@@ -169,6 +169,53 @@ export class DeckStore {
     const f = this.el(slideId, elId)?.get('text');
     return f instanceof Y.XmlFragment ? f : null;
   }
+  /**
+   * Replaces characters `from`…`to` of the n-th paragraph / heading of a text box (document order, as
+   * readText lists them; a hard break counts as one character) — keeping the formatting where the word starts.
+   * Used by Tools ▸ Spelling and grammar (docs/ARCHITECTURE.md §54).
+   */
+  replaceInParagraph(slideId: string, elId: string, paraIndex: number, from: number, to: number, text: string): boolean {
+    const frag = this.fragment(slideId, elId);
+    if (!frag) return false;
+    const paras: Y.XmlElement[] = [];
+    const walk = (n: Y.XmlFragment | Y.XmlElement) =>
+      n.toArray().forEach((c) => {
+        if (!(c instanceof Y.XmlElement)) return;
+        if (c.nodeName === 'paragraph' || c.nodeName === 'heading') paras.push(c);
+        else walk(c);
+      });
+    walk(frag);
+    const para = paras[paraIndex];
+    if (!para) return false;
+    let pos = 0;
+    let done = false;
+    this.tx(() => {
+      for (const c of para.toArray()) {
+        const len = c instanceof Y.XmlText ? c.length : 1;
+        if (c instanceof Y.XmlText && from >= pos && to <= pos + len) {
+          const at = from - pos;
+          // Formatting of the first replaced character.
+          let attrs: Record<string, unknown> = {};
+          let i = 0;
+          for (const op of c.toDelta() as { insert: string; attributes?: Record<string, unknown> }[]) {
+            const l = typeof op.insert === 'string' ? op.insert.length : 1;
+            if (at < i + l) {
+              attrs = op.attributes ?? {};
+              break;
+            }
+            i += l;
+          }
+          c.delete(at, to - from);
+          if (text) c.insert(at, text, attrs);
+          done = true;
+          return;
+        }
+        pos += len;
+      }
+    });
+    return done;
+  }
+
   notes(slideId: string) {
     return (this.slideMap(slideId)?.get('notes') as Y.Text | undefined) ?? null;
   }

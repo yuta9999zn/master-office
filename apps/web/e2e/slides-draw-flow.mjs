@@ -138,6 +138,23 @@ await step('Text fitting: shrink on overflow scales the text down, resize grows 
   await until(() => [...document.querySelectorAll('[data-testid="slide-canvas"] [data-hit]')].some((h) => parseFloat(h.style.height) > 200), null, 20000);
 });
 
+await step('Tools → Spelling and grammar checks every slide and fixes the text in place', async () => {
+  await page.locator('[data-slide]').nth(1).click();
+  await until(() => document.querySelector('[data-testid="slide-counter"]')?.textContent.includes('Slide 2 of 3'));
+  await page.getByRole('button', { name: 'Text box', exact: true }).click();
+  await page.keyboard.type('Teh team will recieve the the report.');
+  await page.keyboard.press('Escape');
+  await menu('Tools', 'Spelling and grammar');
+  const panel = page.getByTestId('slides-spelling');
+  await panel.getByText('recieve', { exact: true }).first().waitFor({ timeout: 20000 });
+  for (let n = 0; n < 3; n++) {
+    await panel.getByTestId('slides-spelling-issue').first().getByRole('button', { name: 'Accept' }).click();
+    await page.waitForTimeout(600);
+  }
+  await until(() => [...document.querySelectorAll('[data-testid="slide-canvas"] .mo-text')].some((t) => t.textContent === 'The team will receive the report.'), null, 15000);
+  await panel.getByText(/No spelling or grammar suggestions/).waitFor({ timeout: 15000 });
+});
+
 await step('PowerPoint export has the internal slide link and the autofit', async () => {
   await page.waitForTimeout(2500);
   const zip = await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${deck.id}/export?format=pptx`)).body());

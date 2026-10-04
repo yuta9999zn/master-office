@@ -86,6 +86,7 @@ import {
   FlipVertical2,
   PenLine,
   Link2,
+  SpellCheck,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ContextMenu as CM, DropdownMenu as DM } from 'radix-ui';
@@ -110,6 +111,8 @@ import { Presenter } from './Presenter';
 import { CtxItem, CtxSep, SlideCanvas, type RemoteSelection } from './SlideCanvas';
 import type { DrawTool, Drawn } from './DrawLayer';
 import { LinkDialog } from './LinkDialog';
+import { SpellingPanel } from './SpellingPanel';
+import { PersonalDictionaryDialog } from '../docs/spelling';
 import { anchorOf, SlideComments, type SlideAnchor } from './SlideComments';
 import { ColorPicker, DesignTab, FormatTab, LayoutTab, LayoutWire, PALETTE, ThemeTab } from './SlidePanels';
 import { SlideStyles, SlideView } from './SlideView';
@@ -125,7 +128,7 @@ const CLIP_PREFIX = 'MO-SLIDES:';
 type Clip = { kind: 'elements'; items: PlainElement[] } | { kind: 'slides'; items: PlainSlide[] };
 let clipboard: Clip | null = null;
 
-type Tab = 'Design' | 'Layout' | 'Theme' | 'Format' | 'Motion' | 'Comments' | 'History';
+type Tab = 'Design' | 'Layout' | 'Theme' | 'Format' | 'Motion' | 'Comments' | 'History' | 'Spelling';
 
 const isTextual = (e: PlainElement) => e.type === 'text' || (e.type === 'shape' && !isOpenStroke(e));
 const typingTarget = (t: EventTarget | null) => {
@@ -372,6 +375,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const [drawTool, setDrawTool] = useState<DrawTool | null>(null);
   // Insert ▸ Link: on the text being edited, else on the selected elements.
   const [linkOpen, setLinkOpen] = useState(false);
+  const [dictOpen, setDictOpen] = useState(false);
   const currentLink = editing && editor ? ((editor.getAttributes('link').href as string | undefined) ?? null) : (selected.length === 1 ? selected[0].link ?? null : null);
   const applyLink = (href: string | null) => {
     if (!store || !slide) return;
@@ -608,6 +612,11 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       if (e.key === 'F5') {
         e.preventDefault();
         present(e.shiftKey ? index : 0);
+        return;
+      }
+      if (mod && e.altKey && e.code === 'KeyX') {
+        e.preventDefault();
+        setTab('Spelling');
         return;
       }
       // Ctrl+K works while typing in a text box too (links on text).
@@ -1075,6 +1084,17 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
         </Menu>
         <Menu>
           <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Tools</button>
+          </MenuTrigger>
+          <MenuContent className="w-64">
+            <MenuItem icon={<SpellCheck />} shortcut="Ctrl+Alt+X" onSelect={() => setTab('Spelling')}>
+              Spelling and grammar
+            </MenuItem>
+            <MenuItem onSelect={() => setDictOpen(true)}>Personal dictionary…</MenuItem>
+          </MenuContent>
+        </Menu>
+        <Menu>
+          <MenuTrigger asChild>
             <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">Help</button>
           </MenuTrigger>
           <MenuContent className="w-60">
@@ -1343,6 +1363,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
         }}
       />
       {deck && <DiagramDialog open={diagramDialog} onOpenChange={setDiagramDialog} deck={deck} onInsert={insertDiagram} />}
+      <PersonalDictionaryDialog open={dictOpen} onClose={() => setDictOpen(false)} />
       <LinkDialog open={linkOpen} slides={slides} current={currentLink} onApply={applyLink} onClose={() => setLinkOpen(false)} />
       <VideoDialog open={videoDialog} onOpenChange={setVideoDialog} onLink={(u) => void insertMedia('video', u)} onFile={(f) => void insertMedia('video', f)} />
 
@@ -1438,9 +1459,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                   {t === 'Comments' && openThreads.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">{openThreads.length}</span>}
                 </button>
               ))}
-              {tab === 'History' && (
+              {(tab === 'History' || tab === 'Spelling') && (
                 <span className="tab shrink-0" aria-current="page">
-                  History
+                  {tab}
                 </span>
               )}
               <button onClick={() => (setTab(null), setPreviewing(null))} className="ml-auto rounded p-1 text-muted hover:bg-hover" aria-label="Close panel">
@@ -1485,6 +1506,17 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                 />
               )}
               {tab === 'History' && <HistoryPanel resourceId={r.id} canEdit={editable} previewing={previewing} onPreview={setPreviewing} />}
+              {tab === 'Spelling' && (
+                <SpellingPanel
+                  store={store}
+                  slides={slides}
+                  editable={editable}
+                  onGo={(slideId, elId) => {
+                    goSlide(slideId);
+                    setSelection([elId]);
+                  }}
+                />
+              )}
             </div>
           </aside>
         )}

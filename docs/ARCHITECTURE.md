@@ -851,3 +851,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | PPTX | Link slide → `hlinkClick action="ppaction://hlinksldjump"` (theo số thứ tự slide lúc xuất), cho chữ, hình, freeform; link web như cũ. |
 | Text fitting | Format → Text options → **Text fitting**: Do not autofit / **Shrink text on overflow** / **Resize shape to fit text**. Trình soạn đo chữ đã vẽ sau mỗi thay đổi (`useAutofit`, chỉ editor, bỏ qua hộp đang gõ) và **lưu kết quả** vào phần tử: `style.fontScale` (bước 5 %, tối thiểu 30 %, như normAutofit của PowerPoint) hoặc chiều cao mới — nên người xem, trình chiếu, xuất file thấy giống nhau mà không phải đo lại. Chữ thu nhỏ bằng CSS `zoom` trên `.mo-text` (dàn lại dòng, khác transform). Xuống dòng không tuyến tính → nhớ scale đã bị tràn với đúng nội dung/khung đó và không thử lại (tránh dao động 45 % ↔ 50 %, đã gặp "Maximum update depth"). PPTX: `fit: shrink / resize`. |
 | Test | `slides-draw-flow.mjs` (+3): Ctrl+K gắn phần tử với Slide 3 → trình chiếu bấm vào → 3/3; shrink → zoom < 1, resize → khung cao hơn 200; PPTX có `hlinksldjump` và autofit. |
+
+## 54. Phase 4.2 — Slides: kiểm tra chính tả cả bản trình chiếu: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Phạm vi | **Tools → Spelling and grammar** (Ctrl+Alt+X): panel kiểm tra **mọi hộp chữ của mọi slide** cùng lúc (Google Slides), cùng luật ngữ pháp (doc-model §45), cùng từ điển server và từ điển cá nhân như Docs; Tools → Personal dictionary dùng chung. Quét lại 400 ms sau mỗi thay đổi; cache theo từ cho cả phiên. |
+| Danh sách | Mỗi gợi ý: "Slide n · tiêu đề" (bấm → nhảy tới slide và chọn hộp chữ), từ sai + các gợi ý, Accept / Ignore / Add to dictionary. |
+| Sửa tại chỗ | `DeckStore.replaceInParagraph(slide, element, đoạn thứ n, from, to, chữ mới)`: đi qua XmlFragment theo đúng thứ tự `readText` (paragraph / heading, kể cả trong list), thay trong `Y.XmlText` **giữ định dạng** của ký tự đầu, một bước undo, đồng bộ cho mọi người. Đoạn đã đổi trong lúc đó → báo "check again". |
+| Giới hạn | Chưa gạch chân trong lúc gõ ở Slides; chưa kiểm tra speaker notes và bảng. |
+| Test | `slides-draw-flow.mjs` (+1): "Teh team will recieve the the report." → Accept 3 lần → "The team will receive the report.", panel báo hết gợi ý. |
