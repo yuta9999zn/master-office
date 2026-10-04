@@ -1,8 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { changeCount, chartsOf, CITATIONS_KEY, compareDocuments, docExtensions, pageSetupOf, resolveCitations, SETTINGS_MAP, toHTMLDocument, toPlainText, type ChartPainter, type JSONContent, type PageSetup } from '@workos/doc-model';
-import { chartSvg, DEFAULT_THEME, SLIDE_CSS, type ChartSpec } from '@workos/slide-model';
+import { changeCount, chartsOf, CITATIONS_KEY, drawingsOf, type DrawingAttrs, compareDocuments, docExtensions, pageSetupOf, resolveCitations, SETTINGS_MAP, toHTMLDocument, toPlainText, type ChartPainter, type JSONContent, type PageSetup } from '@workos/doc-model';
+import { chartSvg, DEFAULT_THEME, slideHtml, SLIDE_CSS, type ChartSpec, type PlainElement } from '@workos/slide-model';
 
 /** Document charts use the slide chart painter with the default theme. */
+/** A drawing as HTML: a white "slide" of its size drawn by slide-model (same renderer as the editor). */
+const paintDrawing = (d: DrawingAttrs) => slideHtml({ id: 'drawing', meta: {}, notes: '', elements: d.elements as PlainElement[] } as never, { size: { w: d.w, h: d.h }, theme: DEFAULT_THEME });
+
 const paintChart: ChartPainter = (spec, w, h) => chartSvg(spec as ChartSpec, w, h, DEFAULT_THEME);
 import type { ResourceType } from '@workos/shared';
 import { generateJSON } from '@tiptap/html/server';
@@ -274,12 +277,26 @@ export class DocsService {
           if (info) images.set(`chart:${i + 1}`, { ...info, width: charts[i].width, height: charts[i].height, data: png });
         });
       }
+      // Drawings likewise: drawn with slide-model's renderer and captured as PNG.
+      const drawings = drawingsOf(doc);
+      if (drawings.length) {
+        const w = Math.max(...drawings.map((d) => d.w));
+        const h = Math.max(...drawings.map((d) => d.h));
+        const pages = drawings.map((d) => `<div class="page" style="width:${d.w}px;height:${d.h}px;background:#fff">${paintDrawing(d)}</div>`).join('');
+        const pngs = await this.pdf.screenshots(`<!doctype html><html><head><meta charset="utf-8"><style>${SLIDE_CSS} body{margin:0}</style></head><body>${pages}</body></html>`, { w, h });
+        pngs.forEach((png, i) => {
+          const info = imageInfo(png);
+          if (info) images.set(`drawing:${i + 1}`, { ...info, width: drawings[i].w, height: drawings[i].h, data: png });
+        });
+      }
       body = await toDocx(title, doc, images, { author: actor.name, pageSetup });
     } else {
       const images = await this.loadImages(id, doc, [pageSetup.watermark?.image]);
       const html = toHTMLDocument(title, doc, {
         pageSetup,
         renderChart: paintChart,
+        // Fitted into the text width of a portrait page (≈ 600 px) with zoom, which also shrinks the layout box.
+        renderDrawing: (d) => `<style>${SLIDE_CSS}</style><div style="width:${d.w}px;zoom:${Math.min(1, 600 / d.w)}">${paintDrawing(d)}</div>`,
         resolveImage: (src) => {
           const img = images.get(src);
           return img ? `data:${img.mime};base64,${img.buf.toString('base64')}` : src;

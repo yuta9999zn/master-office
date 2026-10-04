@@ -4,6 +4,7 @@ import { FootnotesList, insertFootnote } from './notes-math';
 import { BordersDialog, CompareDialog, IndentDialog, WatermarkDialog } from './DocFormatDialogs';
 import { LineNumbers } from './LineNumbers';
 import { CitationsPanel, CitationsProvider } from './citations';
+import { DrawingEditor, EMPTY_DRAWING } from './drawing';
 import { PublishDialog } from '../editor/PublishDialog';
 import { ActivityDashboard } from '../editor/ActivityDashboard';
 import { DocTabsPanel, useDocTabs } from './DocTabs';
@@ -40,6 +41,7 @@ import {
   Globe,
   SpellCheck,
   BookOpen,
+  PenTool,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -173,6 +175,7 @@ function DocBody({
   const [watermarkOpen, setWatermarkOpen] = useState(false);
   const [bordersOpen, setBordersOpen] = useState(false);
   const [indentOpen, setIndentOpen] = useState(false);
+  const [drawingOpen, setDrawingOpen] = useState(false);
   const pageRef = useRef<HTMLElement>(null);
   const [chartOpen, setChartOpen] = useState(false);
   const [mdPaste, setMdPaste] = useState(true);
@@ -423,6 +426,9 @@ function DocBody({
           </MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => c().toggleCodeBlock().run()}>
             Code block
+          </MenuItem>
+          <MenuItem icon={<PenTool />} disabled={!canEdit} onSelect={() => setDrawingOpen(true)}>
+            Drawing…
           </MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => c().setHorizontalRule().run()}>
             Divider
@@ -720,6 +726,7 @@ function DocBody({
       <BordersDialog open={bordersOpen} editor={editor} onClose={() => setBordersOpen(false)} />
       <ChartDialog open={chartOpen} editor={editor} onClose={() => setChartOpen(false)} />
       <IndentDialog open={indentOpen} editor={editor} onClose={() => setIndentOpen(false)} />
+      {drawingOpen && <DrawingEditor open initial={EMPTY_DRAWING} onSave={(d) => c().insertContent({ type: 'drawing', attrs: d }).run()} onClose={() => setDrawingOpen(false)} />}
       <CompareDialog open={compareOpen} resourceId={r.id} onClose={() => setCompareOpen(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={canEdit} onClose={() => setPublishOpen(false)} />
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />

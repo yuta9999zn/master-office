@@ -20,12 +20,14 @@ export * from './notes-math';
 export * from './tabs';
 import { Column, Columns } from './columns-md';
 import { Bibliography, Citation } from './citations';
+import { Drawing, type DrawingAttrs, type DrawingPainter } from './drawing';
 export * from './columns-md';
 import { chartText, DocChart, type ChartPainter, type DocChartSpec } from './doc-chart';
 export * from './doc-chart';
 export * from './compare';
 export * from './templates';
 export * from './citations';
+export * from './drawing';
 export * from './spelling';
 
 /** Yjs field holding the document body (Tiptap Collaboration default). */
@@ -505,6 +507,7 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     EventChip,
     Citation,
     Bibliography,
+    Drawing,
     Bookmark,
     Footnote,
     Equation,
@@ -652,7 +655,7 @@ function blockAttrs(n: JSONContent): string {
  * Self-contained HTML body for export / PDF rendering.
  * `resolveImage` lets the server inline stored images as data URIs.
  */
-export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage?: (src: string) => string; renderChart?: ChartPainter } = {}): string {
+export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage?: (src: string) => string; renderChart?: ChartPainter; renderDrawing?: DrawingPainter } = {}): string {
   const headings = headingsOf(doc);
   let headingIndex = 0;
   let footnoteNo = 0;
@@ -734,6 +737,11 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return `<span class="equation">${equationHtml(String(n.attrs?.latex ?? ''), 'mathml')}</span>`;
       case 'resourceEmbed':
         return `<div class="embed">📎 ${esc(String(n.attrs?.name ?? 'Linked file'))}</div>`;
+      case 'drawing': {
+        const d = { w: Number(n.attrs?.w) || 640, h: Number(n.attrs?.h) || 360, elements: (n.attrs?.elements as unknown[]) ?? [] } as DrawingAttrs;
+        // The renderer fits it into the text width.
+        return opts.renderDrawing ? `<figure class="drawing">${opts.renderDrawing(d)}</figure>` : '';
+      }
       case 'docChart': {
         const spec = n.attrs?.spec as DocChartSpec | null;
         if (!spec) return '';
@@ -830,7 +838,7 @@ export function lineBoxes(root: HTMLElement, base: HTMLElement, scale = 1): { to
 export function toHTMLDocument(
   title: string,
   doc: JSONContent | null | undefined,
-  opts: { resolveImage?: (src: string) => string; pageSetup?: PageSetup; renderChart?: ChartPainter } = {},
+  opts: { resolveImage?: (src: string) => string; pageSetup?: PageSetup; renderChart?: ChartPainter; renderDrawing?: DrawingPainter } = {},
 ): string {
   const p = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
   const { w, h } = paperSize(p);

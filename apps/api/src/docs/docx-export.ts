@@ -91,6 +91,7 @@ class DocxWriter {
   readonly footnotes: Record<number, { children: Paragraph[] }> = {};
   private footnoteNo = 0;
   private chartNo = 0;
+  private drawingNo = 0;
   private revisionId = 1;
   constructor(
     private readonly images: Map<string, DocxImage>,
@@ -256,6 +257,12 @@ class DocxWriter {
         return [new Paragraph({ children: this.runs(n.content), alignment, indent, numbering: ctx.list, spacing, ...boxOf(n) })];
       case 'heading':
         return [new Paragraph({ heading: HEADINGS[(n.attrs?.level ?? 1) - 1] ?? HeadingLevel.HEADING_6, children: this.runs(n.content), alignment, spacing, indent, ...boxOf(n) })];
+      case 'drawing': {
+        // Drawings arrive rasterised too ("drawing:<n>").
+        const no = ++this.drawingNo;
+        const img = this.image({ type: 'image', attrs: { src: `drawing:${no}` } });
+        return [new Paragraph({ alignment: AlignmentType.CENTER, children: img ? [img] : [new TextRun({ text: '[Drawing]', italics: true })] })];
+      }
       case 'docChart': {
         // Charts arrive rasterised (docs.service renders each one to PNG as "chart:<n>").
         const no = ++this.chartNo;

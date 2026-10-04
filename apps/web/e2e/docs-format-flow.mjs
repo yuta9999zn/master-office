@@ -1,5 +1,5 @@
 // Docs 2.3 end-to-end: Heading 5–6, small caps, indentation options, line numbers (editor, DOCX, PDF / HTML),
-// placeholder and calendar event chips, citations (APA / MLA, bibliography), section breaks with their own orientation.
+// placeholder and calendar event chips, citations (APA / MLA, bibliography), section breaks with their own orientation, drawings.
 // node e2e/docs-format-flow.mjs   (needs pnpm dev + API)
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
@@ -195,6 +195,52 @@ await step('a section break puts the following pages in landscape (PDF, DOCX)', 
   const pdf = (await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=pdf`)).body()).toString('latin1');
   const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)/g)].map((m) => Number(m[1]) > Number(m[2]));
   if (!boxes.includes(true) || !boxes.includes(false)) throw new Error(`pdf pages ${JSON.stringify(boxes)}`);
+});
+
+await step('Insert → Drawing: shapes, a scribble and text on the canvas, saved into the document', async () => {
+  await page.keyboard.press('Escape');
+  await editor.locator('p').first().click();
+  await menu('Insert', 'Drawing…');
+  const canvas = page.getByTestId('drawing-canvas');
+  await canvas.getByTestId('slide-canvas').waitFor({ timeout: 30000 });
+  const hits = () => canvas.locator('[data-hit]').count();
+  await page.getByRole('button', { name: 'Drawing shape' }).click();
+  await page.getByRole('menuitem', { name: 'Heart', exact: true }).click();
+  await page.getByRole('button', { name: 'Drawing line' }).click();
+  await page.getByRole('menuitem', { name: 'Scribble' }).click();
+  const b = await canvas.getByTestId('slide-canvas').boundingBox();
+  await page.mouse.move(b.x + b.width * 0.1, b.y + b.height * 0.8);
+  await page.mouse.down();
+  for (let i = 1; i <= 15; i++) await page.mouse.move(b.x + b.width * (0.1 + i * 0.015), b.y + b.height * (0.8 - Math.sin(i / 3) * 0.1), { steps: 2 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Drawing text box' }).click();
+  await page.keyboard.type('Hello drawing');
+  // Leave the text box by clicking an empty spot of the canvas.
+  await page.mouse.click(b.x + b.width * 0.9, b.y + b.height * 0.1);
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="drawing-canvas"] [data-hit]').length === 3, null, { timeout: 10000 });
+  await page.getByTestId('drawing-save').click();
+  const view = editor.getByTestId('drawing');
+  await view.getByText('Hello drawing').waitFor();
+  if ((await view.locator('svg path').count()) < 2) throw new Error('drawing preview misses shapes');
+});
+
+await step('editing a drawing reopens its elements; exports carry it', async () => {
+  const view = editor.getByTestId('drawing');
+  await view.locator('div[style*="scale"]').first().dblclick({ force: true });
+  const canvas = page.getByTestId('drawing-canvas');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="drawing-canvas"] [data-hit]').length === 3, null, { timeout: 30000 });
+  await canvas.locator('[data-hit]').last().click();
+  await page.getByRole('button', { name: 'Delete from drawing' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="drawing-canvas"] [data-hit]').length === 2);
+  await page.getByTestId('drawing-save').click();
+  // The topmost element was the text box: it is gone from the saved drawing, the shapes stay.
+  await view.getByText('Hello drawing').waitFor({ state: 'detached' });
+  if ((await view.locator('svg path').count()) < 2) throw new Error('shapes lost');
+  await page.waitForTimeout(2500);
+  const zip = await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body());
+  if (!Object.keys(zip.files).some((n) => /^word\/media\/.+\.png$/.test(n))) throw new Error('docx has no drawing picture');
+  const html = await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=html`)).text();
+  if (!/<figure class="drawing">[\s\S]*?<svg/.test(html)) throw new Error('html drawing');
 });
 
 await page.request.delete(`${BASE}/api/resources/${doc.id}`);

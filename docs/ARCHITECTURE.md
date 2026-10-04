@@ -912,3 +912,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | DOCX | Mỗi section là một **Word section** (`w:sectPr` riêng, `w:orient`), cùng lề, header/footer, đánh số dòng; tiêu đề tài liệu ở section đầu. |
 | Editor | Thanh "Section break (next page)" có nút **Portrait ⇄ Landscape**; chèn từ Insert (hướng ngược với tài liệu) hoặc `/section break`. Màn hình soạn **không** đổi bề rộng trang cho section ngang (giới hạn: chỉ PDF / Word hiển thị khổ ngang). |
 | Test | `docs-format-flow.mjs` (+1): chèn → landscape, đổi qua lại; DOCX ≥ 2 `sectPr` có `orient="landscape"`; HTML có named pages; PDF có cả trang dọc lẫn trang ngang (MediaBox). |
+
+## 60. Phase 2.3 — Docs: hình vẽ (Insert → Drawing): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | Node block `drawing {w, h, elements}`: `elements` là **PlainElement của slide-model** (hình, đường, freeform, hộp chữ) — một "slide nhỏ" nằm trong tài liệu. doc-model không phụ thuộc slide-model: bộ vẽ được truyền vào (`renderDrawing`, như biểu đồ). |
+| Soạn | Insert → **Drawing…** / double-click / nút Edit → hộp thoại dùng **chính canvas của Slides** (`SlideCanvas` + `DeckStore`) trên một deck một slide tạm (Y.Doc riêng, undo riêng): Shape (mọi hình kể cả bộ hình mới), Line (line, arrow, curve, polyline, scribble), Text, Fill, Border, xoá, undo/redo; hình mới xếp so le 20 px. Esc kết thúc gõ chữ / công cụ vẽ trước khi đóng hộp thoại (bắt ở capture phase trước Radix). **Save and close** ghi lại `elements` vào node (một bước, đồng bộ cho mọi người). |
+| Hiển thị | Node view vẽ bằng `slideHtml` (cùng renderer với Slides), co theo bề rộng chữ, giữ tỉ lệ. |
+| Xuất | HTML / PDF: chèn HTML của slide, co bằng `zoom` vào ~600 px; DOCX: chụp PNG trong Chromium (`drawing:<n>`, giống biểu đồ). |
+| Giới hạn | Chưa chèn ảnh vào hình vẽ; chưa có drawing dùng chung giữa tài liệu (Google Drawings riêng). |
+| Test | `docs-format-flow.mjs` (+2): heart + scribble + hộp chữ → lưu → xem trước có hình và chữ; mở lại có 3 phần tử, xoá hộp chữ → lưu → còn hình; DOCX có ảnh PNG, HTML có `<figure class="drawing">` với SVG. |
