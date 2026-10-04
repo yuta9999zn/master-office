@@ -1,4 +1,4 @@
-// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors.
+// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors, show formulas.
 // node e2e/sheets-format-flow.mjs   (needs pnpm dev + API + seeded data)
 import { chromium } from 'playwright';
 import { tmpdir } from 'node:os';
@@ -97,6 +97,42 @@ await step('Remove alternating colors deletes its rules only', claudia, async ()
   });
   await claudia.getByTestId('banding-remove').click();
   await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getConditionalFormattingRules().length === 1);
+});
+
+/** What the grid shows in a cell (display interceptors applied) vs. what is stored. */
+const shown = (page, a1) =>
+  page.evaluate((a) => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet();
+    const r = ws.getRange(a);
+    return ws.getSheet().getCell(r.getRow(), r.getColumn())?.v ?? null;
+  }, a1);
+
+await step('View → Show formulas shows formulas for this person only; values stay stored', claudia, async () => {
+  await claudia.evaluate(() => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet();
+    ws.getRange('F1:F2').setValues([[2], [3]]);
+    ws.getRange('F3').setFormula('=SUM(F1:F2)');
+  });
+  await until(claudia, () => window.__moSheet.value(window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheetName(), 'F3') === 5);
+  await menu(claudia, 'View', 'Show formulas');
+  await until(claudia, () => {
+    const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet();
+    return ws.getSheet().getCell(2, 5)?.v === '=SUM(F1:F2)';
+  });
+  if ((await shown(claudia, 'F1')) !== 2) throw new Error('plain values changed');
+  const mika = await session('mika@kaori.jp');
+  await mika.goto(`${BASE}/sheets/${book.id}`);
+  await ready(mika, book.id);
+  await until(mika, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === 5, null, 30000);
+  await mika.context().close();
+});
+
+await step('the setting survives a reload, and Ctrl+` turns it off', claudia, async () => {
+  await claudia.reload();
+  await ready(claudia, book.id);
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === '=SUM(F1:F2)', null, 30000);
+  await claudia.keyboard.press('Control+Backquote');
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === 5);
 });
 
 await claudia.request.delete(`${BASE}/api/resources/${book.id}`);

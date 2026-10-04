@@ -20,12 +20,15 @@ import { CHART_COMPONENT, chartContexts, SheetChart } from './charts/SheetChart'
 import { PivotEngine } from './pivots/pivot-engine';
 import { CURSOR_LABEL, CursorLabel } from './presence';
 import { MoAuthzService, refreshProtection } from './authz';
+import { installShowFormulas, showFormulasPref } from './show-formulas';
 
 export interface GridHandle {
   api: UniverAPI;
   binding: SheetBinding;
   /** Stored value of a cell (not the number-formatted display), booleans as booleans — used by tests. */
   value: (sheet: string, a1: string) => unknown;
+  /** View → Show formulas (this person only). */
+  showFormulas: { set: (on: boolean) => void; get: () => boolean };
 }
 
 const rawValue = (api: UniverAPI, unitId: string) => (sheet: string, a1: string) => {
@@ -163,12 +166,15 @@ export function UniverGrid({
         userService.current = users as never;
         addPeople(users as never, people);
         if (user) users.setCurrentUser({ userID: `${editable ? 'Owner' : 'Reader'}_${user.id}`, name: user.name, avatar: '', color: user.color } as never);
-        const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId) };
+        const formulasView = installShowFormulas(injector, core, univerAPI, unitId);
+        if (showFormulasPref()) formulasView.set(true, false);
+        const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId), showFormulas: formulasView };
         (window as unknown as { __moSheet?: GridHandle }).__moSheet = handle; // e2e hooks (formula parity tests)
         onReady?.(handle);
         setState('ready');
         cleanup = () => {
           onReady?.(null);
+          formulasView.dispose();
           pivots?.destroy();
           binding.destroy();
           chartContexts.delete(unitId);

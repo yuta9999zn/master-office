@@ -800,3 +800,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | On form submit | Forms nối dòng trả lời vào bảng tính liên kết (`appendRows` giờ trả về sheet + dòng) rồi gọi trigger `formSubmit` của bảng tính đó với `e.values`, `e.namedValues` (tiêu đề cột → [giá trị]), `e.range` (dòng vừa thêm). Không bao giờ chặn việc lưu câu trả lời. |
 | API & UI | `GET/POST /api/resources/:id/macro-triggers`, `PATCH /api/macro-triggers/:id {enabled}`, `DELETE`, `POST /api/macro-triggers/:id/run` (Run now). Panel Macros → **Server triggers**: thêm (macro, hàm, Time-driven / On form submit, loại timer + khoảng), Run now, bật/tắt, xoá, trạng thái lần chạy cuối + lần kế tiếp; tự làm mới 20 s. |
 | Test | `apps/web/e2e/server-triggers-flow.mjs` (5 bước, ~2 phút): lưu trigger mỗi phút; Run now → lưới đang mở cập nhật, log cho thấy `require`/`process`/`fetch` = undefined; bộ lập lịch tự chạy lần nữa; vòng lặp vô hạn bị dừng sau 30 s, không áp gì; gửi form → trigger ghi vào dòng mới với `e.namedValues`. |
+
+## 49. Phase 3.3 — Sheets: View → Show formulas: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Cách làm | Univer OSS không có. Thêm interceptor `CELL_CONTENT` (effect = Value, ưu tiên cao) qua `SheetInterceptorService`: khi bật, ô có công thức hiển thị chuỗi công thức (`t = 1`); công thức dùng chung (`si`) lấy qua `FRange.getFormula()`. Chỉ thay **phần hiển thị** — ô lưu trữ, sửa, xuất file, công thức tính và màn hình người khác không đổi. |
+| Phạm vi | Thiết lập **của từng người, từng trình duyệt** (localStorage), giống Google. Menu **View → Show formulas** (dấu ✓) và **Ctrl+`**; nhớ sau khi tải lại (khôi phục lúc dựng lưới, không vẽ lại khi chưa có canvas). |
+| Giới hạn | Không tự nới cột như Google; định dạng số của ô giá trị thường vẫn áp (Google hiện số thô). |
+| Test | `sheets-format-flow.mjs` (+2): bật → F3 hiện `=SUM(F1:F2)`, F1 vẫn 2, giá trị lưu vẫn 5, Mika vẫn thấy 5; tải lại vẫn bật, Ctrl+` tắt. |

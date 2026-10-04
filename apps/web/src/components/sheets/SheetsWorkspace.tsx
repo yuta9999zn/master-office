@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -61,6 +61,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
   const [activityOpen, setActivityOpen] = useState(false);
   const [panel, setPanel] = useState<'History' | 'Macros' | 'Chart' | 'Column stats' | 'Pivot table' | 'Alternating colors' | null>(null);
   const [bandingId, setBandingId] = useState<string | null>(null);
+  const [formulasShown, setFormulasShown] = useState(false);
   const [pivotId, setPivotId] = useState<string | null>(null);
   const [pivotHere, setPivotHere] = useState<string | null>(null);
   const [dedupe, setDedupe] = useState(false);
@@ -169,6 +170,23 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     const t = setInterval(() => setRecCount(recorder.count), 300);
     return () => clearInterval(t);
   }, [recorder]);
+  // View → Show formulas follows the grid (restored from this browser when it loads); Ctrl+` toggles it.
+  useEffect(() => setFormulasShown(grid?.showFormulas.get() ?? false), [grid]);
+  const toggleFormulas = () => {
+    if (!grid) return;
+    grid.showFormulas.set(!grid.showFormulas.get());
+    setFormulasShown(grid.showFormulas.get());
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.code !== 'Backquote') return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFormulas();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
   // Ctrl+Alt+Shift+1…9 runs the macro bound to that number (like Google Sheets).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -291,6 +309,16 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             </MenuItem>
             <MenuItem icon={<CheckSquare />} disabled={!editable || !grid} onSelect={() => grid && insertCheckboxes(grid.api, r.id)}>
               Checkbox
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+        <Menu>
+          <MenuTrigger asChild>
+            <button className="h-7 rounded-md px-2.5 text-[13px] text-ink-2 hover:bg-hover data-[state=open]:bg-hover">View</button>
+          </MenuTrigger>
+          <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <MenuItem icon={<Sigma />} shortcut="Ctrl+`" disabled={!grid} onSelect={toggleFormulas}>
+              {formulasShown ? '✓ ' : ''}Show formulas
             </MenuItem>
           </MenuContent>
         </Menu>
