@@ -831,3 +831,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Giao diện | **Data → Create filter view** (vùng chọn / vùng dữ liệu, tên "Filter N"), danh sách view để mở (✓ view đang bật), Close filter view. Thanh tối phía trên lưới (tên, vùng, "only you see this filtering", ×). Panel: đổi tên, vùng, chọn cột, lọc theo giá trị (tìm kiếm, Select all / Clear, đếm), Delete view. |
 | Giới hạn | Chưa lọc theo điều kiện (lớn hơn, chứa…), chưa sắp xếp trong view, chưa có link chia sẻ `?fvid=`. |
 | Test | `sheets-format-flow.mjs` (+2): tạo view, bỏ 625 → dòng 3,5 ẩn với Claudia, Mika không bị lọc nhưng thấy "Filter 1"; sửa B7 = 625 → ẩn ngay; đóng / mở lại từ menu; xoá view. |
+
+## 52. Phase 4.2 — Slides: bộ hình, xoay, đường tự do: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Bộ hình | `slide-model/shapes.ts`: thêm 23 hình theo nhóm như Google — Shapes (octagon, cross, heart, sao 4/6 cánh, cloud, lightning, cylinder), **Arrows** (lên, xuống, hai chiều, notched, pentagon arrow), **Callouts** (chữ nhật, bo góc, oval), **Equation** (+ − × ÷ = ≠). Tên geometry = **tên preset OOXML** (`upArrow`, `wedgeRectCallout`, `mathPlus`…) → xuất PPTX bằng preset gốc và nhập lại 1:1. Đường viền SVG tự vẽ trong `extraShapePath`; callout giữ đuôi trong khung (PowerPoint cho đuôi ra ngoài khung). Bảng chọn Shape chia nhóm, có icon vẽ từ chính `shapePath`. |
+| Xoay | Arrange → Rotate: xoay 90° thuận / ngược (làm tròn về bội 90°), lật ngang / dọc, cho cả vùng chọn, một bước undo. |
+| Đường tự do | Geometry `freeform` + `path {pts (0…1 trong khung → co giãn theo khung), closed, smooth}`. Toolbar **Line**: Line, Arrow, **Curve** (click từng điểm, Catmull-Rom → Bézier bậc 3), **Polyline** (đoạn thẳng), **Scribble** (kéo chuột, rút gọn điểm bằng Ramer–Douglas–Peucker 1,5 px). Click lại điểm đầu → hình kín (tô màu nhấn); double-click / Enter → kết thúc; Esc → huỷ (bắt ở capture phase để phím tắt của workspace không nuốt mất). `DrawLayer` nằm trong lớp đã scale của slide nên toạ độ là đơn vị slide. Đường hở = nét, không tô, không có chữ (`isOpenStroke`). |
+| PPTX | Freeform → `custGeom` (moveTo / lnTo / cubicBezTo / close) qua pptxgenjs `points`. Nhập custGeom từ PowerPoint: chưa (thành hình chữ nhật như trước). |
+| Test | `apps/web/e2e/slides-draw-flow.mjs` (5 bước): bảng chọn có Arrows/Callouts/Equation, chèn Heart; xoay 90° → 270°; scribble; polyline đóng + curve kết thúc bằng double-click, Esc huỷ; PPTX có `prst="heart"`, `rot="16200000"`, `custGeom`, `cubicBezTo`, `close`. |

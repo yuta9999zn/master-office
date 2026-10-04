@@ -7,6 +7,9 @@ import {
   diagramElements,
   FONTS,
   isLine,
+  isOpenStroke,
+  EXTRA_SHAPES,
+  shapePath,
   LAYOUTS,
   SHAPES,
   slideTitle,
@@ -78,6 +81,10 @@ import {
   Hash,
   Sparkles,
   Ungroup as UngroupIcon,
+  RotateCw,
+  FlipHorizontal2,
+  FlipVertical2,
+  PenLine,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ContextMenu as CM, DropdownMenu as DM } from 'radix-ui';
@@ -100,6 +107,7 @@ import { VideoDialog } from './MediaDialog';
 import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
 import { CtxItem, CtxSep, SlideCanvas, type RemoteSelection } from './SlideCanvas';
+import type { DrawTool, Drawn } from './DrawLayer';
 import { anchorOf, SlideComments, type SlideAnchor } from './SlideComments';
 import { ColorPicker, DesignTab, FormatTab, LayoutTab, LayoutWire, PALETTE, ThemeTab } from './SlidePanels';
 import { SlideStyles, SlideView } from './SlideView';
@@ -117,7 +125,7 @@ let clipboard: Clip | null = null;
 
 type Tab = 'Design' | 'Layout' | 'Theme' | 'Format' | 'Motion' | 'Comments' | 'History';
 
-const isTextual = (e: PlainElement) => e.type === 'text' || (e.type === 'shape' && !isLine(e.geom));
+const isTextual = (e: PlainElement) => e.type === 'text' || (e.type === 'shape' && !isOpenStroke(e));
 const typingTarget = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
@@ -349,12 +357,27 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const W = deck?.size.w ?? 1280;
   const H = deck?.size.h ?? 720;
   const insertText = () => insert({ type: 'text', x: W / 2 - 240, y: H / 2 - 40, w: 480, h: 80, style: { fontSize: 20 }, text: { type: 'doc', content: [{ type: 'paragraph' }] } }, true);
-  const insertShape = (geom: Geometry) =>
-    insert(
+  const insertShape = (geom: Geometry) => {
+    const aspect = EXTRA_SHAPES.find((x) => x.geom === geom)?.aspect;
+    if (aspect) return insert({ type: 'shape', geom, x: W / 2 - 120, y: H / 2 - (240 * aspect) / 2, w: 240, h: 240 * aspect, style: { fill: '@accent1', color: '#FFFFFF', align: 'center', vAlign: 'middle', fontSize: 18 }, text: { type: 'doc', content: [{ type: 'paragraph' }] } });
+    return insert(
       isLine(geom)
         ? { type: 'shape', geom, x: W / 2 - 150, y: H / 2, w: 300, h: 0, style: { stroke: '@text', strokeWidth: 3 } }
         : { type: 'shape', geom, x: W / 2 - 120, y: H / 2 - 80, w: 240, h: geom === 'rightArrow' || geom === 'leftArrow' || geom === 'chevron' ? 120 : 160, style: { fill: '@accent1', color: '#FFFFFF', align: 'center', vAlign: 'middle', fontSize: 18 }, text: { type: 'doc', content: [{ type: 'paragraph' }] } },
     );
+  };
+  // Line ▸ Curve / Polyline / Scribble: the canvas collects the points (DrawLayer), we add the element.
+  const [drawTool, setDrawTool] = useState<DrawTool | null>(null);
+  const onDrawn = (d: Drawn) => {
+    setDrawTool(null);
+    insert({ type: 'shape', geom: 'freeform', ...d, style: d.path.closed ? { fill: '@accent1' } : { stroke: '@text', strokeWidth: 3 } });
+  };
+  // Arrange ▸ Rotate (rotation snaps to quarter turns from where it is) and flips.
+  const rotateBy = (deg: number) =>
+    store &&
+    slide &&
+    (store.checkpoint(), store.updateElements(slide.id, selected.map((e) => ({ id: e.id, patch: { rot: (((Math.round(((e.rot ?? 0) + deg) / 90) * 90) % 360) + 360) % 360 || undefined } }))), store.checkpoint());
+  const flip = (axis: 'flipH' | 'flipV') => store && slide && (store.checkpoint(), store.updateElements(slide.id, selected.map((e) => ({ id: e.id, patch: { [axis]: !e[axis] || undefined } }))), store.checkpoint());
   const insertTable = (rows: number, cols: number) => {
     const w = Math.min(W * 0.8, cols * 180);
     const h = rows * 46;
@@ -1002,6 +1025,20 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
               Ungroup
             </MenuItem>
             <MenuSeparator />
+            <MenuLabel>Rotate</MenuLabel>
+            <MenuItem icon={<RotateCw />} disabled={!editable || !selected.length} onSelect={() => rotateBy(90)}>
+              Rotate clockwise 90°
+            </MenuItem>
+            <MenuItem icon={<RotateCcw />} disabled={!editable || !selected.length} onSelect={() => rotateBy(-90)}>
+              Rotate counter-clockwise 90°
+            </MenuItem>
+            <MenuItem icon={<FlipHorizontal2 />} disabled={!editable || !selected.length} onSelect={() => flip('flipH')}>
+              Flip horizontally
+            </MenuItem>
+            <MenuItem icon={<FlipVertical2 />} disabled={!editable || !selected.length} onSelect={() => flip('flipV')}>
+              Flip vertically
+            </MenuItem>
+            <MenuSeparator />
             <MenuItem disabled={!selected.length} onSelect={() => setTab('Format')}>
               Align & distribute…
             </MenuItem>
@@ -1179,11 +1216,53 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
               </button>
             </DM.Trigger>
             <DM.Portal>
-              <DM.Content sideOffset={4} className="pop z-50 grid w-[232px] animate-pop grid-cols-4 gap-1 p-2">
-                {SHAPES.map((s) => (
-                  <DM.Item key={s.geom} onSelect={() => insertShape(s.geom)} className="flex h-12 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md text-[10px] text-muted outline-none data-[highlighted]:bg-hover" aria-label={s.label}>
-                    <ShapeIcon geom={s.geom} />
-                    <span className="max-w-full truncate">{s.label}</span>
+              <DM.Content sideOffset={4} className="pop z-50 max-h-[70vh] w-[300px] animate-pop overflow-y-auto p-2">
+                {(
+                  [
+                    ['Shapes', [...SHAPES.filter((s) => !isLine(s.geom)), ...EXTRA_SHAPES.filter((s) => s.group === 'Shapes')]],
+                    ['Arrows', EXTRA_SHAPES.filter((s) => s.group === 'Arrows')],
+                    ['Callouts', EXTRA_SHAPES.filter((s) => s.group === 'Callouts')],
+                    ['Equation', EXTRA_SHAPES.filter((s) => s.group === 'Equation')],
+                  ] as const
+                ).map(([title, list]) => (
+                  <div key={title}>
+                    <div className="px-1 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-subtle">{title}</div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {list.map((s) => (
+                        <DM.Item key={s.geom} onSelect={() => insertShape(s.geom as Geometry)} className="flex h-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md text-[9.5px] text-muted outline-none data-[highlighted]:bg-hover" aria-label={s.label} title={s.label}>
+                          <ShapeIcon geom={s.geom as Geometry} />
+                          <span className="max-w-full truncate">{s.label}</span>
+                        </DM.Item>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </DM.Content>
+            </DM.Portal>
+          </DM.Root>
+          <DM.Root>
+            <DM.Trigger asChild>
+              <button disabled={!editable} className={cn('flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 hover:bg-hover disabled:opacity-40', drawTool && 'bg-selected text-brand-700')} aria-label="Line">
+                <PenLine size={16} /> Line
+              </button>
+            </DM.Trigger>
+            <DM.Portal>
+              <DM.Content sideOffset={4} className="pop z-50 w-52 animate-pop p-1">
+                {(
+                  [
+                    ['line', 'Line', null],
+                    ['arrow', 'Arrow', null],
+                    [null, 'Curve', 'curve'],
+                    [null, 'Polyline', 'polyline'],
+                    [null, 'Scribble', 'scribble'],
+                  ] as const
+                ).map(([geom, label, tool]) => (
+                  <DM.Item
+                    key={label}
+                    onSelect={() => (geom ? insertShape(geom) : (setSelection([]), setEditing(null), setDrawTool(tool)))}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none data-[highlighted]:bg-hover"
+                  >
+                    {label}
                   </DM.Item>
                 ))}
               </DM.Content>
@@ -1310,6 +1389,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                 contextMenu={contextMenu}
                 onFitScale={setScale}
                 selectAllOnEdit={selectAllOnEdit}
+                draw={drawTool}
+                onDrawn={onDrawn}
+                onDrawCancel={() => setDrawTool(null)}
               />
               {previewing && <VersionPreview resourceId={r.id} versionId={previewing} canEdit={editable} onClose={() => setPreviewing(null)} />}
               {notesOpen && <NotesEditor key={slide.id} store={store} slideId={slide.id} editable={editable} />}
@@ -1502,7 +1584,7 @@ function ShapeIcon({ geom }: { geom: Geometry }) {
           {geom === 'arrow' && <path d="M23,3 L17,4 L21,8 Z" fill="currentColor" />}
         </>
       ) : (
-        <path d={SHAPE_ICON_PATHS[geom] ?? SHAPE_ICON_PATHS.rect} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+        <path d={SHAPE_ICON_PATHS[geom] ?? `${shapePath(geom, 22, 16)}`} transform={SHAPE_ICON_PATHS[geom] ? undefined : 'translate(2 2)'} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
       )}
     </svg>
   );

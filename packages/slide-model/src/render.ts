@@ -4,6 +4,7 @@
 import type { Background, ChartSpec, DeckSize, ElementStyle, Geometry, PlainDeck, PlainElement, PlainSlide, SlideNumbers, TextNode, Theme } from './index';
 import { resolveConnectors, type ConnSite } from './connectors';
 import { youtubeId } from './media';
+import { extraShapePath, freeformPath } from './shapes';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -241,22 +242,24 @@ export function shapePath(geom: Geometry, w: number, h: number, radius = 16): st
     case 'arrow':
       return `M0,0 L${f(w)},${f(h)}`;
     default:
-      return `M0,0 H${f(w)} V${f(h)} H0 Z`;
+      return extraShapePath(geom, w, h) ?? `M0,0 H${f(w)} V${f(h)} H0 Z`;
   }
 }
 
 export const isLine = (g?: Geometry) => g === 'line' || g === 'arrow';
+/** Drawn with a stroke and no fill: lines, arrows and open freeforms (curve, polyline, scribble). */
+export const isOpenStroke = (el: Pick<PlainElement, 'geom' | 'path'>) => isLine(el.geom) || (el.geom === 'freeform' && !el.path?.closed);
 
 function shapeSvg(el: PlainElement, theme: Theme): string {
   const s = el.style ?? {};
   const geom = el.geom ?? 'rect';
-  const line = isLine(geom);
+  const line = isOpenStroke(el);
   const sw = s.strokeWidth ?? (line ? 3 : 0);
   const stroke = themeColor(s.stroke, theme) ?? (line ? theme.colors.title : null);
   const fill = line ? 'none' : themeColor(s.fill, theme) ?? 'none';
   const dash = s.dash === 'dash' ? ` stroke-dasharray="${sw * 4} ${sw * 2}"` : s.dash === 'dot' ? ` stroke-dasharray="${sw} ${sw * 1.5}" stroke-linecap="round"` : '';
   let flip = el.flipH || el.flipV ? ` transform="translate(${el.flipH ? el.w : 0} ${el.flipV ? el.h : 0}) scale(${el.flipH ? -1 : 1} ${el.flipV ? -1 : 1})"` : '';
-  let d = shapePath(geom, el.w, Math.max(el.h, line ? 0 : 1), s.radius);
+  let d = geom === 'freeform' ? freeformPath(el.path, el.w, el.h) : shapePath(geom, el.w, Math.max(el.h, line ? 0 : 1), s.radius);
   if (line && el.conn?.kind && el.conn.kind !== 'straight') {
     d = connectorPath(el);
     flip = '';

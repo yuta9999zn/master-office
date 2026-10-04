@@ -5,9 +5,11 @@ import {
   DEFAULT_THEME,
   FONTS,
   isLine,
+  isOpenStroke,
   layoutElements,
   LAYOUTS,
   SHAPES,
+  EXTRA_SHAPES,
   SLIDE_SIZES,
   THEME_TOKENS,
   themeColor,
@@ -557,7 +559,7 @@ export function FormatTab({
       }),
     );
   };
-  const textual = selected.every((e) => e.type === 'text' || (e.type === 'shape' && !isLine(e.geom)));
+  const textual = selected.every((e) => e.type === 'text' || (e.type === 'shape' && !isOpenStroke(e)));
   const shapes = selected.every((e) => e.type === 'shape' || e.type === 'text');
 
   return (
@@ -628,12 +630,12 @@ export function FormatTab({
 
       {shapes && (
         <Section title={el.type === 'text' && one ? 'Text box' : 'Shape'}>
-          {one && el.type === 'shape' && (
+          {one && el.type === 'shape' && el.geom !== 'freeform' && (
             <Row label="Shape">
-              <Select<Geometry> label="Shape type" value={el.geom ?? 'rect'} options={SHAPES.map((s) => ({ value: s.geom, label: s.label }))} onChange={(g) => upd({ geom: g })} />
+              <Select<Geometry> label="Shape type" value={el.geom ?? 'rect'} options={[...SHAPES, ...EXTRA_SHAPES].map((s) => ({ value: s.geom, label: s.label }))} onChange={(g) => upd({ geom: g })} />
             </Row>
           )}
-          {!(one && isLine(el.geom)) && (
+          {!(one && isOpenStroke(el)) && (
             <Row label="Fill">
               <ColorPicker label="Fill colour" allowNone value={S.fill} theme={deck.theme} onChange={(c) => (el.type === 'text' && c ? upd({ type: 'shape', geom: 'rect', style: { fill: c } }) : style({ fill: c ?? undefined }))} />
             </Row>
@@ -656,15 +658,15 @@ export function FormatTab({
               {(el.conn?.from || el.conn?.to) && <p className="text-[12px] text-muted">Attached to {[el.conn?.from, el.conn?.to].filter(Boolean).length === 2 ? 'two shapes' : 'a shape'}: it follows them when they move. Drag an end away to detach it.</p>}
             </>
           )}
-          {textual && !(one && isLine(el.geom)) && (
+          {textual && !(one && isOpenStroke(el)) && (
             <Row label="Text outline">
               <ColorPicker label="Text outline colour" allowNone value={S.outline} theme={deck.theme} onChange={(c) => style({ outline: c ?? undefined, outlineWidth: c ? S.outlineWidth ?? 2 : undefined })} />
               {S.outline && <NumberField label="Text outline width" value={S.outlineWidth ?? 2} min={0.5} max={12} step={0.5} suffix="px" w={60} onCommit={(v) => style({ outlineWidth: v })} />}
             </Row>
           )}
-          <Row label={one && isLine(el.geom) ? 'Line' : 'Border'}>
+          <Row label={one && isOpenStroke(el) ? 'Line' : 'Border'}>
             <ColorPicker label="Border colour" allowNone value={S.stroke} theme={deck.theme} onChange={(c) => (el.type === 'text' && c ? upd({ type: 'shape', geom: 'rect', style: { stroke: c, strokeWidth: S.strokeWidth || 2 } }) : style({ stroke: c ?? undefined, strokeWidth: c ? S.strokeWidth || 2 : undefined }))} />
-            <NumberField label="Border width" value={S.strokeWidth ?? (one && isLine(el.geom) ? 3 : 0)} min={0} max={40} suffix="px" w={60} onCommit={(v) => style({ strokeWidth: v })} />
+            <NumberField label="Border width" value={S.strokeWidth ?? (one && isOpenStroke(el) ? 3 : 0)} min={0} max={40} suffix="px" w={60} onCommit={(v) => style({ strokeWidth: v })} />
           </Row>
           <Row label="Dash">
             <Select<'solid' | 'dash' | 'dot'>

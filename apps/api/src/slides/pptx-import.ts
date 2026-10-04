@@ -15,6 +15,7 @@ import {
   type Placeholder,
   type TextNode,
   type Theme,
+  EXTRA_SHAPES,
 } from '@workos/slide-model';
 import JSZip from 'jszip';
 
@@ -77,6 +78,8 @@ const GEOMS: Record<string, Geometry> = {
   star5: 'star5',
   line: 'line',
   straightConnector1: 'line',
+  // Shape sets (§52): the same preset names.
+  ...Object.fromEntries(EXTRA_SHAPES.map((x) => [x.geom, x.geom])),
 };
 
 // ── Colours ──────────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 'use client';
 
 import type { Editor } from '@tiptap/react';
-import { isLine, mediaHtml, PLACEHOLDER_PROMPT, resolveConnectors, sitePoint, slideHtml, type ConnSite, type Connector, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
+import { isLine, isOpenStroke, mediaHtml, PLACEHOLDER_PROMPT, resolveConnectors, sitePoint, slideHtml, type ConnSite, type Connector, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
+import { DrawLayer, type Drawn, type DrawTool } from './DrawLayer';
 import { MessageSquare, X } from 'lucide-react';
 import { ContextMenu as CM } from 'radix-ui';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -59,6 +60,9 @@ export function SlideCanvas({
   contextMenu,
   onFitScale,
   selectAllOnEdit,
+  draw,
+  onDrawn,
+  onDrawCancel,
 }: {
   store: DeckStore;
   slide: PlainSlide;
@@ -78,6 +82,10 @@ export function SlideCanvas({
   contextMenu: () => ReactNode;
   onFitScale: (k: number) => void;
   selectAllOnEdit: boolean;
+  /** Line ▸ Curve / Polyline / Scribble in progress. */
+  draw?: DrawTool | null;
+  onDrawn?: (d: Drawn) => void;
+  onDrawCancel?: () => void;
 }) {
   // Connectors attached to shapes are drawn (and hit-tested) where their shapes are now.
   const slide = useMemo(() => resolveConnectors(rawSlide), [rawSlide]);
@@ -360,7 +368,7 @@ export function SlideCanvas({
 
   const startEdit = (el: PlainElement) => {
     if (!editable) return;
-    if (el.type === 'text' || (el.type === 'shape' && !isLine(el.geom))) {
+    if (el.type === 'text' || (el.type === 'shape' && !isOpenStroke(el))) {
       setSelection([el.id]);
       setEditing(el.id);
     } else if (el.type === 'table') {
@@ -388,12 +396,13 @@ export function SlideCanvas({
             <div ref={page} className="relative shrink-0 rounded-[3px] bg-white shadow-[0_4px_24px_-6px_rgba(15,23,42,0.25)]" style={{ width: W * k, height: H * k }} data-testid="slide-canvas">
               <div className="absolute left-0 top-0" style={{ width: W, height: H, transform: `scale(${k})`, transformOrigin: '0 0' }}>
                 <div dangerouslySetInnerHTML={{ __html: html }} />
+                {draw && onDrawn && onDrawCancel && <DrawLayer tool={draw} W={W} H={H} scale={k} onDone={onDrawn} onCancel={onDrawCancel} />}
 
                 {/* Hit targets, one per element in z order (lines get a thicker grab area). */}
                 <div className="absolute inset-0" style={{ zIndex: 10 }}>
                   {slide.elements.map((el) => {
                     if (el.id === editing && el.type !== 'chart' && el.type !== 'image') return null;
-                    const line = el.type === 'shape' && isLine(el.geom);
+                    const line = el.type === 'shape' && isOpenStroke(el);
                     const pad = line ? 8 / k : 0;
                     return (
                       <div

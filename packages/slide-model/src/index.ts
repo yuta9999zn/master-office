@@ -19,6 +19,7 @@
 import * as Y from 'yjs';
 import { remapConnectors, type Connector } from './connectors';
 import type { MediaOptions } from './media';
+import type { ExtraGeometry, FreePath } from './shapes';
 
 export const DECK_MAP = 'deck';
 export const ORDER_ARRAY = 'slideOrder';
@@ -74,7 +75,8 @@ export type Geometry =
   | 'chevron'
   | 'star5'
   | 'line'
-  | 'arrow';
+  | 'arrow'
+  | ExtraGeometry;
 
 export type Placeholder = 'title' | 'subtitle' | 'body' | 'body2';
 
@@ -161,6 +163,8 @@ export interface PlainElement {
   media?: MediaOptions;
   /** Lines / arrows: routing and the shapes their ends are attached to. */
   conn?: Connector;
+  /** Freeform lines and shapes (geom 'freeform'): points within the box. */
+  path?: FreePath;
 }
 
 export interface Crop {
@@ -478,7 +482,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media', 'conn'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media', 'conn', 'path'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */
@@ -736,3 +740,4 @@ export * from './diagrams';
 export * from './templates';
 export * from './media';
 export * from './render';
+export * from './shapes';

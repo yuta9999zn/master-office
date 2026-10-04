@@ -1,4 +1,4 @@
-import { isLine, slideTitle, textOf, themeColor, youtubeId, resolveConnectors, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme } from '@workos/slide-model';
+import { isLine, slideTitle, textOf, themeColor, youtubeId, resolveConnectors, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme, isOpenStroke, freeformSegments } from '@workos/slide-model';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 
@@ -118,7 +118,7 @@ function textOptions(el: PlainElement, theme: Theme): PptxGenJS.TextPropsOptions
 
 function shapeOptions(el: PlainElement, theme: Theme) {
   const s = el.style ?? {};
-  const line = isLine(el.geom);
+  const line = isOpenStroke(el);
   const fill = !line && s.fill ? hex(themeColor(s.fill, theme)) : null;
   const stroke = hex(themeColor(s.stroke, theme) ?? (line ? theme.colors.title : null));
   const sw = s.strokeWidth ?? (line ? 3 : 0);
@@ -269,6 +269,18 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
         const runs = el.type === 'shape' && isLine(el.geom) ? [] : textRuns(el.text, el.style ?? {}, theme);
         const hasText = !!textOf(el.text).trim();
         const shape = el.type === 'shape' ? shapeOptions(el, theme) : {};
+        if (el.type === 'shape' && el.geom === 'freeform') {
+          // Freeform → custom geometry (cubic segments for curves and scribbles), in inches within the box.
+          const { start, segs } = freeformSegments(el.path ?? { pts: [] }, el.w, el.h);
+          const P = (p: [number, number]) => ({ x: inch(p[0]), y: inch(p[1]) });
+          const points = [
+            { ...P(start), moveTo: true },
+            ...segs.map((g) => (g.c1 && g.c2 ? { ...P(g.to), curve: { type: 'cubic' as const, x1: inch(g.c1[0]), y1: inch(g.c1[1]), x2: inch(g.c2[0]), y2: inch(g.c2[1]) } } : P(g.to))),
+            ...(el.path?.closed ? [{ close: true as const }] : []),
+          ];
+          slide.addShape('custGeom' as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape, points } as PptxGenJS.ShapeProps);
+          continue;
+        }
         const prst = el.type === 'shape' ? (el.geom === 'arrow' ? 'line' : el.geom ?? 'rect') : 'rect';
         if (!hasText && el.type === 'text') continue; // empty placeholder: PowerPoint shows nothing either
         if (!hasText) slide.addShape(prst as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape });
