@@ -4,6 +4,7 @@ import { animCss, animTimeline, slideHtml, slideTitle, type DeckSize, type Plain
 import { ChevronLeft, ChevronRight, MonitorPlay, MousePointer2, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../ui/primitives';
+import { QaOverlay, QaPresenterPanel } from './qa';
 import { SlideStyles, SlideView } from './SlideView';
 
 /** Messages between the audience window (this tab) and the presenter window (BroadcastChannel). */
@@ -190,6 +191,7 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
       }}
       data-testid="presenter"
     >
+      <QaOverlay resourceId={resourceId} />
       <SlideStyles />
       <style>{`
 @keyframes mo-fade { from { opacity: 0 } to { opacity: 1 } }
@@ -253,6 +255,7 @@ export function PresenterView({ resourceId }: { resourceId: string }) {
   const [ended, setEnded] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(true);
+  const [side, setSide] = useState<'Speaker notes' | 'Audience Q&A'>('Speaker notes');
   const chan = useRef<BroadcastChannel | null>(null);
   useEffect(() => {
     const ch = new BroadcastChannel(presentChannel(resourceId));
@@ -340,10 +343,20 @@ export function PresenterView({ resourceId }: { resourceId: string }) {
           <div className="flex min-w-0 flex-[2] flex-col gap-3">
             <div className="text-[12px] uppercase tracking-wider text-slate-400">Next slide</div>
             {frame(s.next, 360)}
-            <div className="text-[12px] uppercase tracking-wider text-slate-400">Speaker notes</div>
-            <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white/5 p-4 text-[18px] leading-relaxed" data-testid="presenter-notes">
-              {s.notes || <span className="text-slate-500">No notes for this slide.</span>}
+            <div className="flex gap-4 text-[12px] uppercase tracking-wider">
+              {(['Speaker notes', 'Audience Q&A'] as const).map((t) => (
+                <button key={t} onClick={() => setSide(t)} className={side === t ? 'text-white' : 'text-slate-500 hover:text-slate-300'} aria-pressed={side === t}>
+                  {t}
+                </button>
+              ))}
             </div>
+            {side === 'Audience Q&A' ? (
+              <QaPresenterPanel resourceId={resourceId} />
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white/5 p-4 text-[18px] leading-relaxed" data-testid="presenter-notes">
+                {s.notes || <span className="text-slate-500">No notes for this slide.</span>}
+              </div>
+            )}
           </div>
         </div>
       )}

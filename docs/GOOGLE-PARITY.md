@@ -65,7 +65,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Format | Text, align, bullets, table, borders & lines | ✅ |
 | | **Format options** (drop shadow ◐, reflection, text fitting/autofit ✅, indent), line & paragraph spacing chi tiết, image: crop ✅, adjustments (transparency, brightness, contrast, recolor) ✅, mask ❌ | ❌ |
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
-| | Motion panel (animations) ✅ · spelling ✅ (§54), publish to web / embed ✅ · Q&A khán giả, dictate notes, linked objects ❌ | ◐ |
+| | Motion panel (animations) ✅ · spelling ✅ (§54), publish to web / embed ✅, **Q&A khán giả** ✅ (§55) · dictate notes, linked objects ❌ | ◐ |
 
 ## 4. Google Forms → Master Forms — ✅ xong 2026-10-03 (ARCHITECTURE §25); còn thiếu: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay
 
@@ -98,6 +98,6 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets ✅, bookmark, watermark, borders & shading, compare ✅, Markdown copy/paste ✅, pageless, chế độ Viewing |
 | 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
 | 8 ✅ | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · group rows/columns ✅ (§50) · filter views ✅ (§51) — Sheets 3.3 xong |
-| 9 | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide ✅, autofit ✅ (§53), spelling trong Slides ✅ (§54), Q&A khán giả |
+| 9 ✅ | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide ✅, autofit ✅ (§53), spelling trong Slides ✅ (§54), Q&A khán giả ✅ (§55) — Slides 4.2 xong |
 | 10 | **2.3** | Docs: drawing, section break & hướng trang theo section, calendar-event / placeholder chip, H5–H6, small caps, thụt lề (first line / hanging), line numbers, citations |
 | 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |

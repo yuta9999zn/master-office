@@ -351,3 +351,51 @@ export const macroTriggers = pgTable(
   },
   (t) => [index('macro_triggers_due_idx').on(t.enabled, t.nextRunAt), index('macro_triggers_resource_idx').on(t.resourceId)],
 );
+
+/** Audience Q&A while presenting (Google Slides "Audience tools"). docs/ARCHITECTURE.md §55. */
+export const qaSessions = pgTable(
+  'qa_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    token: text('token').notNull().unique(),
+    startedBy: uuid('started_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    startedAt: ts('started_at').notNull().default(sql`now()`),
+    endedAt: ts('ended_at'),
+    presenting: uuid('presenting'),
+  },
+  (t) => [index('qa_sessions_resource_idx').on(t.resourceId)],
+);
+
+export const qaQuestions = pgTable(
+  'qa_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => qaSessions.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    authorName: text('author_name'),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    voter: text('voter').notNull(),
+    votes: integer('votes').notNull().default(0),
+    hidden: boolean('hidden').notNull().default(false),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('qa_questions_session_idx').on(t.sessionId)],
+);
+
+export const qaVotes = pgTable(
+  'qa_votes',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => qaQuestions.id, { onDelete: 'cascade' }),
+    voter: text('voter').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.questionId, t.voter] })],
+);

@@ -50,6 +50,13 @@
       "when": 1791085427494,
       "tag": "0006_macro_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791103063129,
+      "tag": "0007_qa",
+      "breakpoints": true
     }
   ]
 }

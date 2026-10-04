@@ -861,3 +861,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Sửa tại chỗ | `DeckStore.replaceInParagraph(slide, element, đoạn thứ n, from, to, chữ mới)`: đi qua XmlFragment theo đúng thứ tự `readText` (paragraph / heading, kể cả trong list), thay trong `Y.XmlText` **giữ định dạng** của ký tự đầu, một bước undo, đồng bộ cho mọi người. Đoạn đã đổi trong lúc đó → báo "check again". |
 | Giới hạn | Chưa gạch chân trong lúc gõ ở Slides; chưa kiểm tra speaker notes và bảng. |
 | Test | `slides-draw-flow.mjs` (+1): "Teh team will recieve the the report." → Accept 3 lần → "The team will receive the report.", panel báo hết gợi ý. |
+
+## 55. Phase 4.2 — Slides: Q&A khán giả: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Luồng | Như Google Slides (Presenter view ▸ Audience tools): người trình bày bấm **Start new Q&A** trong Presenter view → link ngắn `/qa/<token>` (6 byte ngẫu nhiên, base64url); slide show hiện dải "Ask a question at …" phía trên. Khán giả mở link (không cần tài khoản, trang ngoài app shell) → hỏi (ẩn danh hoặc ghi tên khi đã đăng nhập), upvote / bỏ vote. Presenter view liệt kê theo số vote: **Present** (câu hỏi hiện to trên màn chiếu), **Hide** (ẩn với khán giả, thôi trình chiếu), **Stop** (kết thúc). Một phiên mở cho mỗi bản trình chiếu; Start new kết thúc phiên cũ. |
+| Lưu | Bảng `qa_sessions` (resource, token, người bắt đầu, kết thúc, câu đang trình chiếu), `qa_questions` (nội dung ≤ 300 ký tự, tên / ẩn danh, voter, số vote, ẩn), `qa_votes` (khoá chính câu hỏi + voter → mỗi người một vote; vote lại = bỏ vote, trong một transaction). Tối đa 20 câu / người / phiên. |
+| Danh tính | Phase 1 gán user mặc định cho request không cookie → trên endpoint khán giả chỉ coi là **đã đăng nhập** khi request có cookie `mo_uid` / header `x-user-id`; còn lại là ẩn danh với id ngẫu nhiên lưu trong localStorage của trình duyệt (để vote một lần). |
+| API | Người trình bày (cần quyền với bản trình chiếu): `GET/POST/DELETE /api/resources/:id/qa`, `PATCH /api/qa-questions/:qid {presenting, hidden}`. Khán giả (chỉ cần link): `GET /api/qa/:token`, `POST /api/qa/:token/questions`, `POST /api/qa/:token/questions/:qid/vote`. Phiên đã kết thúc → 403. |
+| Cập nhật | Poll 3 s (Presenter view, slide show, trang khán giả) — đủ cho hỏi đáp, không cần kênh realtime công khai. |
+| Test | `apps/web/e2e/qa-flow.mjs` (4 bước): F5 + Presenter view → Start → dải link trên slide show; khán giả ẩn danh hỏi, vote / bỏ vote / vote lại, người thứ hai vote → 2; Present → câu hỏi trên màn chiếu, Hide → biến mất cả với khán giả; Stop → dải link biến mất, khán giả thấy "ended", hỏi tiếp → 403. |
