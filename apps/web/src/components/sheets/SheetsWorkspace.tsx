@@ -3,7 +3,7 @@
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
-import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma, ListTree } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
@@ -33,6 +33,7 @@ import type { MacroResult } from './macros/runtime';
 import { macrosOf, saveMacro, useMacros, type MacroDef } from './macros/store';
 import { ImportMacrosDialog } from './macros/ImportMacrosDialog';
 import { BandingPanel, openBanding } from './banding';
+import { addGroup, GroupGutter, removeGroup, selectionSpan, setAll, type Axis } from './groups';
 import { findTriggers, setTriggerEnabled, TriggerRunner, useDisabledTriggers, type Execution } from './macros/triggers';
 
 // Univer touches the DOM at import time: load it on the client only.
@@ -187,6 +188,29 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   });
+  // View → Group / Ungroup (Alt+Shift+→ / ←): whole columns selected → columns, otherwise rows.
+  const group = (axis: Axis, on: boolean) => {
+    if (!grid || !collab.session) return;
+    const s = selectionSpan(grid.api, r.id);
+    if (!s) return;
+    const [from, to] = axis === 'rows' ? s.rows : s.cols;
+    if (on) {
+      const err = addGroup(grid.api, collab.session.doc, r.id, axis, from, to);
+      if (err) toast.error(err);
+    } else if (!removeGroup(grid.api, collab.session.doc, r.id, axis, from, to)) toast.info('Nothing to ungroup here');
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey || e.ctrlKey || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') || !editable) return;
+      const s = grid && selectionSpan(grid.api, r.id);
+      if (!s) return;
+      e.preventDefault();
+      e.stopPropagation();
+      group(s.wholeCols ? 'cols' : 'rows', e.key === 'ArrowRight');
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
   // Ctrl+Alt+Shift+1…9 runs the macro bound to that number (like Google Sheets).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -319,6 +343,25 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
           <MenuContent className="w-64" onCloseAutoFocus={(e) => e.preventDefault()}>
             <MenuItem icon={<Sigma />} shortcut="Ctrl+`" disabled={!grid} onSelect={toggleFormulas}>
               {formulasShown ? '✓ ' : ''}Show formulas
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<ListTree />} shortcut="Alt+Shift+→" disabled={!editable || !grid} onSelect={() => group('rows', true)}>
+              Group rows
+            </MenuItem>
+            <MenuItem icon={<ListTree />} disabled={!editable || !grid} onSelect={() => group('cols', true)}>
+              Group columns
+            </MenuItem>
+            <MenuItem shortcut="Alt+Shift+←" disabled={!editable || !grid} onSelect={() => group('rows', false)}>
+              Ungroup rows
+            </MenuItem>
+            <MenuItem disabled={!editable || !grid} onSelect={() => group('cols', false)}>
+              Ungroup columns
+            </MenuItem>
+            <MenuItem disabled={!editable || !grid} onSelect={() => grid && collab.session && setAll(grid.api, collab.session.doc, r.id, 'rows', false)}>
+              Expand all row groups
+            </MenuItem>
+            <MenuItem disabled={!editable || !grid} onSelect={() => grid && collab.session && setAll(grid.api, collab.session.doc, r.id, 'rows', true)}>
+              Collapse all row groups
             </MenuItem>
           </MenuContent>
         </Menu>
@@ -467,6 +510,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                   });
                 }}
               />
+              {grid && <GroupGutter api={grid.api} doc={collab.session.doc} unitId={r.id} editable={editable} />}
               </div>
               {previewing && <VersionPreview resourceId={r.id} versionId={previewing} canEdit={editable} onClose={() => setPreviewing(null)} />}
             </>

@@ -48,7 +48,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ✅ simple triggers (onOpen / onEdit / onSelectionChange) · ✅ import macro từ file khác · ✅ trigger theo lịch & on form submit (chạy trên server, §48) · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
 | | ✅ **Activity dashboard** | ✅ |
 | View | Freeze, gridlines, zoom, formula bar, hidden sheets | ✅ |
-| | Protected ranges ✅, **⭐ sheet tabs on top** ✅, show formulas ✅ · group/outline rows & columns ❌ | ◐ |
+| | Protected ranges ✅, **⭐ sheet tabs on top** ✅, show formulas ✅, group/outline rows & columns ✅ | ✅ |
 | Cộng tác | Realtime, versions, export XLSX/CSV/PDF, con trỏ người khác trên lưới | ✅ |
 
 ## 3. Google Slides → Master Slides
@@ -97,7 +97,7 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets ✅, bookmark, watermark, borders & shading, compare ✅, Markdown copy/paste ✅, pageless, chế độ Viewing |
 | 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
-| 8 | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · filter views, group rows/columns |
+| 8 | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · group rows/columns ✅ (§50) · filter views |
 | 9 | **4.2** | Slides: rotate menu, shape sets / curve / polyline, link tới slide, autofit, spelling trong Slides, Q&A khán giả |
 | 10 | **2.3** | Docs: drawing, section break & hướng trang theo section, calendar-event / placeholder chip, H5–H6, small caps, thụt lề (first line / hanging), line numbers, citations |
 | 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |

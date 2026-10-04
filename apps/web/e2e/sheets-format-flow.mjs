@@ -1,4 +1,4 @@
-// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors, show formulas.
+// Phase 3.3 end-to-end: Sheets formatting & view tools — alternating colors, show formulas, groups.
 // node e2e/sheets-format-flow.mjs   (needs pnpm dev + API + seeded data)
 import { chromium } from 'playwright';
 import { tmpdir } from 'node:os';
@@ -133,6 +133,54 @@ await step('the setting survives a reload, and Ctrl+` turns it off', claudia, as
   await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === '=SUM(F1:F2)', null, 30000);
   await claudia.keyboard.press('Control+Backquote');
   await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === 5);
+});
+
+const hiddenRows = (page) => page.evaluate(() => { const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet(); const out = []; for (let r = 0; r < 14; r++) if (!ws.getRowVisible(r)) out.push(r + 1); return out.join(','); });
+const hiddenCols = (page) => page.evaluate(() => { const ws = window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet(); const out = []; for (let c = 0; c < 8; c++) if (!ws.getColVisible(c)) out.push(c + 1); return out.join(','); });
+const selectA1 = (page, a1) => page.evaluate((a) => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange(a).activate(), a1);
+
+await step('View → Group rows draws a toggle; collapsing hides the rows for everyone', claudia, async () => {
+  await claudia.evaluate(() => window.__moSheet.api.getActiveWorkbook().insertSheet('Outline'));
+  await claudia.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('A1:A10').setValues([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]]));
+  await selectA1(claudia, 'A3:A5');
+  await menu(claudia, 'View', /^Group rows/);
+  await claudia.getByRole('button', { name: 'Collapse rows 3–5' }).click();
+  await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowVisible(2));
+  if ((await hiddenRows(claudia)) !== '3,4,5') throw new Error(`hidden ${await hiddenRows(claudia)}`);
+  const mika = await session('mika@kaori.jp');
+  await mika.goto(`${BASE}/sheets/${book.id}`);
+  await ready(mika, book.id);
+  await mika.evaluate(() => { const wb = window.__moSheet.api.getActiveWorkbook(); wb.setActiveSheet(wb.getSheetByName('Outline')); });
+  await mika.getByRole('button', { name: 'Expand rows 3–5' }).waitFor({ timeout: 20000 });
+  if ((await hiddenRows(mika)) !== '3,4,5') throw new Error(`mika sees ${await hiddenRows(mika)}`);
+  await mika.context().close();
+});
+
+await step('groups follow inserted rows, nest, and expand / collapse all', claudia, async () => {
+  await claudia.getByRole('button', { name: 'Expand rows 3–5' }).click();
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowVisible(2));
+  await claudia.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().insertRowsBefore(0, 1));
+  await claudia.getByRole('button', { name: 'Collapse rows 4–6' }).waitFor();
+  await selectA1(claudia, 'A5:A5');
+  await claudia.keyboard.press('Alt+Shift+ArrowRight');
+  await claudia.getByRole('button', { name: 'Collapse rows 5–5' }).waitFor();
+  await menu(claudia, 'View', 'Collapse all row groups');
+  await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowVisible(3));
+  if ((await hiddenRows(claudia)) !== '4,5,6') throw new Error(`hidden ${await hiddenRows(claudia)}`);
+  await menu(claudia, 'View', 'Expand all row groups');
+  await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowVisible(4));
+});
+
+await step('Alt+Shift+← ungroups the innermost group; column groups hide columns', claudia, async () => {
+  await selectA1(claudia, 'A5:A5');
+  await claudia.keyboard.press('Alt+Shift+ArrowLeft');
+  await claudia.getByRole('button', { name: 'Collapse rows 5–5' }).waitFor({ state: 'detached' });
+  await claudia.getByRole('button', { name: 'Collapse rows 4–6' }).waitFor();
+  await selectA1(claudia, 'C1:D1');
+  await menu(claudia, 'View', /^Group columns/);
+  await claudia.getByRole('button', { name: 'Collapse columns 3–4' }).click();
+  await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getColVisible(2));
+  if ((await hiddenCols(claudia)) !== '3,4') throw new Error(`hidden cols ${await hiddenCols(claudia)}`);
 });
 
 await claudia.request.delete(`${BASE}/api/resources/${book.id}`);

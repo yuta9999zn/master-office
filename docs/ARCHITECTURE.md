@@ -809,3 +809,14 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Phạm vi | Thiết lập **của từng người, từng trình duyệt** (localStorage), giống Google. Menu **View → Show formulas** (dấu ✓) và **Ctrl+`**; nhớ sau khi tải lại (khôi phục lúc dựng lưới, không vẽ lại khi chưa có canvas). |
 | Giới hạn | Không tự nới cột như Google; định dạng số của ô giá trị thường vẫn áp (Google hiện số thô). |
 | Test | `sheets-format-flow.mjs` (+2): bật → F3 hiện `=SUM(F1:F2)`, F1 vẫn 2, giá trị lưu vẫn 5, Mika vẫn thấy 5; tải lại vẫn bật, Ctrl+` tắt. |
+
+## 50. Phase 3.3 — Sheets: nhóm dòng / cột (outline): quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Lưu | Map `groups` trong Y.Doc: `{id, sheetId, axis rows/cols, start, end, collapsed}` — `start` / `end` là **id dòng/cột** của layout Yjs (§22) nên nhóm tự đi theo khi chèn / xoá dòng; xoá mất dòng đầu hoặc cuối → nhóm biến mất. Độ sâu lồng tính từ quan hệ chứa nhau (tối đa 8); hai nhóm cắt nhau mà không chứa nhau bị từ chối. |
+| Thu gọn | Ẩn dòng/cột qua Univer (`hideRows` / `hideColumns`) → đồng bộ như ẩn thường; trạng thái `collapsed` dùng chung (như Google). Mở nhóm ngoài giữ các nhóm con đang thu gọn. |
+| Giao diện | Univer OSS không có outline gutter: `GroupGutter` vẽ overlay DOM (ngoặc + nút +/−, nút ở hàng/cột ngay sau nhóm) trên header, vị trí lấy từ `getCellRect` trừ scroll và nhân zoom, vẽ lại khi cuộn / zoom / đổi cấu trúc. Khi sheet có nhóm, **row header rộng thêm và column header cao thêm** (`setRowHeaderWidth` / `setColumnHeaderHeight`, 16 px + 9 px mỗi cấp) để nút không đè số dòng / chữ cột; mỗi người tự tính giống nhau nên không cần đồng bộ. Hình học đọc lỗi khi dịch vụ render chưa sẵn sàng → thử lại sau 300 ms. |
+| Thao tác | Menu **View**: Group rows / Group columns, Ungroup rows / columns (nhóm trong cùng chứa vùng chọn), Expand all / Collapse all row groups. **Alt+Shift+→ / ←** (chọn cả cột → cột, còn lại → dòng). Chỉ editor. |
+| Giới hạn | Dòng/cột đóng băng (freeze) chưa được tính khi vẽ; chưa xuất outline sang XLSX (Excel outline level). |
+| Test | `sheets-format-flow.mjs` (+3): nhóm dòng 3–5, thu gọn, Mika thấy dòng ẩn và nút +; chèn dòng → nhóm thành 4–6, nhóm lồng 5–5, collapse/expand all; Alt+Shift+← gỡ nhóm trong; nhóm cột C–D ẩn cột. |
