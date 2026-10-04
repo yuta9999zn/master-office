@@ -1,6 +1,6 @@
 'use client';
 
-import { animCss, animTimeline, slideHtml, slideTitle, type DeckSize, type PlainSlide, type Theme } from '@workos/slide-model';
+import { animCss, animTimeline, slideHtml, slideTitle, type DeckSize, type PlainSlide, type Theme, safeHref, slideLinkId } from '@workos/slide-model';
 import { ChevronLeft, ChevronRight, MonitorPlay, MousePointer2, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../ui/primitives';
@@ -161,6 +161,18 @@ export function Presenter({ resourceId, slides, deck, start, onExit }: { resourc
       style={{ cursor: laser ? 'none' : chrome ? 'default' : 'none' }}
       onClick={(e) => {
         if (e.button !== 0 || (e.target as HTMLElement).closest('[data-chrome]')) return;
+        // Links: another slide of the deck, or a web page in a new tab — never "next slide".
+        const linked = (e.target as HTMLElement).closest<HTMLElement>('a[href], [data-link]');
+        const href = linked?.getAttribute('href') ?? linked?.getAttribute('data-link');
+        if (href) {
+          e.preventDefault();
+          const to = slideLinkId(href);
+          if (to) {
+            const i = list.findIndex((s) => s.id === to);
+            if (i >= 0) go(i);
+          } else if (safeHref(href)) window.open(href, '_blank', 'noopener,noreferrer');
+          return;
+        }
         // Clicks on a video or an audio icon play / pause it instead of advancing.
         const media = (e.target as HTMLElement).closest('.mo-el')?.querySelector<HTMLMediaElement>('video[data-mo-media], audio[data-mo-media]');
         if (media) {

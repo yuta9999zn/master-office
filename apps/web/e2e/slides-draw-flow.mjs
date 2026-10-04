@@ -1,4 +1,5 @@
-// Slides 4.2 end-to-end: shape sets, Arrange ▸ Rotate, Line ▸ Curve / Polyline / Scribble, PPTX export of both.
+// Slides 4.2 end-to-end: shape sets, Arrange ▸ Rotate, Line ▸ Curve / Polyline / Scribble, links to slides,
+// text fitting, PPTX export of all of them.
 // node e2e/slides-draw-flow.mjs   (needs pnpm dev + API)
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
@@ -97,6 +98,52 @@ await step('PowerPoint export keeps presets, rotation and freeforms (custom geom
   const xml = await zip.file('ppt/slides/slide1.xml').async('string');
   for (const want of ['prst="heart"', 'rot="16200000"', '<a:custGeom>', '<a:cubicBezTo>']) if (!xml.includes(want)) throw new Error(`missing ${want}`);
   if (!/<a:close ?\/>/.test(xml)) throw new Error('missing a closed path');
+});
+
+await step('a shape links to another slide; the slide show follows it', async () => {
+  // Two more slides (Ctrl+M), back to slide 1.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('slide-canvas').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Control+m');
+  await page.keyboard.press('Control+m');
+  await until(() => document.querySelector('[data-testid="slide-counter"]')?.textContent.includes('of 3'));
+  await page.locator('[data-slide]').first().click();
+  await until(() => document.querySelector('[data-testid="slide-counter"]')?.textContent.includes('Slide 1 of 3'));
+  // Select the topmost element (the curve) and link it to slide 3.
+  await page.locator('[data-testid="slide-canvas"] [data-hit]').last().click();
+  await page.keyboard.press('Control+k');
+  const dlg = page.getByTestId('slide-link-dialog');
+  await dlg.getByTestId('slide-link-targets').getByRole('button', { name: /^Slide 3/ }).click();
+  await page.getByTestId('slide-link-apply').click();
+  await until(() => !!document.querySelector('[data-testid="slide-canvas"] [data-link^="#slide="]'), null, 10000).catch(async () => {
+    throw new Error(`no linked element; counter ${await page.getByTestId('slide-counter').innerText()}, hits ${await page.locator('[data-testid="slide-canvas"] [data-hit]').count()}`);
+  });
+  await page.keyboard.press('F5');
+  await page.getByTestId('presenter').waitFor();
+  await until(() => document.querySelector('[data-testid="presenter-counter"]')?.textContent.trim().startsWith('1 /'));
+  // The show renders the slide more than once (transitions): click the visible copy of the linked shape.
+  await page.locator('[data-testid="presenter"] [data-link^="#slide="]').filter({ visible: true }).last().dispatchEvent('click');
+  await until(() => document.querySelector('[data-testid="presenter-counter"]')?.textContent.trim().startsWith('3 /'));
+  await page.keyboard.press('Escape');
+  await page.getByTestId('presenter').waitFor({ state: 'detached' });
+});
+
+await step('Text fitting: shrink on overflow scales the text down, resize grows the box', async () => {
+  await page.getByRole('button', { name: 'Text box', exact: true }).click();
+  await page.keyboard.type('A long paragraph that will not fit in a small text box. '.repeat(6));
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Text fitting').selectOption('shrink');
+  await until(() => [...document.querySelectorAll('[data-testid="slide-canvas"] .mo-text')].some((t) => t.style.zoom && Number(t.style.zoom) < 1), null, 20000);
+  await page.getByLabel('Text fitting').selectOption('resize');
+  await until(() => [...document.querySelectorAll('[data-testid="slide-canvas"] [data-hit]')].some((h) => parseFloat(h.style.height) > 200), null, 20000);
+});
+
+await step('PowerPoint export has the internal slide link and the autofit', async () => {
+  await page.waitForTimeout(2500);
+  const zip = await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${deck.id}/export?format=pptx`)).body());
+  const all = (await Promise.all(Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).map((n) => zip.file(n).async('string')))).join('');
+  if (!all.includes('hlinksldjump')) throw new Error('no slide jump link');
+  if (!/spAutoFit|normAutofit/.test(all)) throw new Error('no autofit');
 });
 
 await page.request.delete(`${BASE}/api/resources/${deck.id}`);

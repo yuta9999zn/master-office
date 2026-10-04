@@ -88,7 +88,9 @@ export function backgroundCss(bg: Background | null | undefined, theme: Theme, r
 
 // ── Rich text ────────────────────────────────────────────────────────────────
 
-const safeHref = (h: unknown) => (typeof h === 'string' && /^(https?:|mailto:|\/)/i.test(h) ? h : null);
+export const safeHref = (h: unknown) => (typeof h === 'string' && /^(https?:|mailto:|\/|#slide=)/i.test(h) ? h : null);
+/** `#slide=<id>` → the slide id (links to another slide of the presentation). */
+export const slideLinkId = (h: unknown) => (typeof h === 'string' && h.startsWith('#slide=') ? h.slice(7) : null);
 const cssLen = (v: unknown) => (typeof v === 'number' ? `${v}pt` : typeof v === 'string' && /^\d+(\.\d+)?(pt|px|em)?$/.test(v) ? (/\d$/.test(v) ? `${v}pt` : v) : null);
 
 function runHtml(n: TextNode, theme?: Theme): string {
@@ -114,7 +116,7 @@ function runHtml(n: TextNode, theme?: Theme): string {
         break;
       case 'link': {
         const href = safeHref(a.href);
-        if (href) html = `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`;
+        if (href) html = slideLinkId(href) ? `<a href="${esc(href)}" data-slide-link>${html}</a>` : `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`;
         break;
       }
       case 'textStyle':
@@ -531,10 +533,13 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
       const body = textHtml(el.text, theme);
       const empty = !body || /^(<(ul|ol)><li>)?<p><br><\/p>(<\/li><\/(ul|ol)>)?$/.test(body);
       const content = empty && opts.prompts && el.ph ? `<p class="mo-ph-prompt">${esc(PLACEHOLDER_PROMPT[el.ph] ?? '')}</p>` : body;
-      if (content) inner += `<div class="mo-box" style="${esc(textBoxCss(s, theme, el.ph))}"><div class="mo-text">${content}</div></div>`;
+      // Shrink on overflow: the text is laid out at the measured scale (zoom reflows, unlike a transform).
+      const zoom = s.autofit === 'shrink' && s.fontScale && s.fontScale < 1 ? ` style="zoom:${f(s.fontScale)}"` : '';
+      if (content) inner += `<div class="mo-box" style="${esc(textBoxCss(s, theme, el.ph))}"><div class="mo-text"${zoom}>${content}</div></div>`;
     }
   }
-  return `<div class="mo-el" data-el="${esc(el.id)}" style="${wrap.join(';')}">${inner}</div>`;
+  const link = safeHref(el.link);
+  return `<div class="mo-el" data-el="${esc(el.id)}"${link ? ` data-link="${esc(link)}"` : ''} style="${wrap.join(';')}">${inner}</div>`;
 }
 
 const PLAY_BADGE = `<svg viewBox="0 0 64 64" style="position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"><circle cx="32" cy="32" r="30" fill="rgba(15,23,42,.72)"/><path d="M26 20 L46 32 L26 44 Z" fill="#fff"/></svg>`;

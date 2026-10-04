@@ -3,6 +3,7 @@
 import type { Editor } from '@tiptap/react';
 import { isLine, isOpenStroke, mediaHtml, PLACEHOLDER_PROMPT, resolveConnectors, sitePoint, slideHtml, type ConnSite, type Connector, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
 import { DrawLayer, type Drawn, type DrawTool } from './DrawLayer';
+import { useAutofit } from './autofit';
 import { MessageSquare, X } from 'lucide-react';
 import { ContextMenu as CM } from 'radix-ui';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -134,6 +135,7 @@ export function SlideCanvas({
   useEffect(() => onFitScale(k), [k]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const html = useMemo(() => slideHtml(slide, deck, { prompts: editable, skipText: editing ? new Set([editing]) : undefined }), [slide, deck, editable, editing]);
+  useAutofit(store, rawSlide, html, page, k, editable, editing);
   const byId = useMemo(() => new Map(slide.elements.map((e) => [e.id, e])), [slide]);
   const selected = selection.map((id) => byId.get(id)).filter((e): e is PlainElement => !!e);
   /** What a click on an element selects: its whole group, unless that group was entered. */

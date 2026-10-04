@@ -803,6 +803,18 @@ export function FormatTab({
           <Row label="Padding">
             <NumberField label="Padding" value={S.pad ?? 10} min={0} max={120} suffix="px" onCommit={(v) => style({ pad: v })} />
           </Row>
+          <Row label="Text fitting">
+            <Select<'none' | 'shrink' | 'resize'>
+              label="Text fitting"
+              value={S.autofit ?? 'none'}
+              options={[
+                { value: 'none', label: 'Do not autofit' },
+                { value: 'shrink', label: 'Shrink text on overflow' },
+                { value: 'resize', label: 'Resize shape to fit text' },
+              ]}
+              onChange={(v) => style({ autofit: v === 'none' ? undefined : v, fontScale: undefined })}
+            />
+          </Row>
         </Section>
       )}
 

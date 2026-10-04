@@ -85,6 +85,7 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   PenLine,
+  Link2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ContextMenu as CM, DropdownMenu as DM } from 'radix-ui';
@@ -108,6 +109,7 @@ import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
 import { CtxItem, CtxSep, SlideCanvas, type RemoteSelection } from './SlideCanvas';
 import type { DrawTool, Drawn } from './DrawLayer';
+import { LinkDialog } from './LinkDialog';
 import { anchorOf, SlideComments, type SlideAnchor } from './SlideComments';
 import { ColorPicker, DesignTab, FormatTab, LayoutTab, LayoutWire, PALETTE, ThemeTab } from './SlidePanels';
 import { SlideStyles, SlideView } from './SlideView';
@@ -368,6 +370,24 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   };
   // Line ▸ Curve / Polyline / Scribble: the canvas collects the points (DrawLayer), we add the element.
   const [drawTool, setDrawTool] = useState<DrawTool | null>(null);
+  // Insert ▸ Link: on the text being edited, else on the selected elements.
+  const [linkOpen, setLinkOpen] = useState(false);
+  const currentLink = editing && editor ? ((editor.getAttributes('link').href as string | undefined) ?? null) : (selected.length === 1 ? selected[0].link ?? null : null);
+  const applyLink = (href: string | null) => {
+    if (!store || !slide) return;
+    if (editing && editor) {
+      const chain = editor.chain().focus();
+      if (!href) chain.extendMarkRange('link').unsetLink().run();
+      else if (editor.state.selection.empty && !editor.isActive('link')) {
+        const label = href.startsWith('#slide=') ? slideTitle(slides.find((s) => s.id === href.slice(7)) ?? slides[0]) || 'Slide' : href;
+        chain.insertContent({ type: 'text', text: label, marks: [{ type: 'link', attrs: { href } }] }).run();
+      } else chain.extendMarkRange('link').setLink({ href }).run();
+      return;
+    }
+    store.checkpoint();
+    store.updateElements(slide.id, selected.map((e) => ({ id: e.id, patch: { link: href ?? undefined } })));
+    store.checkpoint();
+  };
   const onDrawn = (d: Drawn) => {
     setDrawTool(null);
     insert({ type: 'shape', geom: 'freeform', ...d, style: d.path.closed ? { fill: '@accent1' } : { stroke: '@text', strokeWidth: 3 } });
@@ -588,6 +608,12 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       if (e.key === 'F5') {
         e.preventDefault();
         present(e.shiftKey ? index : 0);
+        return;
+      }
+      // Ctrl+K works while typing in a text box too (links on text).
+      if (mod && e.key.toLowerCase() === 'k' && editable && (editing || selection.length)) {
+        e.preventDefault();
+        setLinkOpen(true);
         return;
       }
       if (typingTarget(e.target) || editing) return;
@@ -910,6 +936,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                 <span className="capitalize">{k} chart</span>
               </MenuItem>
             ))}
+            <MenuItem icon={<Link2 />} shortcut="Ctrl+K" disabled={!editable || (!editing && !selected.length)} onSelect={() => setLinkOpen(true)}>
+              Link
+            </MenuItem>
             <MenuLabel>Shape</MenuLabel>
             {SHAPES.slice(0, 6).map((s) => (
               <MenuItem key={s.geom} icon={<Shapes />} disabled={!editable} onSelect={() => insertShape(s.geom)}>
@@ -1314,6 +1343,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
         }}
       />
       {deck && <DiagramDialog open={diagramDialog} onOpenChange={setDiagramDialog} deck={deck} onInsert={insertDiagram} />}
+      <LinkDialog open={linkOpen} slides={slides} current={currentLink} onApply={applyLink} onClose={() => setLinkOpen(false)} />
       <VideoDialog open={videoDialog} onOpenChange={setVideoDialog} onLink={(u) => void insertMedia('video', u)} onFile={(f) => void insertMedia('video', f)} />
 
       <ImportBanner report={report} canEdit={editable} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />

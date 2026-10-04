@@ -104,6 +104,10 @@ export interface ElementStyle {
   vAlign?: 'top' | 'middle' | 'bottom';
   lineHeight?: number;
   pad?: number; // inner padding (px)
+  /** Format options ▸ Text fitting (docs/ARCHITECTURE.md §53). */
+  autofit?: 'none' | 'shrink' | 'resize';
+  /** Shrink on overflow: the scale the editor measured (1 = none), like PowerPoint's normAutofit fontScale. */
+  fontScale?: number;
 }
 
 export interface ChartSeries {
@@ -165,6 +169,8 @@ export interface PlainElement {
   conn?: Connector;
   /** Freeform lines and shapes (geom 'freeform'): points within the box. */
   path?: FreePath;
+  /** Link on the whole element: a web address or `#slide=<id>` (another slide of this presentation). */
+  link?: string;
 }
 
 export interface Crop {
@@ -482,7 +488,7 @@ export function readText(frag: Y.XmlFragment): TextNode {
 
 // ── Yjs ⇄ plain ──────────────────────────────────────────────────────────────
 
-const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media', 'conn', 'path'] as const;
+const SCALAR_KEYS = ['type', 'x', 'y', 'w', 'h', 'rot', 'z', 'flipH', 'flipV', 'geom', 'ph', 'name', 'style', 'src', 'alt', 'chart', 'group', 'anim', 'crop', 'media', 'conn', 'path', 'link'] as const;
 export const TEXT_TYPES: ElementType[] = ['text', 'shape'];
 
 /** Builds the Y.Map of one element. Call inside a transaction; the result must be integrated before text is written. */

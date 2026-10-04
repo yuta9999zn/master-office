@@ -1,4 +1,4 @@
-import { isLine, slideTitle, textOf, themeColor, youtubeId, resolveConnectors, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme, isOpenStroke, freeformSegments } from '@workos/slide-model';
+import { isLine, slideTitle, textOf, themeColor, youtubeId, resolveConnectors, type ElementStyle, type PlainDeck, type PlainElement, type TextNode, type Theme, isOpenStroke, freeformSegments, slideLinkId } from '@workos/slide-model';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 
@@ -35,7 +35,7 @@ const ptOf = (v: unknown, fallback?: number) => {
 type Run = { text: string; options?: PptxGenJS.TextPropsOptions };
 
 /** Rich text → pptxgenjs runs (paragraph props ride on every run of the paragraph; the last run breaks the line). */
-export function textRuns(doc: TextNode | null | undefined, base: ElementStyle, theme: Theme): Run[] {
+export function textRuns(doc: TextNode | null | undefined, base: ElementStyle, theme: Theme, slideNo: (id: string) => number | null = () => null): Run[] {
   const runs: Run[] = [];
   const para = (p: TextNode, list: { kind: 'bullet' | 'number'; level: number } | null) => {
     const align = (p.attrs?.textAlign as string | undefined) ?? base.align;
@@ -61,6 +61,7 @@ export function textRuns(doc: TextNode | null | undefined, base: ElementStyle, t
           const h = hex(themeColor(a.color as string, theme));
           if (h) o.highlight = h.color;
         } else if (m.type === 'link' && typeof a.href === 'string' && /^https?:|^mailto:/.test(a.href)) o.hyperlink = { url: a.href };
+        else if (m.type === 'link' && slideLinkId(a.href) && slideNo(slideLinkId(a.href)!)) o.hyperlink = { slide: slideNo(slideLinkId(a.href)!)! };
         else if (m.type === 'textStyle') {
           const c = hex(themeColor(a.color as string, theme));
           if (c) o.color = c.color;
@@ -112,7 +113,7 @@ function textOptions(el: PlainElement, theme: Theme): PptxGenJS.TextPropsOptions
     valign: s.vAlign === 'middle' ? 'middle' : s.vAlign === 'bottom' ? 'bottom' : 'top',
     margin: [pad, pad, Math.max(3, pad / 2), Math.max(3, pad / 2)],
     lineSpacingMultiple: s.lineHeight ?? 1.2,
-    fit: 'none',
+    fit: s.autofit === 'shrink' ? 'shrink' : s.autofit === 'resize' ? 'resize' : 'none',
   };
 }
 
@@ -159,6 +160,16 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
   const report: PptxReport = { images: 0, charts: 0, tables: 0, degraded: [] };
   const degrade = (msg: string) => !report.degraded.includes(msg) && report.degraded.push(msg);
 
+  // Links to other slides become internal PowerPoint links (by slide number).
+  const slideNo = (id: string) => {
+    const i = deck.slides.findIndex((x) => x.id === id);
+    return i >= 0 ? i + 1 : null;
+  };
+  const elementLink = (el: PlainElement) => {
+    const id = slideLinkId(el.link);
+    if (id) return slideNo(id) ? { hyperlink: { slide: slideNo(id)! } } : {};
+    return el.link && /^https?:|^mailto:/.test(el.link) ? { hyperlink: { url: el.link } } : {};
+  };
   for (const s of deck.slides) {
     const slide = pptx.addSlide();
     const bg = s.meta.background;
@@ -266,7 +277,7 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
         });
         report.charts++;
       } else if (el.type === 'shape' || el.type === 'text') {
-        const runs = el.type === 'shape' && isLine(el.geom) ? [] : textRuns(el.text, el.style ?? {}, theme);
+        const runs = el.type === 'shape' && isLine(el.geom) ? [] : textRuns(el.text, el.style ?? {}, theme, slideNo);
         const hasText = !!textOf(el.text).trim();
         const shape = el.type === 'shape' ? shapeOptions(el, theme) : {};
         if (el.type === 'shape' && el.geom === 'freeform') {
@@ -278,13 +289,13 @@ export async function exportPptx(deck: PlainDeck, loadImage: ImageLoader, opts: 
             ...segs.map((g) => (g.c1 && g.c2 ? { ...P(g.to), curve: { type: 'cubic' as const, x1: inch(g.c1[0]), y1: inch(g.c1[1]), x2: inch(g.c2[0]), y2: inch(g.c2[1]) } } : P(g.to))),
             ...(el.path?.closed ? [{ close: true as const }] : []),
           ];
-          slide.addShape('custGeom' as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape, points } as PptxGenJS.ShapeProps);
+          slide.addShape('custGeom' as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape, ...elementLink(el), points } as PptxGenJS.ShapeProps);
           continue;
         }
         const prst = el.type === 'shape' ? (el.geom === 'arrow' ? 'line' : el.geom ?? 'rect') : 'rect';
         if (!hasText && el.type === 'text') continue; // empty placeholder: PowerPoint shows nothing either
-        if (!hasText) slide.addShape(prst as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape });
-        else slide.addText(runs as PptxGenJS.TextProps[], { ...textOptions(el, theme), ...shape, shape: prst as PptxGenJS.SHAPE_NAME });
+        if (!hasText) slide.addShape(prst as PptxGenJS.SHAPE_NAME, { ...boxProps(el), ...shape, ...elementLink(el) } as PptxGenJS.ShapeProps);
+        else slide.addText(runs as PptxGenJS.TextProps[], { ...textOptions(el, theme), ...shape, ...elementLink(el), shape: prst as PptxGenJS.SHAPE_NAME } as PptxGenJS.TextPropsOptions);
       }
     }
   }

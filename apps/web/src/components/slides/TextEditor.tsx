@@ -99,7 +99,9 @@ export function TextEditor({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="mo-box mo-editing" style={{ ...cssObject(textBoxCss(s, theme, el.ph)), cursor: 'text', overflow: 'visible' }} onMouseDown={(e) => e.target === e.currentTarget && (e.preventDefault(), editor?.commands.focus('end'))}>
-        <EditorContent editor={editor} />
+        <div style={s.autofit === 'shrink' && s.fontScale && s.fontScale < 1 ? { zoom: s.fontScale } : undefined}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
     </div>
   );

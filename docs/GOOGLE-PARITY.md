@@ -56,14 +56,14 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | Menu Google | Tính năng | MO |
 |---|---|---|
 | Insert | Image, text box, shapes (16), table, chart (◐ native; from Sheets ✅ liên kết), new slide, comment, line, arrow | ✅ |
-| | Video (YouTube, file) ✅, audio ✅, diagram (grid, hierarchy, timeline, process, relationship, cycle) ✅, word art ✅, shape sets (arrows, callouts, equation) ✅, elbow / curved connectors (bám vào shape) ✅, curve, polyline, scribble ✅, special characters, link tới slide khác, templates ✅ (5), building blocks, placeholder | ❌ |
+| | Video (YouTube, file) ✅, audio ✅, diagram (grid, hierarchy, timeline, process, relationship, cycle) ✅, word art ✅, shape sets (arrows, callouts, equation) ✅, elbow / curved connectors (bám vào shape) ✅, curve, polyline, scribble ✅, special characters, link tới slide khác ✅, templates ✅ (5), building blocks, placeholder | ❌ |
 | Slide | New, duplicate, delete, skip (hide), move, change background, apply layout (6/11), transition, change theme | ✅ |
 | | Thêm layout (main point, big number, caption, one column, section + description) ✅, edit theme (màu, font) ✅ · master + layout tuỳ chỉnh, import slides từ bản trình chiếu khác ❌ | ◐ |
 | Arrange | Order, align, distribute, center on page | ✅ |
 | | Group / ungroup | ✅ |
 | | Rotate 90° / flip menu ✅ | ✅ |
 | Format | Text, align, bullets, table, borders & lines | ✅ |
-| | **Format options** (drop shadow ◐, reflection, text fitting/autofit, indent), line & paragraph spacing chi tiết, image: crop ✅, adjustments (transparency, brightness, contrast, recolor) ✅, mask ❌ | ❌ |
+| | **Format options** (drop shadow ◐, reflection, text fitting/autofit ✅, indent), line & paragraph spacing chi tiết, image: crop ✅, adjustments (transparency, brightness, contrast, recolor) ✅, mask ❌ | ❌ |
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
 | | Motion panel (animations) ✅ · Q&A khán giả, dictate notes, spelling, linked objects, publish to web / embed | ❌ |
 
@@ -98,6 +98,6 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets ✅, bookmark, watermark, borders & shading, compare ✅, Markdown copy/paste ✅, pageless, chế độ Viewing |
 | 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
 | 8 ✅ | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · group rows/columns ✅ (§50) · filter views ✅ (§51) — Sheets 3.3 xong |
-| 9 | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide, autofit, spelling trong Slides, Q&A khán giả |
+| 9 | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide ✅, autofit ✅ (§53), spelling trong Slides, Q&A khán giả |
 | 10 | **2.3** | Docs: drawing, section break & hướng trang theo section, calendar-event / placeholder chip, H5–H6, small caps, thụt lề (first line / hanging), line numbers, citations |
 | 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |
