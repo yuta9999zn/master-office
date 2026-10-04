@@ -203,7 +203,9 @@ export class SheetsService {
   }
 
   /** Appends rows below the last used row of the first sheet (form responses → linked spreadsheet). */
+  /** Appends rows below the used rows of the first sheet; returns where they went (sheet name, 0-based first row). */
   async appendRows(id: string, rows: (string | number)[][], editor: { id: string; name: string }, opts: { headerBold?: boolean } = {}) {
+    let at: { sheet: string; row: number } | null = null;
     await this.collab.transact(id, editor, (doc) => {
       const order = (doc.getMap(WB_MAP).get('sheetOrder') as string[] | undefined) ?? [];
       const m = doc.getMap(SHEETS_MAP).get(order[0]) as Y.Map<unknown> | undefined;
@@ -230,7 +232,9 @@ export class SheetsService {
         }),
       );
       if (opts.headerBold && start === 0) ys.map.set('meta', { ...ys.meta(), freeze: { row: 1, col: 0 } });
+      at = { sheet: ys.meta().name, row: start };
     });
+    return at as { sheet: string; row: number } | null;
   }
 
   async export(id: string, name: string, format: SheetExportFormat, opts: { author?: string; sheetId?: string } = {}) {

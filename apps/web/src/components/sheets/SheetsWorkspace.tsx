@@ -485,6 +485,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
                   onRun={(m) => void run(m)}
                   onRecord={startRecording}
                   onImport={() => setImportOpen(true)}
+                  resourceId={r.id}
                   disabledTriggers={disabledTriggers}
                   onToggleTrigger={(key, on) => setTriggerEnabled(collab.session!.doc, key, on)}
                   executions={executions}

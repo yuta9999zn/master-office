@@ -43,6 +43,13 @@
       "when": 1791051681288,
       "tag": "0005_dictionary",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791085427494,
+      "tag": "0006_macro_triggers",
+      "breakpoints": true
     }
   ]
 }

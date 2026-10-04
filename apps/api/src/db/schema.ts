@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   date,
   integer,
   customType,
@@ -318,4 +319,35 @@ export const userDictionary = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.userId, t.word] })],
+);
+
+/**
+ * Installable macro triggers that run on the server (docs/ARCHITECTURE.md §48): time-driven and on form submit.
+ * They run as the person who created them, while that person can still edit the spreadsheet.
+ */
+export const macroTriggers = pgTable(
+  'macro_triggers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    macroId: text('macro_id').notNull(),
+    fn: text('fn').notNull(),
+    kind: text('kind').notNull(), // 'time' | 'formSubmit'
+    schedule: jsonb('schedule').$type<{ every: 'minutes' | 'hours' | 'day' | 'week'; n?: number; hour?: number; weekday?: number } | null>(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').notNull().default(true),
+    nextRunAt: ts('next_run_at'),
+    lastRunAt: ts('last_run_at'),
+    lastStatus: text('last_status'),
+    lastError: text('last_error'),
+    lastLogs: jsonb('last_logs').$type<string[]>(),
+    lastMs: integer('last_ms'),
+    failures: integer('failures').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('macro_triggers_due_idx').on(t.enabled, t.nextRunAt), index('macro_triggers_resource_idx').on(t.resourceId)],
 );

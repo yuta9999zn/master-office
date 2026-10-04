@@ -11,6 +11,7 @@ import type { MacroResult } from './runtime';
 import { functionNameOf } from './recorder';
 import { deleteMacro, saveMacro, useMacros, useVba, type MacroDef, type VbaModule } from './store';
 import { findTriggers, TRIGGER_LABEL, type Execution } from './triggers';
+import { ServerTriggers } from './ServerTriggers';
 
 export const SHORTCUT_LABEL = (n: number) => `Ctrl+Alt+Shift+${n}`;
 
@@ -69,6 +70,7 @@ export function MacrosPanel({
   onRun,
   onRecord,
   onImport,
+  resourceId,
   disabledTriggers,
   onToggleTrigger,
   executions,
@@ -84,6 +86,8 @@ export function MacrosPanel({
   onRun: (m: MacroDef) => void;
   onRecord: () => void;
   onImport: () => void;
+  /** The spreadsheet (server triggers belong to it). */
+  resourceId: string;
   disabledTriggers: string[];
   onToggleTrigger: (key: string, on: boolean) => void;
   executions: Execution[];
@@ -247,6 +251,7 @@ export function MacrosPanel({
           </div>
         ))}
         <Triggers macros={macros} disabled={disabledTriggers} editable={editable} onToggle={onToggleTrigger} />
+        <ServerTriggers resourceId={resourceId} macros={macros} editable={editable} />
         <Executions list={executions} />
         {vba.length > 0 && (
           <div className="mt-3 border-t border-line pt-3" data-testid="vba-modules">

@@ -40,6 +40,7 @@
     "pg": "^8.16.0",
     "playwright": "^1.55.0",
     "pptxgenjs": "^4",
+    "quickjs-emscripten": "^0.32.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "yjs": "^13.6.33",

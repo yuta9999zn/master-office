@@ -14,6 +14,8 @@ import { PermissionsService } from './permissions/permissions.service';
 import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
 import { SheetsService } from './sheets/sheets.service';
+import { MacroTriggersController } from './sheets/macro-triggers.controller';
+import { MacroTriggersService } from './sheets/macro-triggers.service';
 import { SlidesService } from './slides/slides.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
@@ -28,7 +30,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController],
   providers: [
     SpellingService,
     PermissionsService,
@@ -38,6 +40,7 @@ import { WorkspaceController } from './users/workspace.controller';
     CollabService,
     PdfRenderer,
     SheetsService,
+    MacroTriggersService,
     SlidesService,
     FormsService,
     DocsService,

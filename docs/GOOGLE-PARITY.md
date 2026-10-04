@@ -45,7 +45,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | | **image in cell**, drawing, **dropdown** (◐ qua data validation), emoji, smart chips | ❌ |
 | Data | Sort sheet/range, filter, data validation, column stats, remove duplicates, trim whitespace, split text to columns, protected sheets & ranges, named ranges | ✅ |
 | | **Filter views**, **group-by views**, **slicer**, **named functions**, randomize range, data extraction, data connectors | ❌ |
-| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ✅ simple triggers (onOpen / onEdit / onSelectionChange) · ✅ import macro từ file khác · ❌ trigger theo lịch / form submit · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
+| Tools / Extensions | ✅ **Macros** (record, run, manage, shortcut) · ✅ **script editor** (JS, API kiểu Apps Script) · ✅ simple triggers (onOpen / onEdit / onSelectionChange) · ✅ import macro từ file khác · ✅ trigger theo lịch & on form submit (chạy trên server, §48) · create a form linked to the sheet, calculation settings (manual / iterative), suggestion controls, notifications | ❌ |
 | | ✅ **Activity dashboard** | ✅ |
 | View | Freeze, gridlines, zoom, formula bar, hidden sheets | ✅ |
 | | Protected ranges ✅, **⭐ sheet tabs on top** ✅ · show/hide formulas, group/outline rows & columns ❌ | ◐ |
@@ -97,7 +97,7 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 5 | **4.1** | Slides: group, animation + motion panel, video/audio, crop & điều chỉnh ảnh, connectors, diagram, word art, slide numbers, templates, theme builder, layout bổ sung |
 | 6 | **2.2** | Docs: document tabs, smart chips (date, dropdown, place, event), building blocks, footnote, columns & section, equation, drawing, chart từ Sheets ✅, bookmark, watermark, borders & shading, compare ✅, Markdown copy/paste ✅, pageless, chế độ Viewing |
 | 7 ✅ | **chung** | Spelling ✅, publish/embed ✅, activity dashboard ✅, templates gallery ✅ · translate → Phase 6 (AI), email cộng tác viên → Mail |
-| 8 | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · filter views, group rows/columns, show formulas, trigger theo lịch (cần sandbox server) |
+| 8 | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · filter views, group rows/columns, show formulas |
 | 9 | **4.2** | Slides: rotate menu, shape sets / curve / polyline, link tới slide, autofit, spelling trong Slides, Q&A khán giả |
 | 10 | **2.3** | Docs: drawing, section break & hướng trang theo section, calendar-event / placeholder chip, H5–H6, small caps, thụt lề (first line / hanging), line numbers, citations |
 | 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |

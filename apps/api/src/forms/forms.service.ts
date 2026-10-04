@@ -28,6 +28,7 @@ import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
 import { SheetsService } from '../sheets/sheets.service';
+import { MacroTriggersService } from '../sheets/macro-triggers.service';
 import { StorageService } from '../storage/storage.service';
 
 const csvCell = (v: string | number) => {
@@ -184,9 +185,19 @@ export class FormsService {
     if (s.sheetId) {
       const cols = responseColumns(form);
       // Written as the respondent (or the form's owner for anonymous answers); a failure must not lose the response.
-      await this.sheets
-        .appendRows(s.sheetId, [cols.cells({ submittedAt: created.submittedAt, email, score, answers })], actor ?? { id: row.ownerId, name: 'Form response' })
-        .catch((e) => this.log.warn(`append to linked sheet ${s.sheetId} failed: ${(e as Error).message}`));
+      const line = cols.cells({ submittedAt: created.submittedAt, email, score, answers });
+      const at = await this.sheets
+        .appendRows(s.sheetId, [line], actor ?? { id: row.ownerId, name: 'Form response' })
+        .catch((e) => (this.log.warn(`append to linked sheet ${s.sheetId} failed: ${(e as Error).message}`), null));
+      // "On form submit" triggers of the linked spreadsheet (§48) — after the response is safe, never blocking it.
+      if (at) {
+        const namedValues = Object.fromEntries(cols.header.map((h, i) => [String(h), [String(line[i] ?? '')]]));
+        const range = { sheet: at.sheet, r: at.row, c: 0, nr: 1, nc: line.length };
+        void this.moduleRef
+          .get(MacroTriggersService, { strict: false })
+          .formSubmitted(s.sheetId, { range, values: line, namedValues })
+          .catch((e: Error) => this.log.warn(`form submit triggers: ${e.message}`));
+      }
     }
     this.collab.notify(id, { type: 'responses' });
     return this.receipt(form, created.id, editToken, score);
