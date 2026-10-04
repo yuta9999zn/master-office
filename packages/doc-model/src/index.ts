@@ -173,6 +173,36 @@ export const PageBreak = Node.create({
   },
 });
 
+/**
+ * Section break (next page): the content after it is a new section with its own page orientation — a landscape
+ * table in a portrait report (Word / Google Docs). §59.
+ */
+export const SectionBreak = Node.create({
+  name: 'sectionBreak',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return { orientation: { default: 'landscape', parseHTML: (el) => (el.getAttribute('data-orientation') === 'portrait' ? 'portrait' : 'landscape'), renderHTML: (a) => ({ 'data-orientation': a.orientation }) } };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-section-break]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-section-break': '', class: 'mo-section-break' })];
+  },
+});
+
+/** Top-level content split at section breaks: [{orientation, nodes}], the first section in the document's orientation. */
+export function sectionsOf(doc: JSONContent | null | undefined, first: 'portrait' | 'landscape'): { orientation: 'portrait' | 'landscape'; nodes: JSONContent[] }[] {
+  const out = [{ orientation: first, nodes: [] as JSONContent[] }];
+  for (const n of doc?.content ?? []) {
+    if (n.type === 'sectionBreak') out.push({ orientation: n.attrs?.orientation === 'portrait' ? 'portrait' : 'landscape', nodes: [] });
+    else out[out.length - 1].nodes.push(n);
+  }
+  return out;
+}
+
 /** Table of contents generated from the document's headings (live in the editor, a real TOC field in Word). */
 export const TableOfContents = Node.create({
   name: 'tableOfContents',
@@ -460,6 +490,7 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     Subscript,
     Superscript,
     PageBreak,
+    SectionBreak,
     TableOfContents,
     ParagraphFormat,
     SmallCaps,
@@ -658,6 +689,9 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
         return '<br>';
       case 'pageBreak':
         return '<div class="page-break"></div>';
+      case 'sectionBreak':
+        // Split into <section>s by toHTMLDocument (each section can have its own page orientation).
+        return `<!--mo-section:${n.attrs?.orientation === 'portrait' ? 'portrait' : 'landscape'}-->`;
       case 'tableOfContents': {
         const max = n.attrs?.maxLevel ?? 3;
         const items = headings
@@ -801,7 +835,11 @@ export function toHTMLDocument(
   const p = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
   const { w, h } = paperSize(p);
   const m = p.margins;
-  const page = `@page { size: ${w}mm ${h}mm; margin: ${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm; }`;
+  const margin = `margin: ${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm;`;
+  // Named pages for sections in the other orientation (Chromium supports CSS \`page\`): §59.
+  const pw = Math.min(w, h);
+  const ph = Math.max(w, h);
+  const page = `@page { size: ${w}mm ${h}mm; ${margin} } @page portrait { size: ${pw}mm ${ph}mm; ${margin} } @page landscape { size: ${ph}mm ${pw}mm; ${margin} }`;
   // A fixed element is repeated on every printed page by Chromium: the watermark sits behind the text.
   const wm = p.watermark;
   const wmSrc = wm?.image ? (opts.resolveImage ? opts.resolveImage(wm.image) : wm.image) : wm?.text ? watermarkSvg(wm.text, w, h, wm.opacity ?? 0.15) : null;
@@ -812,6 +850,14 @@ export function toHTMLDocument(
   const numbers = p.lineNumbers
     ? `<style>main{position:relative}.ln{position:absolute;left:-12mm;width:8mm;text-align:right;font:8pt Inter,Arial,sans-serif;color:#94a3b8}</style><script>(function(){var lineBoxes=${lineBoxes.toString()};var m=document.querySelector('main');var go=function(){var n=1;lineBoxes(m,m,1).forEach(function(l){var d=document.createElement('div');d.className='ln';d.style.top=(l.top+Math.max(0,(l.height-11)/2))+'px';d.textContent=String(n++);m.appendChild(d);});};if(document.fonts&&document.fonts.ready)document.fonts.ready.then(go);else go();})();</script>`
     : '';
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body>${watermark}<main><div class="doc-title" data-no-line-numbers>${esc(title)}</div>${toHTML(doc, opts)}</main>${numbers}</body></html>`;
+  // Section breaks: every section is a named page in its orientation (a new section always starts a new page).
+  let body = toHTML(doc, opts);
+  if (body.includes('<!--mo-section:')) {
+    const parts = body.split(/<!--mo-section:(portrait|landscape)-->/);
+    let html = `<section style="page:${p.orientation}">${parts[0]}`;
+    for (let i = 1; i < parts.length; i += 2) html += `</section><section style="page:${parts[i]};break-before:page">${parts[i + 1]}`;
+    body = `${html}</section>`;
+  }
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${EXPORT_CSS}${page}</style></head><body>${watermark}<main><div class="doc-title" data-no-line-numbers>${esc(title)}</div>${body}</main>${numbers}</body></html>`;
 }
 export * from './mindmap';

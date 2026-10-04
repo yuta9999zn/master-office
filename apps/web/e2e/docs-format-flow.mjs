@@ -1,5 +1,5 @@
 // Docs 2.3 end-to-end: Heading 5–6, small caps, indentation options, line numbers (editor, DOCX, PDF / HTML),
-// placeholder and calendar event chips, citations (APA / MLA, bibliography).
+// placeholder and calendar event chips, citations (APA / MLA, bibliography), section breaks with their own orientation.
 // node e2e/docs-format-flow.mjs   (needs pnpm dev + API)
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
@@ -174,6 +174,27 @@ await step('switching to MLA restyles citations and the list; DOCX has the forma
   const xml = await (await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body())).file('word/document.xml').async('string');
   for (const want of ['(Tanaka 12)', 'Works Cited', 'Tanaka, Aya. ', 'Salon Operations']) if (!xml.includes(want)) throw new Error(`docx missing ${want}`);
   if (!/<w:i\/>[\s\S]{0,200}Salon Operations/.test(xml)) throw new Error('book title not italic');
+});
+
+await step('a section break puts the following pages in landscape (PDF, DOCX)', async () => {
+  await editor.locator('p').first().click();
+  await page.keyboard.press('End');
+  await menu('Insert', 'Section break (next page)');
+  const bar = editor.getByTestId('section-break');
+  await bar.waitFor();
+  if ((await bar.getAttribute('data-orientation')) !== 'landscape') throw new Error('not landscape');
+  await bar.getByRole('button', { name: 'Section orientation' }).click();
+  await editor.locator('[data-testid="section-break"][data-orientation="portrait"]').waitFor();
+  await bar.getByRole('button', { name: 'Section orientation' }).click();
+  await editor.locator('[data-testid="section-break"][data-orientation="landscape"]').waitFor();
+  await page.waitForTimeout(2500);
+  const xml = await (await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body())).file('word/document.xml').async('string');
+  if ((xml.match(/<w:sectPr/g) ?? []).length < 2 || !xml.includes('w:orient="landscape"')) throw new Error('docx sections');
+  const html = await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=html`)).text();
+  if (!html.includes('page:landscape') || !html.includes('@page landscape')) throw new Error('html named pages');
+  const pdf = (await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=pdf`)).body()).toString('latin1');
+  const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)/g)].map((m) => Number(m[1]) > Number(m[2]));
+  if (!boxes.includes(true) || !boxes.includes(false)) throw new Error(`pdf pages ${JSON.stringify(boxes)}`);
 });
 
 await page.request.delete(`${BASE}/api/resources/${doc.id}`);

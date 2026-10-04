@@ -56,6 +56,7 @@ import { hrefFor } from '@/lib/resources';
 import { Avatar, cn, FileIcon } from '../ui/primitives';
 import { BookmarkWithView, DateChipWithView, DropdownChipWithView, EventChipWithView, PlaceChipWithView, PlaceholderChipWithView } from './chips';
 import { BibliographyWithView, CitationWithView } from './citations';
+import { SectionBreakWithView } from './section-break';
 import { EquationWithView, FootnoteShortcut, FootnoteWithView, insertFootnote } from './notes-math';
 import { setColumns } from './columns';
 import { DocChartWithView } from './doc-chart';
@@ -363,6 +364,7 @@ function slashItems(h: SlashHandlers): SlashItem[] {
     { id: 'mention', group: 'Insert', title: 'Mention a person', icon: <UserRound />, run: (e, r) => c(e, r).insertContent('@').run() },
     { id: 'toc', group: 'Insert', title: 'Table of contents', icon: <ListTree />, run: (e, r) => c(e, r).insertContent({ type: 'tableOfContents' }).run() },
     { id: 'pagebreak', group: 'Insert', title: 'Page break', icon: <Scissors />, run: (e, r) => c(e, r).insertContent({ type: 'pageBreak' }).run() },
+    { id: 'sectionbreak', group: 'Insert', title: 'Section break (landscape)', subtitle: 'Next pages in landscape', icon: <Scissors />, run: (e, r) => c(e, r).insertContent({ type: 'sectionBreak', attrs: { orientation: 'landscape' } }).run() },
     { id: 'wiki', group: 'Insert', title: 'Knowledge callout', icon: <BookOpen />, run: (e, r) => c(e, r).wrapIn('callout').insertContent('Knowledge: ').run() },
     { id: 'doc', group: 'Insert', title: 'Embed a document', icon: <FileText />, run: (e, r) => (c(e, r).run(), h.embed()) },
     { id: 'date', group: 'Smart chips', title: 'Date', subtitle: 'Or type @date', icon: <CalendarDays />, run: (e, r) => c(e, r).insertContent([{ type: 'dateChip', attrs: { date: isoDay(), format: 'short' } }, { type: 'text', text: ' ' }]).run() },
@@ -476,7 +478,7 @@ export const CollapsibleHeadings = Extension.create({
 
 // ── Schema for the browser ───────────────────────────────────────────────────
 
-const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'placeholderChip', 'eventChip', 'citation', 'bibliography', 'bookmark', 'footnote', 'equation', 'docChart'];
+const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'sectionBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'placeholderChip', 'eventChip', 'citation', 'bibliography', 'bookmark', 'footnote', 'equation', 'docChart'];
 
 // ── Internal links ("#bm-<id>") ──────────────────────────────────────────────
 
@@ -521,6 +523,7 @@ export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
     ...docExtensions(opts).filter((e) => !VIEW_NODES.includes(e.name)),
     ResourceEmbedWithView,
     PageBreakWithView,
+    SectionBreakWithView,
     TableOfContentsWithView,
     TaskItemWithView.configure({ nested: true }),
     StatusWithView,

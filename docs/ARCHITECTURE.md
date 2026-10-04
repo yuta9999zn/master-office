@@ -902,3 +902,13 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Xuất | `resolveCitations()` thay node bằng chữ / tiêu đề + đoạn (thụt treo, in nghiêng) trước khi xuất → DOCX, PDF, HTML, text đều đúng mà không exporter nào phải biết citations. |
 | Giao diện | **Tools → Citations**: chọn kiểu, Add citation source (form theo loại), danh sách nguồn với **Cite** (chèn tại con trỏ), Edit, Delete, **Insert bibliography** (một lần, cuối tài liệu). Bấm trích dẫn → thêm số trang / Remove. |
 | Test | `docs-format-flow.mjs` (+2): sách + website không tác giả, Cite → "(Tanaka, 2024)", trang 12 → "(Tanaka, 2024, p. 12)", danh mục "References" chỉ có sách; đổi MLA → "(Tanaka 12)", "Works Cited"; DOCX có chữ đã định dạng và tên sách in nghiêng. |
+
+## 59. Phase 2.3 — Docs: ngắt section & hướng trang theo section: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Node | `sectionBreak {orientation}` (block): nội dung **sau** nó là section mới bắt đầu ở trang mới, theo hướng của nó (ví dụ một bảng ngang trong báo cáo dọc). Section đầu theo Page setup. `sectionsOf(doc, first)` chia nội dung cấp cao nhất thành các section — dùng chung cho các bộ xuất. |
+| PDF / HTML | `toHTML` để lại dấu `<!--mo-section:…-->`; `toHTMLDocument` bọc từng phần trong `<section style="page:portrait|landscape">` với **CSS named pages** (`@page portrait` / `@page landscape`, cùng lề) — Chromium in mỗi section đúng khổ, section sau luôn sang trang. Footnote, đánh số tiêu đề, đánh số dòng không bị tách. |
+| DOCX | Mỗi section là một **Word section** (`w:sectPr` riêng, `w:orient`), cùng lề, header/footer, đánh số dòng; tiêu đề tài liệu ở section đầu. |
+| Editor | Thanh "Section break (next page)" có nút **Portrait ⇄ Landscape**; chèn từ Insert (hướng ngược với tài liệu) hoặc `/section break`. Màn hình soạn **không** đổi bề rộng trang cho section ngang (giới hạn: chỉ PDF / Word hiển thị khổ ngang). |
+| Test | `docs-format-flow.mjs` (+1): chèn → landscape, đổi qua lại; DOCX ≥ 2 `sectPr` có `orient="landscape"`; HTML có named pages; PDF có cả trang dọc lẫn trang ngang (MediaBox). |

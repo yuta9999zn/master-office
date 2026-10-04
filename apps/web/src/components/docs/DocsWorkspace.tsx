@@ -430,6 +430,9 @@ function DocBody({
           <MenuItem disabled={!canEdit} shortcut="Ctrl+Enter" onSelect={() => c().insertContent({ type: 'pageBreak' }).run()}>
             Page break
           </MenuItem>
+          <MenuItem disabled={!canEdit} onSelect={() => c().insertContent({ type: 'sectionBreak', attrs: { orientation: pageSetup.orientation === 'landscape' ? 'portrait' : 'landscape' } }).run()}>
+            Section break (next page)
+          </MenuItem>
           <MenuItem disabled={!canEdit} onSelect={() => c().insertContent({ type: 'tableOfContents' }).run()}>
             Table of contents
           </MenuItem>

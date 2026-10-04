@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_SETUP, formatChipDate, headingsOf, PAPER, placeUrl, STATUS_COLORS, type DropdownOption, type JSONContent, type PageSetup, eventLabel, type EventInfo } from '@workos/doc-model';
+import { DEFAULT_PAGE_SETUP, formatChipDate, headingsOf, PAPER, placeUrl, STATUS_COLORS, type DropdownOption, type JSONContent, type PageSetup, eventLabel, type EventInfo, sectionsOf } from '@workos/doc-model';
 import {
   AlignmentType,
   DeletedTextRun,
@@ -451,7 +451,8 @@ export async function toDocx(
   const p = meta.pageSetup ?? DEFAULT_PAGE_SETUP;
   const paper = PAPER[p.size];
   const w = new DocxWriter(images, headingsOf(doc));
-  const body = w.blocks(doc.content);
+  // Section breaks (§59): each part is its own Word section, with its own orientation.
+  const parts = sectionsOf(doc, p.orientation).map((sec) => ({ orientation: sec.orientation, blocks: w.blocks(sec.nodes) }));
   const document = new Document({
     title,
     footnotes: w.footnotes,
@@ -484,12 +485,11 @@ export async function toDocx(
         },
       ],
     },
-    sections: [
-      {
+    sections: parts.map((part, k) => ({
         properties: {
           page: {
             // docx expects portrait dimensions and swaps them for landscape.
-            size: { width: mmToTwip(paper.w), height: mmToTwip(paper.h), orientation: p.orientation === 'landscape' ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
+            size: { width: mmToTwip(paper.w), height: mmToTwip(paper.h), orientation: part.orientation === 'landscape' ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
             margin: { top: mmToTwip(p.margins.top), right: mmToTwip(p.margins.right), bottom: mmToTwip(p.margins.bottom), left: mmToTwip(p.margins.left) },
           },
           // Tools → Line numbers: every line, continuous through the document (as in the editor and the PDF).
@@ -497,9 +497,8 @@ export async function toDocx(
         },
         headers: p.header ? { default: new Header({ children: [headerFooter(p.header, p.headerAlign, title)] }) } : undefined,
         footers: p.footer ? { default: new Footer({ children: [headerFooter(p.footer, p.footerAlign, title)] }) } : undefined,
-        children: [new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: title })] }), ...body],
-      },
-    ],
+        children: k === 0 ? [new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: title })] }), ...part.blocks] : part.blocks,
+      })),
   });
   return Packer.toBuffer(document);
 }
