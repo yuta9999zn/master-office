@@ -44,6 +44,8 @@ import {
   Type,
   UserRound,
   X,
+  TextCursorInput,
+  CalendarClock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { DropdownMenu as DM, Popover } from 'radix-ui';
@@ -52,7 +54,7 @@ import { api } from '@/lib/api';
 import { useResource, useUsers } from '@/lib/queries';
 import { hrefFor } from '@/lib/resources';
 import { Avatar, cn, FileIcon } from '../ui/primitives';
-import { BookmarkWithView, DateChipWithView, DropdownChipWithView, PlaceChipWithView } from './chips';
+import { BookmarkWithView, DateChipWithView, DropdownChipWithView, EventChipWithView, PlaceChipWithView, PlaceholderChipWithView } from './chips';
 import { EquationWithView, FootnoteShortcut, FootnoteWithView, insertFootnote } from './notes-math';
 import { setColumns } from './columns';
 import { DocChartWithView } from './doc-chart';
@@ -365,6 +367,8 @@ function slashItems(h: SlashHandlers): SlashItem[] {
     { id: 'date', group: 'Smart chips', title: 'Date', subtitle: 'Or type @date', icon: <CalendarDays />, run: (e, r) => c(e, r).insertContent([{ type: 'dateChip', attrs: { date: isoDay(), format: 'short' } }, { type: 'text', text: ' ' }]).run() },
     { id: 'dropdown', group: 'Smart chips', title: 'Dropdown', subtitle: 'Status, priority…', icon: <ChevronDownCircle />, run: (e, r) => c(e, r).insertContent([{ type: 'dropdownChip', attrs: { options: DROPDOWN_PRESETS[0].options, value: null } }, { type: 'text', text: ' ' }]).run() },
     { id: 'place', group: 'Smart chips', title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin />, run: (e, r) => c(e, r).insertContent([{ type: 'placeChip', attrs: { name: 'Place' } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'placeholder', group: 'Smart chips', title: 'Placeholder', subtitle: 'Fill in later, e.g. [Client name]', icon: <TextCursorInput />, run: (e, r) => c(e, r).insertContent([{ type: 'placeholderChip', attrs: { label: 'Placeholder' } }, { type: 'text', text: ' ' }]).run() },
+    { id: 'event', group: 'Smart chips', title: 'Calendar event', subtitle: 'Meeting with date, time and place', icon: <CalendarClock />, run: (e, r) => c(e, r).insertContent([{ type: 'eventChip', attrs: { title: 'Meeting', date: isoDay(1), start: '10:00', end: '10:30', location: '' } }, { type: 'text', text: ' ' }]).run() },
     { id: 'columns2', group: 'Basic', title: '2 columns', icon: <Columns2 />, run: (e, r) => (c(e, r).run(), setColumns(e, 2)) },
     { id: 'columns3', group: 'Basic', title: '3 columns', icon: <Columns3 />, run: (e, r) => (c(e, r).run(), setColumns(e, 3)) },
     { id: 'chart', group: 'Insert', title: 'Chart', subtitle: 'From Sheets or sample data', icon: <ChartColumnBig />, run: (e, r) => (c(e, r).run(), h.chart()) },
@@ -471,7 +475,7 @@ export const CollapsibleHeadings = Extension.create({
 
 // ── Schema for the browser ───────────────────────────────────────────────────
 
-const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'bookmark', 'footnote', 'equation', 'docChart'];
+const VIEW_NODES = ['resourceEmbed', 'pageBreak', 'tableOfContents', 'taskItem', 'status', 'resourceLink', 'dateChip', 'dropdownChip', 'placeChip', 'placeholderChip', 'eventChip', 'bookmark', 'footnote', 'equation', 'docChart'];
 
 // ── Internal links ("#bm-<id>") ──────────────────────────────────────────────
 
@@ -523,6 +527,8 @@ export function browserSchema(opts: Parameters<typeof docExtensions>[0]) {
     DateChipWithView,
     DropdownChipWithView,
     PlaceChipWithView,
+    PlaceholderChipWithView,
+    EventChipWithView,
     BookmarkWithView,
     FootnoteWithView,
     EquationWithView,

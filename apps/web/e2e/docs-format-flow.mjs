@@ -1,4 +1,5 @@
-// Docs 2.3 end-to-end: Heading 5–6, small caps, indentation options, line numbers (editor, DOCX, PDF / HTML).
+// Docs 2.3 end-to-end: Heading 5–6, small caps, indentation options, line numbers (editor, DOCX, PDF / HTML),
+// placeholder and calendar event chips.
 // node e2e/docs-format-flow.mjs   (needs pnpm dev + API)
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
@@ -91,6 +92,42 @@ await step('DOCX keeps headings 5, small caps, indents and line numbering; PDF /
   if (!html.includes('lineBoxes') || !html.includes('font-variant:small-caps')) throw new Error('html export');
   const pdf = await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=pdf`);
   if (!pdf.ok() || (await pdf.body()).length < 1000) throw new Error(`pdf ${pdf.status()}`);
+});
+
+await step('/placeholder chip: typing the value replaces it', async () => {
+  await editor.locator('p').last().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Prepared for ');
+  await page.keyboard.type('/placeholder');
+  await page.keyboard.press('Enter');
+  await editor.getByTestId('placeholder-chip').click();
+  await page.getByLabel('Replace placeholder with').fill('Acme Corp');
+  await page.getByLabel('Replace placeholder with').press('Enter');
+  await editor.getByText('Prepared for Acme Corp').waitFor();
+  if (await editor.getByTestId('placeholder-chip').count()) throw new Error('placeholder still there');
+});
+
+await step('/calendar event chip: details, label and an .ics file', async () => {
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Next: ');
+  await page.keyboard.type('/event');
+  await page.keyboard.press('Enter');
+  const chip = editor.getByTestId('event-chip');
+  await chip.getByText(/Meeting · .*10:00–10:30/).waitFor();
+  await chip.click();
+  await page.getByLabel('Event title').fill('Board review');
+  await page.getByLabel('Event location').fill('Room 5');
+  await page.getByLabel('Event location').press('Tab');
+  await chip.getByText(/Board review · /).waitFor();
+  const href = await page.getByTestId('event-ics').getAttribute('href');
+  const ics = decodeURIComponent(href.replace(/^data:text\/calendar;charset=utf-8,/, ''));
+  for (const want of ['BEGIN:VEVENT', 'SUMMARY:Board review', 'LOCATION:Room 5', 'T100000']) if (!ics.includes(want)) throw new Error(`ics missing ${want}`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(2500);
+  const xml = await (await JSZip.loadAsync(await (await page.request.get(`${BASE}/api/resources/${doc.id}/export?format=docx`)).body())).file('word/document.xml').async('string');
+  if (!xml.includes('Board review') || !xml.includes('Acme Corp')) throw new Error('docx misses the chips');
 });
 
 await page.request.delete(`${BASE}/api/resources/${doc.id}`);

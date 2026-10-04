@@ -5,7 +5,7 @@ import { ReactRenderer } from '@tiptap/react';
 import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
 import { DROPDOWN_PRESETS, isoDay, type JSONContent } from '@workos/doc-model';
 import type { UserSummary } from '@workos/shared';
-import { CalendarDays, ChevronDownCircle, MapPin } from 'lucide-react';
+import { CalendarDays, ChevronDownCircle, MapPin, TextCursorInput, CalendarClock } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { Avatar, cn } from '../ui/primitives';
 
@@ -23,6 +23,8 @@ const CHIPS: (ChipItem & { keys: string[] })[] = [
   { chip: 'yesterday', keys: ['yesterday'], title: 'Yesterday', subtitle: 'Date', icon: <CalendarDays size={16} />, node: () => ({ type: 'dateChip', attrs: { date: isoDay(-1), format: 'short' } }) },
   ...DROPDOWN_PRESETS.map((p, i) => ({ chip: `dropdown-${i}`, keys: ['dropdown', p.name.toLowerCase()], title: p.name, subtitle: 'Dropdown', icon: <ChevronDownCircle size={16} />, node: () => ({ type: 'dropdownChip', attrs: { options: p.options, value: null } }) })),
   { chip: 'place', keys: ['place', 'location', 'map'], title: 'Place', subtitle: 'Opens in Maps', icon: <MapPin size={16} />, node: () => ({ type: 'placeChip', attrs: { name: 'Place' } }) },
+  { chip: 'placeholder', keys: ['placeholder', 'fill'], title: 'Placeholder', subtitle: 'Fill in later', icon: <TextCursorInput size={16} />, node: () => ({ type: 'placeholderChip', attrs: { label: 'Placeholder' } }) },
+  { chip: 'event', keys: ['event', 'meeting', 'calendar'], title: 'Calendar event', subtitle: 'Date, time and place', icon: <CalendarClock size={16} />, node: () => ({ type: 'eventChip', attrs: { title: 'Meeting', date: isoDay(1), start: '10:00', end: '10:30', location: '' } }) },
 ];
 const chipsFor = (q: string) => (q.length >= 2 ? CHIPS.filter((c) => c.keys.some((k) => k.startsWith(q.toLowerCase()))) : []);
 

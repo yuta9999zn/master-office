@@ -882,3 +882,12 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Thụt lề | Thuộc tính đoạn `indentLeft`, `indentRight`, `firstLine` (pt; **âm = hanging**) qua `ParagraphFormat` → `margin-left/right`, `text-indent` (hanging không có lề trái thì tự lấy lề trái bằng độ treo). Hộp **Format → Indentation options…** như Google: Left / Right / Special (None, First line, Hanging) + By, hiển thị **cm**, lưu pt. DOCX: `w:ind left/right/firstLine/hanging` (twip), cộng với lề của danh sách. |
 | Đánh số dòng | **Tools → Line numbers** (lưu trong page setup — chung cho tài liệu). Đánh số **dòng hiển thị** (như Word/Google), không phải đoạn: `lineBoxes()` trong doc-model gom `Range.getClientRects()` theo dòng của từng đoạn / tiêu đề / code (bỏ bảng, chú thích cuối trang, tiêu đề tài liệu); editor vẽ cột số trong lề trái, đo lại khi sửa / đổi cỡ / tải font (chia cho zoom). **PDF**: cùng hàm được nhúng vào trang (script) và chạy trong Chromium với layout in (media print, bề rộng = khổ giấy trừ lề) trước khi in. **DOCX**: `w:lnNumType` liên tục. Đánh số liên tục cả tài liệu ở mọi nơi (chưa có "bắt đầu lại mỗi trang"). |
 | Test | `apps/web/e2e/docs-format-flow.mjs` (4 bước): Heading 5, small caps; first line 1,5 cm → `text-indent:42.5pt`, hanging; line numbers ≥ 6, số cuối = số dòng, nằm trong lề; DOCX có Heading5, smallCaps, `w:hanging="850"`, `lnNumType`, HTML có script đánh số, PDF xuất được. |
+
+## 57. Phase 2.3 — Docs: chip placeholder & sự kiện lịch: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Placeholder chip | Node inline `placeholderChip {label}` hiện `[label]` viền nét đứt (dùng cho template). Bấm → ô "Replace placeholder with": gõ giá trị + Enter → chip được **thay bằng chữ thường** ngay tại chỗ; đổi tên placeholder; Remove. Xuất HTML/PDF/DOCX/text: `[label]`. |
+| Event chip | Node `eventChip {title, date, start, end, location}` hiện "📅 Title · Oct 5, 2026, 10:00–10:30". Bấm → sửa tiêu đề, ngày, giờ bắt đầu/kết thúc, địa điểm; **Add to calendar** = tải file `.ics` (iCalendar: giờ "floating" theo giờ máy, không có giờ → sự kiện cả ngày). Chưa liên kết module Calendar (chưa có) — khi có sẽ trỏ tới sự kiện thật. Xuất: chữ "📅 …". |
+| Chèn | Menu `/` (Smart chips: Placeholder, Calendar event) và `@` (placeholder, event / meeting / calendar). |
+| Test | `docs-format-flow.mjs` (+2): `/placeholder` → điền "Acme Corp" → thành chữ; `/event` → đổi tiêu đề / địa điểm → nhãn đổi, `.ics` có VEVENT, SUMMARY, LOCATION, giờ 10:00; DOCX có cả hai. |

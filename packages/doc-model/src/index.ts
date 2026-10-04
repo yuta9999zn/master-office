@@ -13,7 +13,7 @@ import { TextStyleKit } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 
 export type { JSONContent };
-import { Bookmark, DateChip, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DropdownOption } from './chips';
+import { Bookmark, DateChip, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DropdownOption, PlaceholderChip, EventChip, eventLabel, type EventInfo } from './chips';
 export * from './chips';
 import { Equation, equationHtml, Footnote, footnotesOf } from './notes-math';
 export * from './notes-math';
@@ -468,6 +468,8 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
     DateChip,
     DropdownChip,
     PlaceChip,
+    PlaceholderChip,
+    EventChip,
     Bookmark,
     Footnote,
     Equation,
@@ -495,6 +497,8 @@ export function toPlainText(doc: JSONContent | null | undefined): string {
     if (n.type === 'dateChip') return formatChipDate(n.attrs?.date, n.attrs?.format);
     if (n.type === 'dropdownChip') return n.attrs?.value ?? '';
     if (n.type === 'placeChip') return n.attrs?.name ?? '';
+    if (n.type === 'placeholderChip') return `[${n.attrs?.label ?? ''}]`;
+    if (n.type === 'eventChip') return eventLabel(n.attrs as EventInfo);
     if (n.type === 'bookmark' || n.type === 'footnote') return '';
     if (n.type === 'equation') return String(n.attrs?.latex ?? '');
     if (n.type === 'docChart') return chartText(n.attrs?.spec as DocChartSpec | null);
@@ -678,6 +682,10 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
       }
       case 'placeChip':
         return `<a class="chip" href="${esc(placeUrl(String(n.attrs?.name ?? '')))}">📍 ${esc(String(n.attrs?.name ?? ''))}</a>`;
+      case 'placeholderChip':
+        return `<span class="chip" style="border:1px dashed #94a3b8;background:none;color:#64748b">[${esc(String(n.attrs?.label ?? ''))}]</span>`;
+      case 'eventChip':
+        return `<span class="chip">📅 ${esc(eventLabel(n.attrs as EventInfo))}</span>`;
       case 'bookmark':
         return `<a id="bm-${esc(String(n.attrs?.id ?? ''))}"></a>`;
       case 'footnote': {

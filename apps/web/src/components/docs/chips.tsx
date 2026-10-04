@@ -1,8 +1,8 @@
 'use client';
 
 import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
-import { Bookmark, DateChip, DROPDOWN_PRESETS, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DateFormat, type DropdownOption } from '@workos/doc-model';
-import { Bookmark as BookmarkIcon, CalendarDays, ChevronDown, ExternalLink, MapPin, Plus, Trash2, X } from 'lucide-react';
+import { Bookmark, DateChip, DROPDOWN_PRESETS, DropdownChip, formatChipDate, PlaceChip, placeUrl, type DateFormat, type DropdownOption, PlaceholderChip, EventChip, eventIcs, eventLabel, type EventInfo } from '@workos/doc-model';
+import { Bookmark as BookmarkIcon, CalendarDays, ChevronDown, ExternalLink, MapPin, Plus, Trash2, X, CalendarPlus } from 'lucide-react';
 import { DropdownMenu as DM, Popover } from 'radix-ui';
 import { useState, type ReactNode } from 'react';
 import { cn } from '../ui/primitives';
@@ -173,3 +173,70 @@ export const PlaceChipWithView = PlaceChip.extend({
   addNodeView: () => ReactNodeViewRenderer(PlaceChipView),
 });
 export const BookmarkWithView = Bookmark.extend({ addNodeView: () => ReactNodeViewRenderer(BookmarkView) });
+
+/** Placeholder chip: type the real value to replace it (Enter), rename the placeholder, or remove it. §57. */
+function PlaceholderChipView({ node, updateAttributes, deleteNode, editor, getPos }: ReactNodeViewProps) {
+  const label = String(node.attrs.label ?? '');
+  const fill = (text: string) => {
+    const pos = typeof getPos === 'function' ? getPos() : null;
+    if (pos == null || !text.trim()) return;
+    editor.chain().focus().insertContentAt({ from: pos, to: pos + node.nodeSize }, text).run();
+  };
+  return (
+    <NodeViewWrapper as="span" className="mo-chip-wrap" data-testid="placeholder-chip">
+      <ChipPopover
+        editable={editor.isEditable}
+        trigger={
+          <button contentEditable={false} className={cn(pill, 'border border-dashed border-slate-400 bg-transparent text-slate-500 hover:bg-hover')}>
+            [{label || 'Placeholder'}]
+          </button>
+        }
+      >
+        <input autoFocus placeholder={`Enter ${label || 'a value'}`} onKeyDown={(e) => e.key === 'Enter' && fill((e.target as HTMLInputElement).value)} className="input h-8 w-full" aria-label="Replace placeholder with" />
+        <input defaultValue={label} onBlur={(e) => updateAttributes({ label: e.target.value.trim() || 'Placeholder' })} className="input h-8 w-full text-[12px]" aria-label="Placeholder name" />
+        <button onClick={deleteNode} className="flex items-center gap-1 self-start rounded-md px-2 py-1 text-[12px] text-muted hover:bg-hover">
+          <Trash2 size={12} /> Remove
+        </button>
+      </ChipPopover>
+    </NodeViewWrapper>
+  );
+}
+
+/** Calendar event chip: what / when / where, and "Add to calendar" as an .ics file. §57. */
+function EventChipView({ node, updateAttributes, deleteNode, editor }: ReactNodeViewProps) {
+  const a = node.attrs as EventInfo;
+  const ics = `data:text/calendar;charset=utf-8,${encodeURIComponent(eventIcs(a, String(a.title).replace(/\W+/g, '-').toLowerCase() || 'event'))}`;
+  const set = (k: keyof EventInfo) => (e: { target: { value: string } }) => updateAttributes({ [k]: e.target.value || (k === 'title' ? 'Event' : k === 'location' ? '' : null) });
+  return (
+    <NodeViewWrapper as="span" className="mo-chip-wrap" data-testid="event-chip">
+      <ChipPopover
+        editable={editor.isEditable}
+        trigger={
+          <button contentEditable={false} className={cn(pill, 'bg-violet-50 text-violet-700 hover:bg-violet-100')}>
+            <CalendarDays size={12} />
+            {eventLabel(a)}
+          </button>
+        }
+      >
+        <input defaultValue={a.title} onBlur={set('title')} placeholder="Event title" className="input h-8 w-full" aria-label="Event title" />
+        <div className="flex gap-1.5">
+          <input type="date" defaultValue={a.date ?? ''} onChange={set('date')} className="input h-8 min-w-0 flex-1" aria-label="Event date" />
+          <input type="time" defaultValue={a.start ?? ''} onChange={set('start')} className="input h-8 w-[88px]" aria-label="Start time" />
+          <input type="time" defaultValue={a.end ?? ''} onChange={set('end')} className="input h-8 w-[88px]" aria-label="End time" />
+        </div>
+        <input defaultValue={a.location} onBlur={set('location')} placeholder="Location or meeting link" className="input h-8 w-full" aria-label="Event location" />
+        <div className="flex gap-2">
+          <a href={ics} download={`${a.title || 'event'}.ics`} className="flex flex-1 items-center justify-center gap-1 rounded-md bg-brand-50 py-1 text-[12px] font-medium text-brand-700 hover:bg-brand-100" data-testid="event-ics">
+            <CalendarPlus size={12} /> Add to calendar
+          </a>
+          <button onClick={deleteNode} className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted hover:bg-hover">
+            <Trash2 size={12} /> Remove
+          </button>
+        </div>
+      </ChipPopover>
+    </NodeViewWrapper>
+  );
+}
+
+export const PlaceholderChipWithView = PlaceholderChip.extend({ addNodeView: () => ReactNodeViewRenderer(PlaceholderChipView) });
+export const EventChipWithView = EventChip.extend({ addNodeView: () => ReactNodeViewRenderer(EventChipView) });
