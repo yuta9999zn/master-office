@@ -439,3 +439,87 @@ export const mailOutbox = pgTable(
   },
   (t) => [index('mail_outbox_resource_idx').on(t.resourceId, t.createdAt)],
 );
+
+// ── Chat (Phase 5, docs/ARCHITECTURE.md §64) ────────────────────────────────
+
+/** A direct message (two people), a group (several people, no name needed) or a channel (named, public or private). */
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'dm' | 'group' | 'channel'>().notNull(),
+    name: text('name'),
+    description: text('description'),
+    visibility: text('visibility').$type<'public' | 'private'>().notNull().default('private'),
+    spaceId: uuid('space_id').references(() => spaces.id, { onDelete: 'set null' }),
+    /** Both user ids, sorted — one DM per pair. */
+    dmKey: text('dm_key').unique(),
+    color: text('color'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    /** Highest message seq; bumped in the sending transaction (row lock keeps seqs gap-free per conversation). */
+    lastSeq: bigint('last_seq', { mode: 'number' }).notNull().default(0),
+    lastMessageAt: ts('last_message_at'),
+  },
+  (t) => [index('conversations_ws_idx').on(t.workspaceId, t.kind)],
+);
+
+export const conversationMembers = pgTable(
+  'conversation_members',
+  {
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'owner' | 'admin' | 'member'>().notNull().default('member'),
+    joinedAt: ts('joined_at').notNull().default(sql`now()`),
+    lastReadSeq: bigint('last_read_seq', { mode: 'number' }).notNull().default(0),
+    pinned: boolean('pinned').notNull().default(false),
+    muted: boolean('muted').notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.conversationId, t.userId] }), index('conversation_members_user_idx').on(t.userId)],
+);
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    seq: bigint('seq', { mode: 'number' }).notNull(),
+    senderId: uuid('sender_id').references(() => users.id, { onDelete: 'set null' }),
+    /** 'text' from a person; 'system' for joins, renames… (body is the sentence). */
+    kind: text('kind').$type<'text' | 'system'>().notNull().default('text'),
+    /** Plain text with light Markdown; mentions are written as <@user-uuid>. */
+    body: text('body').notNull(),
+    mentions: uuid('mentions').array().notNull().default(sql`'{}'::uuid[]`),
+    threadRootId: uuid('thread_root_id').references((): AnyPgColumn => messages.id, { onDelete: 'cascade' }),
+    replyCount: integer('reply_count').notNull().default(0),
+    lastReplyAt: ts('last_reply_at'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    editedAt: ts('edited_at'),
+    deletedAt: ts('deleted_at'),
+  },
+  (t) => [uniqueIndex('messages_conversation_seq_idx').on(t.conversationId, t.seq), index('messages_thread_idx').on(t.threadRootId, t.createdAt)],
+);
+
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: text('emoji').notNull(),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
+);

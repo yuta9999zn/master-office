@@ -4,11 +4,13 @@ import { ArrowRight, ArrowUpRight, CalendarDays, FileText, HardDrive, Layers, Us
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { ConversationAvatar } from '@/components/chat/bits';
 import { ActivityList } from '@/components/drive/DetailsPanel';
 import { AppIcon, Button, CardHeader, EmptyState, FileIcon, LogoMark, Skeleton } from '@/components/ui/primitives';
 import { APPS } from '@/lib/apps';
+import { previewText, useConversations } from '@/lib/chat';
 import { firstName, formatBytes, formatShort } from '@/lib/format';
-import { useActivity, useMe, useResourceActions, useResources, useStats } from '@/lib/queries';
+import { useActivity, useMe, useResourceActions, useResources, useStats, useUsers } from '@/lib/queries';
 import { hrefFor, typeLabel } from '@/lib/resources';
 
 function greeting() {
@@ -40,6 +42,9 @@ function Hero({ name }: { name?: string }) {
           >
             Create a document <ArrowRight size={16} />
           </Button>
+          <Link href="/chat" className="inline-flex h-10 items-center rounded-lg border border-brand-200 bg-white/70 px-5 text-[14px] font-medium text-brand-700 hover:bg-white">
+            Start a new chat
+          </Link>
           <Link href="/drive" className="inline-flex h-10 items-center rounded-lg border border-brand-200 bg-white/70 px-5 text-[14px] font-medium text-brand-700 hover:bg-white">
             Open Drive
           </Link>
@@ -95,6 +100,43 @@ function ViewAll({ href }: { href: string }) {
     <Link href={href} className="flex items-center gap-1 text-[13px] font-medium text-brand-600 hover:underline">
       View all <ArrowRight size={14} />
     </Link>
+  );
+}
+
+function RecentChats() {
+  const { data, isLoading } = useConversations();
+  const { data: users } = useUsers();
+  const { data: me } = useMe();
+  const people = new Map((users ?? []).map((u) => [u.id, u]));
+  return (
+    <section className="card flex flex-col" data-testid="recent-chats">
+      <CardHeader title="Recent Chats" action={<ViewAll href="/chat" />} />
+      <div className="flex-1 px-2 pb-2">
+        {isLoading ? (
+          <div className="space-y-2 px-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+        ) : !data?.length ? (
+          <EmptyState title="No conversations yet">Chats with your team show up here.</EmptyState>
+        ) : (
+          data.slice(0, 5).map((c) => {
+            const lm = c.lastMessage;
+            const who = lm && lm.kind === 'text' ? (lm.senderId === me?.user.id ? 'You: ' : c.kind === 'dm' ? '' : `${lm.sender?.split(' ')[0]}: `) : lm ? `${lm.senderId === me?.user.id ? 'You' : lm.sender?.split(' ')[0] ?? ''} ` : '';
+            return (
+              <Link key={c.id} href={`/chat/${c.id}`} className="flex items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-canvas">
+                <ConversationAvatar c={c} size={38} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14px] font-medium text-ink">{c.title}</div>
+                  <div className="truncate text-[12px] text-muted">{lm ? who + previewText(lm.body, people) : c.description ?? 'No messages yet'}</div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-[11.5px] text-subtle">{c.lastMessageAt ? formatShort(c.lastMessageAt) : ''}</span>
+                  {c.unread > 0 && !c.muted && <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white">{c.unread}</span>}
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -193,8 +235,11 @@ export default function HomePage() {
         <Hero name={me?.user.name} />
         <AppGrid />
         <div className="grid gap-5 lg:grid-cols-3">
+          <div className="space-y-5">
+            <RecentChats />
+            <Activity />
+          </div>
           <RecentFiles />
-          <Activity />
           <div className="space-y-5">
             <Upcoming />
             <TeamStats />

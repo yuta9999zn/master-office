@@ -1,4 +1,6 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
+import { ChatController } from './chat/chat.controller';
+import { ChatService } from './chat/chat.service';
 import { CollabService } from './collab/collab.service';
 import { CommentsController } from './comments/comments.controller';
 import { CommentsService } from './comments/comments.service';
@@ -11,6 +13,7 @@ import { DocsService } from './docs/docs.service';
 import { PdfRenderer } from './docs/pdf-renderer';
 import { EventsService } from './events/events.service';
 import { PermissionsService } from './permissions/permissions.service';
+import { RealtimeService } from './realtime/realtime.service';
 import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
 import { SheetsService } from './sheets/sheets.service';
@@ -33,9 +36,11 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController],
   providers: [
     SpellingService,
+    RealtimeService,
+    ChatService,
     PermissionsService,
     EventsService,
     StorageService,

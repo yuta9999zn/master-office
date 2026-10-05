@@ -64,6 +64,13 @@
       "when": 1791190492228,
       "tag": "0008_forms_mail",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791211591508,
+      "tag": "0009_chat",
+      "breakpoints": true
     }
   ]
 }

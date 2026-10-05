@@ -1,0 +1,137 @@
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { z } from 'zod';
+import { type Actor, CurrentUser } from '../common/current-user';
+import { parse } from '../common/validation';
+import { RealtimeService } from '../realtime/realtime.service';
+import { ChatService } from './chat.service';
+
+const createBody = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('dm'), userId: z.string().uuid() }),
+  z.object({ kind: z.literal('group'), name: z.string().max(80).nullish(), memberIds: z.array(z.string().uuid()).min(1).max(200) }),
+  z.object({
+    kind: z.literal('channel'),
+    name: z.string().trim().min(1).max(80),
+    description: z.string().max(500).nullish(),
+    visibility: z.enum(['public', 'private']).default('public'),
+    memberIds: z.array(z.string().uuid()).max(1000).default([]),
+    spaceId: z.string().uuid().nullish(),
+  }),
+]);
+const updateBody = z.object({ name: z.string().max(80).nullish(), description: z.string().max(500).nullish(), visibility: z.enum(['public', 'private']).optional() });
+const membersBody = z.object({ userIds: z.array(z.string().uuid()).min(1).max(1000) });
+const roleBody = z.object({ role: z.enum(['admin', 'member']) });
+const prefsBody = z.object({ pinned: z.boolean().optional(), muted: z.boolean().optional() });
+const sendBody = z.object({ body: z.string().max(20_000), threadRootId: z.string().uuid().nullish() });
+const editBody = z.object({ body: z.string().max(20_000) });
+const reactBody = z.object({ emoji: z.string().min(1).max(16) });
+const readBody = z.object({ seq: z.number().int().min(0) });
+
+@Controller()
+export class ChatController {
+  constructor(
+    private readonly chat: ChatService,
+    private readonly realtime: RealtimeService,
+  ) {}
+
+  @Get('realtime/token')
+  token(@CurrentUser() a: Actor) {
+    return { token: this.realtime.token(a) };
+  }
+
+  @Get('chat/conversations')
+  list(@CurrentUser() a: Actor) {
+    return this.chat.list(a);
+  }
+
+  @Post('chat/conversations')
+  create(@CurrentUser() a: Actor, @Body() b: unknown) {
+    return this.chat.create(a, parse(createBody, b));
+  }
+
+  @Get('chat/channels')
+  browse(@CurrentUser() a: Actor, @Query('q') q?: string) {
+    return this.chat.browse(a, q);
+  }
+
+  @Get('chat/conversations/:id')
+  get(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.get(a, id);
+  }
+
+  @Patch('chat/conversations/:id')
+  @HttpCode(204)
+  update(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.chat.update(a, id, parse(updateBody, b));
+  }
+
+  @Post('chat/conversations/:id/members')
+  addMembers(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.chat.addMembers(a, id, parse(membersBody, b).userIds);
+  }
+
+  @Delete('chat/conversations/:id/members/:userId')
+  @HttpCode(204)
+  removeMember(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string) {
+    return this.chat.removeMember(a, id, userId);
+  }
+
+  @Put('chat/conversations/:id/members/:userId/role')
+  @HttpCode(204)
+  setRole(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string, @Body() b: unknown) {
+    return this.chat.setRole(a, id, userId, parse(roleBody, b).role);
+  }
+
+  @Post('chat/conversations/:id/join')
+  @HttpCode(204)
+  join(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.join(a, id);
+  }
+
+  @Put('chat/conversations/:id/prefs')
+  @HttpCode(204)
+  prefs(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.chat.setPrefs(a, id, parse(prefsBody, b));
+  }
+
+  @Post('chat/conversations/:id/read')
+  read(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.chat.read(a, id, parse(readBody, b).seq);
+  }
+
+  @Get('chat/conversations/:id/messages')
+  history(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query('before') before?: string, @Query('limit') limit?: string) {
+    const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    return this.chat.history(a, id, before ? Number(before) : undefined, n);
+  }
+
+  @Get('chat/conversations/:id/search')
+  search(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query('q') q = '') {
+    return this.chat.search(a, id, q);
+  }
+
+  @Post('chat/conversations/:id/messages')
+  send(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.chat.send(a, id, parse(sendBody, b));
+  }
+
+  @Get('chat/messages/:mid/thread')
+  thread(@CurrentUser() a: Actor, @Param('mid', ParseUUIDPipe) mid: string) {
+    return this.chat.thread(a, mid);
+  }
+
+  @Patch('chat/messages/:mid')
+  edit(@CurrentUser() a: Actor, @Param('mid', ParseUUIDPipe) mid: string, @Body() b: unknown) {
+    return this.chat.edit(a, mid, parse(editBody, b).body);
+  }
+
+  @Delete('chat/messages/:mid')
+  @HttpCode(204)
+  remove(@CurrentUser() a: Actor, @Param('mid', ParseUUIDPipe) mid: string) {
+    return this.chat.remove(a, mid);
+  }
+
+  @Post('chat/messages/:mid/reactions')
+  react(@CurrentUser() a: Actor, @Param('mid', ParseUUIDPipe) mid: string, @Body() b: unknown) {
+    return this.chat.react(a, mid, parse(reactBody, b).emoji);
+  }
+}

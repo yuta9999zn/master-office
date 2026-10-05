@@ -263,3 +263,96 @@ export interface ImportReport {
   dropped?: string[];
   warnings?: string[];
 }
+
+// ── Phase 5: chat (docs/ARCHITECTURE.md §64) ────────────────────────────────
+
+export type ConversationKind = 'dm' | 'group' | 'channel';
+export type ConversationRole = 'owner' | 'admin' | 'member';
+
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  /** Up to a few names for the tooltip; `mine` says whether the viewer reacted. */
+  users: string[];
+  userIds: string[];
+  /** Computed for the viewer — recompute from `userIds` for messages pushed over the socket. */
+  mine: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  seq: number;
+  kind: 'text' | 'system';
+  sender: UserSummary | null;
+  /** Light Markdown; mentions are <@user-uuid> and rendered with the names in `people`. */
+  body: string;
+  mentions: string[];
+  threadRootId: string | null;
+  replyCount: number;
+  lastReplyAt: string | null;
+  /** Up to three people who replied in the thread (for the avatar row under the message). */
+  repliers: UserSummary[];
+  reactions: ChatReaction[];
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  kind: ConversationKind;
+  /** Channel / group name; for a DM, the other person's name. */
+  title: string;
+  description: string | null;
+  visibility: 'public' | 'private';
+  color: string | null;
+  spaceId: string | null;
+  /** The other person of a DM. */
+  peer: UserSummary | null;
+  /** A few members for the avatar of groups. */
+  faces: UserSummary[];
+  memberCount: number;
+  lastMessage: { body: string; sender: string | null; senderId: string | null; kind: 'text' | 'system'; createdAt: string } | null;
+  lastMessageAt: string | null;
+  lastSeq: number;
+  lastReadSeq: number;
+  unread: number;
+  mentions: number;
+  pinned: boolean;
+  muted: boolean;
+  role: ConversationRole;
+}
+
+export interface ConversationMember extends UserSummary {
+  role: ConversationRole;
+  lastReadSeq: number;
+  joinedAt: string;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  members: ConversationMember[];
+  createdAt: string;
+  createdBy: UserSummary | null;
+  /** False while previewing a public channel. */
+  joined: boolean;
+}
+
+/** A public channel the viewer can join (Browse channels). */
+export interface ChannelListing {
+  id: string;
+  title: string;
+  description: string | null;
+  color: string | null;
+  memberCount: number;
+  joined: boolean;
+}
+
+/** Events pushed over the realtime socket (/realtime). */
+export type RealtimeEvent =
+  | { type: 'chat.message'; conversationId: string; message: ChatMessage }
+  | { type: 'chat.message.updated'; conversationId: string; message: ChatMessage }
+  | { type: 'chat.read'; conversationId: string; userId: string; seq: number }
+  | { type: 'chat.typing'; conversationId: string; user: Pick<UserSummary, 'id' | 'name'>; threadRootId: string | null }
+  | { type: 'chat.conversation'; conversationId: string; removed?: boolean }
+  | { type: 'presence'; online: string[] };
