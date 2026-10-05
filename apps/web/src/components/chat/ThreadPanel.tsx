@@ -27,7 +27,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
   }, [count]);
-  const canModerate = conv.kind !== 'dm' && conv.role !== 'member';
+  const canModerate = conv.perms.moderate;
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-surface" data-testid="thread-panel">
@@ -50,7 +50,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
           </div>
         ) : (
           <>
-            <MessageItem m={data.root} me={me?.user.id} people={people} candidates={candidates} grouped={false} canModerate={canModerate} inThread editing={editing === data.root.id} setEditing={(v) => setEditing(v ? data.root.id : null)} />
+            <MessageItem m={data.root} me={me?.user.id} people={people} candidates={candidates} grouped={false} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === data.root.id} setEditing={(v) => setEditing(v ? data.root.id : null)} />
             <div className="my-3 flex items-center gap-3 px-5 text-[12px] text-muted">
               <span>
                 {count} {count === 1 ? 'reply' : 'replies'}
@@ -61,7 +61,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
               const prev = data.replies[i - 1];
               const grouped = !!prev && prev.sender?.id === m.sender?.id && new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60_000;
               return (
-                <MessageItem key={m.id} m={m} me={me?.user.id} people={people} candidates={candidates} grouped={grouped} canModerate={canModerate} inThread editing={editing === m.id} setEditing={(v) => setEditing(v ? m.id : null)} />
+                <MessageItem key={m.id} m={m} me={me?.user.id} people={people} candidates={candidates} grouped={grouped} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === m.id} setEditing={(v) => setEditing(v ? m.id : null)} />
               );
             })}
             <div ref={end} />
@@ -69,7 +69,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
         )}
       </div>
       <TypingLine names={typing} />
-      {conv.joined && data && !data.root.deletedAt && (
+      {conv.joined && conv.perms.post && data && !data.root.deletedAt && (
         <div className="px-4 pb-4">
           <Composer
             key={rootId}
@@ -80,8 +80,9 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
             autoFocus
             testId="thread-composer"
             onTyping={() => sendRealtime({ type: 'typing', conversationId: conv.id, threadRootId: rootId })}
-            allowFiles
-            onSubmit={(body, files, { uploadsOnly }) => send({ body, threadRootId: rootId, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'viewer' as const } : {}) })}
+            allowFiles={conv.perms.attach}
+            conversationId={conv.id}
+            onSubmit={(body, files, { uploadsOnly }) => send({ body, threadRootId: rootId, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'none' as const } : {}) })}
           />
         </div>
       )}

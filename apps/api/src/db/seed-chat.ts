@@ -21,13 +21,23 @@ type Msg = {
  */
 export async function seedChat(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string, fileId: (name: string) => Promise<string>) {
   const now = Date.now();
+  let position = 0;
+  const categories = new Map<string, string>();
+  const categoryId = async (space: string, name: string) => {
+    const key = space + '/' + name;
+    if (!categories.has(key)) {
+      const [row] = await db.insert(s.channelCategories).values({ spaceId: spaceId(space), name, position: categories.size }).returning();
+      categories.set(key, row.id);
+    }
+    return categories.get(key)!;
+  };
   const at = (ago: number) => new Date(now - ago * 60_000).toISOString();
   // "@hana" in seed text → the stored mention token.
   const fmt = (body: string) => body.replace(/@([a-z]+)\b/g, (m, k: string) => (u[k] ? `<@${u[k].id}>` : m));
   const mentionsOf = (body: string) => [...body.matchAll(/@([a-z]+)\b/g)].map((m) => u[m[1]]?.id).filter((x): x is string => !!x);
 
   async function conv(
-    opts: { kind: 'dm' | 'group' | 'channel'; name?: string; description?: string; visibility?: 'public' | 'private'; space?: string; color?: string; owner: string },
+    opts: { kind: 'dm' | 'group' | 'channel'; name?: string; description?: string; visibility?: 'public' | 'private'; space?: string; color?: string; owner: string; category?: string; announcements?: boolean },
     members: string[],
     msgs: Msg[],
     unread: Record<string, number> = {},
@@ -44,6 +54,9 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
         visibility: opts.visibility ?? 'private',
         spaceId: opts.space ? spaceId(opts.space) : null,
         color: opts.color ?? null,
+        categoryId: opts.category ? await categoryId(opts.space!, opts.category) : null,
+        position: position++,
+        postPolicy: opts.announcements ? 'admins' : 'all',
         dmKey,
         createdBy: u[opts.owner].id,
         createdAt: at(Math.max(...msgs.map((m) => m.ago)) + 5),
@@ -82,6 +95,14 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
         return { conversationId: c.id, userId: u[k].id, role: k === opts.owner ? ('owner' as const) : ('member' as const), lastReadSeq: readTo, joinedAt: at(Math.max(...msgs.map((m) => m.ago)) + 5) };
       }),
     );
+    // Discord-style: a public channel holds everyone in its space (§68).
+    if (opts.kind === 'channel' && opts.visibility === 'public') {
+      const inSpace = await db.select({ id: s.spaceMembers.userId }).from(s.spaceMembers).where(eq(s.spaceMembers.spaceId, spaceId(opts.space!)));
+      await db
+        .insert(s.conversationMembers)
+        .values(inSpace.map((m) => ({ conversationId: c.id, userId: m.id, lastReadSeq: seq })))
+        .onConflictDoNothing();
+    }
     return c;
   }
 
@@ -89,7 +110,7 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
   const day = 24 * 60;
 
   await conv(
-    { kind: 'channel', name: 'General', description: 'Company-wide chat for everyone at KAORI', visibility: 'public', color: '#f97316', owner: 'claudia' },
+    { kind: 'channel', name: 'General', description: 'Company-wide chat for everyone at KAORI', visibility: 'public', color: '#f97316', owner: 'claudia', space: 'Natural Beauty', category: 'Text channels' },
     everyone,
     [
       { who: 'claudia', body: 'created the channel General', ago: 20 * day, system: true },
@@ -98,16 +119,16 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
     ],
   );
   await conv(
-    { kind: 'channel', name: 'Announcements', description: 'Official news from the leadership team', visibility: 'public', color: '#2563eb', owner: 'claudia' },
+    { kind: 'channel', name: 'Announcements', description: 'Official news from the leadership team', visibility: 'public', color: '#2563eb', owner: 'claudia', space: 'Natural Beauty', category: 'Information', announcements: true },
     everyone,
     [
       { who: 'claudia', body: 'created the channel Announcements', ago: 20 * day, system: true },
       { who: 'claudia', body: '**Q4 Company All-hands** this Friday at 10:00 (GMT+9). Agenda and dial-in are in the calendar invite.', ago: 3 * day, reactions: [['👍', ['hana', 'mika', 'fujita', 'yuki', 'sora', 'rina']]] },
-      { who: 'rina', body: 'Thông báo: lịch nghỉ lễ cuối năm đã được cập nhật trong Wiki HR.', ago: 15 * day },
+      { who: 'claudia', body: 'Thông báo: lịch nghỉ lễ cuối năm đã được cập nhật trong Wiki HR.', ago: 15 * day },
     ],
   );
   await conv(
-    { kind: 'channel', name: 'Marketing Team', description: 'Campaigns, SNS and brand assets', visibility: 'public', space: 'Marketing', color: '#2563eb', owner: 'hana' },
+    { kind: 'channel', name: 'Marketing Team', description: 'Campaigns, SNS and brand assets', visibility: 'public', space: 'Marketing', color: '#2563eb', owner: 'hana', category: 'Text channels' },
     ['claudia', 'mika', 'minh', 'yuki', 'sora'],
     [
       { who: 'hana', body: 'created the channel Marketing Team', ago: 9 * day, system: true },

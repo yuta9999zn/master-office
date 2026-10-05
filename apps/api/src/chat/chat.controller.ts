@@ -7,17 +7,28 @@ import { ChatService } from './chat.service';
 
 const createBody = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('dm'), userId: z.string().uuid() }),
-  z.object({ kind: z.literal('group'), name: z.string().max(80).nullish(), memberIds: z.array(z.string().uuid()).min(1).max(200) }),
+  z.object({ kind: z.literal('group'), name: z.string().max(80).nullish(), memberIds: z.array(z.string().uuid()).min(1).max(20) }),
   z.object({
     kind: z.literal('channel'),
     name: z.string().trim().min(1).max(80),
     description: z.string().max(500).nullish(),
     visibility: z.enum(['public', 'private']).default('public'),
     memberIds: z.array(z.string().uuid()).max(1000).default([]),
-    spaceId: z.string().uuid().nullish(),
+    spaceId: z.string().uuid(),
+    categoryId: z.string().uuid().nullish(),
+    postPolicy: z.enum(['all', 'admins']).default('all'),
   }),
 ]);
-const updateBody = z.object({ name: z.string().max(80).nullish(), description: z.string().max(500).nullish(), visibility: z.enum(['public', 'private']).optional() });
+const updateBody = z.object({
+  name: z.string().max(80).nullish(),
+  description: z.string().max(500).nullish(),
+  visibility: z.enum(['public', 'private']).optional(),
+  postPolicy: z.enum(['all', 'admins']).optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  position: z.number().int().min(0).max(10_000).optional(),
+});
+const categoryBody = z.object({ name: z.string().trim().min(1).max(60) });
+const categoryUpdate = z.object({ name: z.string().trim().min(1).max(60).optional(), position: z.number().int().min(0).max(10_000).optional() });
 const membersBody = z.object({ userIds: z.array(z.string().uuid()).min(1).max(1000) });
 const roleBody = z.object({ role: z.enum(['admin', 'member']) });
 const prefsBody = z.object({ pinned: z.boolean().optional(), muted: z.boolean().optional() });
@@ -54,9 +65,26 @@ export class ChatController {
     return this.chat.create(a, parse(createBody, b));
   }
 
-  @Get('chat/channels')
-  browse(@CurrentUser() a: Actor, @Query('q') q?: string) {
-    return this.chat.browse(a, q);
+  @Get('chat/spaces/:spaceId/categories')
+  categories(@CurrentUser() a: Actor, @Param('spaceId', ParseUUIDPipe) spaceId: string) {
+    return this.chat.categories(a, spaceId);
+  }
+
+  @Post('chat/spaces/:spaceId/categories')
+  createCategory(@CurrentUser() a: Actor, @Param('spaceId', ParseUUIDPipe) spaceId: string, @Body() b: unknown) {
+    return this.chat.createCategory(a, spaceId, parse(categoryBody, b).name);
+  }
+
+  @Patch('chat/categories/:cid')
+  @HttpCode(204)
+  updateCategory(@CurrentUser() a: Actor, @Param('cid', ParseUUIDPipe) cid: string, @Body() b: unknown) {
+    return this.chat.updateCategory(a, cid, parse(categoryUpdate, b));
+  }
+
+  @Delete('chat/categories/:cid')
+  @HttpCode(204)
+  deleteCategory(@CurrentUser() a: Actor, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.chat.deleteCategory(a, cid);
   }
 
   @Get('chat/conversations/:id')
@@ -130,10 +158,10 @@ export class ChatController {
     return this.chat.pins(a, id);
   }
 
-  /** Where files dropped into chat are uploaded: the sender's "Chat files" folder in My Files. */
-  @Post('chat/upload-folder')
-  uploadFolder(@CurrentUser() a: Actor) {
-    return this.chat.uploadFolder(a);
+  /** Where files sent in this conversation are uploaded (§68). */
+  @Post('chat/conversations/:id/upload-folder')
+  uploadFolder(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.uploadFolder(a, id);
   }
 
   @Put('chat/messages/:mid/pin')

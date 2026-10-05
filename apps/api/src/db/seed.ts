@@ -118,10 +118,10 @@ async function main() {
     members: [['hana', 'viewer']],
   });
   await space('Branch 575', 'Main branch', '#10b981', 'store', 'yuki', { parent: 'Natural Beauty', members: [['mika', 'editor']] });
-  await space('Branch 625', 'Station branch', '#ef4444', 'store', 'sora', { parent: 'Natural Beauty', members: [['mika', 'editor']] });
+  await space('Branch 625', 'Station branch', '#ef4444', 'store', 'sora', { parent: 'Natural Beauty', members: [['mika', 'editor'], ['rina', 'commenter']] });
   await space('Branch S2', 'New branch', '#0ea5e9', 'store', 'mika', { parent: 'Natural Beauty' });
   await space('ITM Japan', 'ITM Japan project workspace — booking system and website', '#7c3aed', 'building', 'fujita', {
-    members: [['claudia', 'editor'], ['minh', 'editor']],
+    members: [['claudia', 'editor'], ['minh', 'editor'], ['mika', 'editor']],
   });
   await space('KAORI Brand', 'Brand identity, design system and assets', '#0f172a', 'sparkles', 'minh', { members: [['hana', 'editor']] });
 

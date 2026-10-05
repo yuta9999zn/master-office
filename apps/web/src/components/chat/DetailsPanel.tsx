@@ -33,8 +33,10 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
   const [picked, setPicked] = useState<string[]>([]);
   const [name, setName] = useState(conv.kind === 'dm' ? '' : conv.title);
   const [description, setDescription] = useState(conv.description ?? '');
-  const isAdmin = conv.role !== 'member' && conv.joined;
-  const canRename = conv.joined && (conv.kind === 'group' || isAdmin);
+  const isAdmin = conv.perms.manage;
+  const canRename = isAdmin;
+  // Public channels hold the whole space; only private channels and groups have a member list to edit.
+  const canAdd = conv.kind === 'group' || (conv.kind === 'channel' && conv.visibility === 'private' && isAdmin);
   const meId = me?.user.id;
 
   if (conv.kind === 'dm' && conv.peer) return <PeerCard conv={conv} onClose={onClose} />;
@@ -69,10 +71,16 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
           )}
           <div className="flex items-center justify-between gap-2">
             {conv.kind === 'channel' && isAdmin ? (
-              <label className="flex items-center gap-2 text-[13px] text-ink-2">
-                <input type="checkbox" checked={conv.visibility === 'private'} onChange={(e) => update.mutate({ id: conv.id, visibility: e.target.checked ? 'private' : 'public' })} className="accent-brand-600" />
-                Private channel
-              </label>
+              <span className="space-y-1">
+                <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                  <input type="checkbox" checked={conv.visibility === 'private'} onChange={(e) => update.mutate({ id: conv.id, visibility: e.target.checked ? 'private' : 'public' })} className="accent-brand-600" />
+                  Private channel
+                </label>
+                <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                  <input type="checkbox" checked={conv.postPolicy === 'admins'} onChange={(e) => update.mutate({ id: conv.id, postPolicy: e.target.checked ? 'admins' : 'all' })} className="accent-brand-600" aria-label="Announcement channel" />
+                  Announcement channel (only admins post)
+                </label>
+              </span>
             ) : (
               <span />
             )}
@@ -87,7 +95,7 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
       <div className="px-5 py-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[13px] font-semibold text-ink">Members · {conv.members.length}</span>
-          {conv.joined && (
+          {canAdd && (
             <Button size="sm" variant="ghost" icon={<UserPlus size={15} />} onClick={() => setAdding(true)}>
               Add
             </Button>
@@ -99,7 +107,7 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
               key={m.id}
               m={m}
               me={meId}
-              canManage={isAdmin && m.id !== meId && m.role !== 'owner'}
+              canManage={isAdmin && m.id !== meId && m.role !== 'owner' && !(conv.kind === 'channel' && conv.visibility === 'public')}
               isChannel={conv.kind === 'channel'}
               onRole={(role) => setRole.mutate({ id: conv.id, userId: m.id, role })}
               onRemove={() => removeMember.mutate({ id: conv.id, userId: m.id })}

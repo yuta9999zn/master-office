@@ -63,7 +63,7 @@ export class PermissionsService {
         ),
       () =>
         tx
-        .select({ id: resources.id, generalAccess: resources.generalAccess, generalRole: resources.generalRole })
+        .select({ id: resources.id, generalAccess: resources.generalAccess, generalRole: resources.generalRole, metadata: resources.metadata })
         .from(resources)
         .where(inArray(resources.id, idList)),
       () => this.spaceRoles(actor, tx),
@@ -74,10 +74,13 @@ export class PermissionsService {
       ancestors.map((a) => [a.id, a.generalAccess !== 'restricted' ? a.generalRole ?? 'viewer' : null] as const),
     );
 
+    // A restricted folder (a private channel's files, §68) and everything in it is open only through its ACL —
+    // being in the space is not enough.
+    const restricted = new Set(ancestors.filter((a) => (a.metadata as Record<string, unknown> | null)?.restricted === true).map((a) => a.id));
     for (const r of items) {
       let role: Role | null = r.ownerId === actor.id ? 'owner' : null;
       for (const id of [r.id, ...r.path]) role = maxRole(role, aclBy.get(id), generalBy.get(id));
-      if (r.spaceId) role = maxRole(role, sRoles.get(r.spaceId));
+      if (r.spaceId && ![r.id, ...r.path].some((id) => restricted.has(id))) role = maxRole(role, sRoles.get(r.spaceId));
       out.set(r.id, role);
     }
     return out;

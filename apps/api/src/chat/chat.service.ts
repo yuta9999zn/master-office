@@ -1,11 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
-import { can, type ChannelListing, type ChatAccessProblem, type ChatAttachment, type ChatFile, type ChatMessage, type ConversationDetail, type ConversationKind, type ConversationMember, type ConversationRole, type ConversationSummary, type Role, type UserSummary } from '@workos/shared';
+import { can, type ChannelCategory, type ChatAccessProblem, type ChatPerms, type ChatAttachment, type ChatFile, type ChatMessage, type ConversationDetail, type ConversationKind, type ConversationMember, type ConversationRole, type ConversationSummary, type Role, type UserSummary } from '@workos/shared';
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { aclEntries, conversationMembers, conversations, messageReactions, messageRefs, messages, resources, users, workspaceMembers } from '../db/schema';
+import { aclEntries, channelCategories, conversationMembers, conversations, spaceMembers, spaces, messageReactions, messageRefs, messages, resources, users, workspaceMembers } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -17,6 +17,8 @@ type MemberRow = typeof conversationMembers.$inferSelect;
 type ResourceRow = typeof resources.$inferSelect;
 
 const MENTION = /<@([0-9a-f-]{36})>/gi;
+/** Discord caps group DMs at 10 people; bigger conversations belong in a space's channel. */
+const GROUP_LIMIT = 10;
 const CHANNEL_COLORS = ['#2563eb', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
 
 export interface CreateConversationInput {
@@ -27,15 +29,20 @@ export interface CreateConversationInput {
   visibility?: 'public' | 'private';
   memberIds?: string[];
   spaceId?: string | null;
+  categoryId?: string | null;
+  postPolicy?: 'all' | 'admins';
 }
 
 /**
- * Chat (docs/ARCHITECTURE.md §64): direct messages, groups and channels. Messages carry a per-conversation `seq`
- * so unread counts and read receipts are one integer per member. Every change is pushed to the members' sockets.
+ * Chat (docs/ARCHITECTURE.md §64, §68 — the Discord model). Spaces are the servers: every channel belongs to one,
+ * grouped in categories; public channels are open to everyone who can see the space, private ones only to the
+ * people added. What you may do follows your role in the space (viewer reads, commenter writes, editor attaches,
+ * admin / owner manage). Direct and group messages (≤ 10 people) live at workspace level, outside any space.
+ * Messages carry a per-conversation `seq`, so unread counts and read receipts are one integer per member.
  */
 @Injectable()
 export class ChatService implements OnModuleInit {
-  /** "is a member" answers for typing signals, which arrive several times a second. */
+  /** "may read" answers for typing signals, which arrive several times a second. */
   private readonly typingCache = new Map<string, { ok: boolean; at: number }>();
 
   constructor(
@@ -52,11 +59,8 @@ export class ChatService implements OnModuleInit {
       const key = `${actor.id}:${msg.conversationId}`;
       let hit = this.typingCache.get(key);
       if (!hit || Date.now() - hit.at > 60_000) {
-        const [m] = await this.db
-          .select({ u: conversationMembers.userId })
-          .from(conversationMembers)
-          .where(and(eq(conversationMembers.conversationId, msg.conversationId), eq(conversationMembers.userId, actor.id)));
-        hit = { ok: !!m, at: Date.now() };
+        const ok = await this.access(actor, msg.conversationId).then((a) => a.perms.post, () => false);
+        hit = { ok, at: Date.now() };
         this.typingCache.set(key, hit);
       }
       if (!hit.ok) return;
@@ -72,22 +76,53 @@ export class ChatService implements OnModuleInit {
     return rows.map((r) => r.id);
   }
 
-  /** Loads a conversation the actor may read: a member, or anyone in the workspace for a public channel (preview). */
-  private async access(actor: Actor, id: string, tx: Tx = this.db): Promise<{ conv: Conv; member: MemberRow | null }> {
+  /** The permission table of §68, for one person in one conversation. */
+  private permsFor(conv: Conv, member: MemberRow | null, spaceRole: Role | null | undefined): ChatPerms {
+    if (conv.kind !== 'channel') {
+      const ok = !!member;
+      return { post: ok, attach: ok, react: ok, moderate: false, manage: ok && (conv.kind === 'group' || false) };
+    }
+    const admin = can(spaceRole, 'admin') || member?.role === 'owner' || member?.role === 'admin';
+    const write = can(spaceRole, 'commenter') && (conv.postPolicy === 'all' || admin);
+    return { post: write, attach: write && can(spaceRole, 'editor'), react: can(spaceRole, 'commenter'), moderate: admin, manage: admin };
+  }
+
+  /**
+   * Loads a conversation the actor may read. Channels: needs at least viewer on the space, and for a private channel
+   * to be on it (space admins see every channel, as Discord administrators do). DMs and groups: members only.
+   */
+  private async access(actor: Actor, id: string, tx: Tx = this.db): Promise<{ conv: Conv; member: MemberRow | null; perms: ChatPerms; spaceRole: Role | null }> {
     const [conv] = await tx.select().from(conversations).where(eq(conversations.id, id));
     if (!conv || conv.workspaceId !== actor.workspaceId) throw new NotFoundException('Conversation not found');
     const [member] = await tx
       .select()
       .from(conversationMembers)
       .where(and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, actor.id)));
-    if (!member && !(conv.kind === 'channel' && conv.visibility === 'public')) throw new NotFoundException('Conversation not found');
-    return { conv, member: member ?? null };
+    let spaceRole: Role | null = null;
+    if (conv.kind === 'channel') {
+      spaceRole = conv.spaceId ? (await this.perms.spaceRoles(actor, tx)).get(conv.spaceId) ?? null : null;
+      const visible = can(spaceRole, 'viewer') && (conv.visibility === 'public' || !!member || can(spaceRole, 'admin'));
+      if (!visible) throw new NotFoundException('Conversation not found');
+    } else if (!member) throw new NotFoundException('Conversation not found');
+    return { conv, member: member ?? null, perms: this.permsFor(conv, member ?? null, spaceRole), spaceRole };
   }
 
+  /** Readable, and with a member row (public channels get one on first use — everyone in the space is "in" them). */
   private async requireMember(actor: Actor, id: string, tx: Tx = this.db) {
     const a = await this.access(actor, id, tx);
-    if (!a.member) throw new ForbiddenException('Join the channel to take part');
-    return a as { conv: Conv; member: MemberRow };
+    if (a.member) return a as typeof a & { member: MemberRow };
+    if (a.conv.kind === 'channel' && a.conv.visibility === 'public') {
+      const [member] = await tx.insert(conversationMembers).values({ conversationId: id, userId: actor.id, lastReadSeq: a.conv.lastSeq }).onConflictDoNothing().returning();
+      const row = member ?? (await tx.select().from(conversationMembers).where(and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, actor.id))))[0];
+      return { ...a, member: row, perms: this.permsFor(a.conv, row, a.spaceRole) };
+    }
+    throw new ForbiddenException('You are not in this channel');
+  }
+
+  private async need(actor: Actor, id: string, what: keyof ChatPerms, message: string, tx: Tx = this.db) {
+    const a = await this.requireMember(actor, id, tx);
+    if (!a.perms[what]) throw new ForbiddenException(message);
+    return a;
   }
 
   private async workspaceUsers(actor: Actor, ids: string[], tx: Tx = this.db) {
@@ -101,10 +136,41 @@ export class ChatService implements OnModuleInit {
     return uniq;
   }
 
+  /** People who can see a space (for adding them to its private channels). */
+  private async spaceViewers(actor: Actor, spaceId: string, ids: string[], tx: Tx = this.db) {
+    const out: string[] = [];
+    for (const id of ids) {
+      const role = (await this.perms.spaceRoles({ id, name: '', workspaceId: actor.workspaceId }, tx)).get(spaceId);
+      if (!can(role, 'viewer')) throw new BadRequestException('Only people in this space can join its channels');
+      out.push(id);
+    }
+    return out;
+  }
+
   // ── Conversations ─────────────────────────────────────────────────────────
 
+  /**
+   * Your conversations: DMs and groups you are in, plus every channel you can see — public channels of your spaces
+   * get a member row on the way (caught up, nothing unread), the way a Discord server shows all its channels.
+   */
   async list(actor: Actor): Promise<ConversationSummary[]> {
-    const rows = await this.summaries(actor);
+    const roles = await this.perms.spaceRoles(actor);
+    const visibleSpaces = [...roles].filter(([, r]) => can(r, 'viewer')).map(([id]) => id);
+    if (visibleSpaces.length) {
+      const open = await this.db
+        .select({ id: conversations.id, lastSeq: conversations.lastSeq })
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.kind, 'channel'),
+            eq(conversations.visibility, 'public'),
+            inArray(conversations.spaceId, visibleSpaces),
+            sql`NOT EXISTS (SELECT 1 FROM conversation_members m WHERE m.conversation_id = ${conversations.id} AND m.user_id = ${actor.id})`,
+          ),
+        );
+      if (open.length) await this.db.insert(conversationMembers).values(open.map((c) => ({ conversationId: c.id, userId: actor.id, lastReadSeq: c.lastSeq }))).onConflictDoNothing();
+    }
+    const rows = (await this.summaries(actor)).filter((c) => c.kind !== 'channel' || (c.spaceId && can(roles.get(c.spaceId), 'viewer')));
     return rows.sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''));
   }
 
@@ -117,6 +183,9 @@ export class ChatService implements OnModuleInit {
       visibility: 'public' | 'private';
       color: string | null;
       space_id: string | null;
+      category_id: string | null;
+      position: number;
+      post_policy: 'all' | 'admins';
       last_seq: string;
       last_message_at: Date | null;
       role: ConversationRole;
@@ -132,7 +201,7 @@ export class ChatService implements OnModuleInit {
       lm_deleted: Date | null;
       lm_files: string | null;
     }>(sql`
-      SELECT c.id, c.kind, c.name, c.description, c.visibility, c.color, c.space_id, c.last_seq, c.last_message_at,
+      SELECT c.id, c.kind, c.name, c.description, c.visibility, c.color, c.space_id, c.category_id, c.position, c.post_policy, c.last_seq, c.last_message_at,
              m.role, m.last_read_seq, m.pinned, m.muted,
              (SELECT count(*) FROM messages x WHERE x.conversation_id = c.id AND x.seq > m.last_read_seq AND x.thread_root_id IS NULL
                 AND x.deleted_at IS NULL AND x.kind = 'text' AND x.sender_id IS DISTINCT FROM ${actor.id}) AS unread,
@@ -149,11 +218,14 @@ export class ChatService implements OnModuleInit {
       WHERE m.user_id = ${actor.id} ${only ? sql`AND c.id = ${only}` : sql``}`);
     const rows = res.rows;
     if (!rows.length) return [];
-    const members = await this.db
-      .select({ conversationId: conversationMembers.conversationId, userId: conversationMembers.userId })
-      .from(conversationMembers)
-      .where(inArray(conversationMembers.conversationId, rows.map((r) => r.id)))
-      .orderBy(asc(conversationMembers.joinedAt));
+    const [members, roles] = await Promise.all([
+      this.db
+        .select({ conversationId: conversationMembers.conversationId, userId: conversationMembers.userId })
+        .from(conversationMembers)
+        .where(inArray(conversationMembers.conversationId, rows.map((r) => r.id)))
+        .orderBy(asc(conversationMembers.joinedAt), asc(conversationMembers.userId)),
+      this.perms.spaceRoles(actor),
+    ]);
     const byConv = new Map<string, string[]>();
     for (const m of members) byConv.set(m.conversationId, [...(byConv.get(m.conversationId) ?? []), m.userId]);
     const people = await loadUsers(this.db, [...members.map((m) => m.userId), ...rows.map((r) => r.lm_sender)]);
@@ -165,6 +237,7 @@ export class ChatService implements OnModuleInit {
       const peer = r.kind === 'dm' ? people.get(others[0] ?? actor.id) ?? null : null;
       const faces = others.slice(0, 3).map((x) => people.get(x)!).filter(Boolean);
       const sender = r.lm_sender ? people.get(r.lm_sender) ?? null : null;
+      const conv = { kind: r.kind, postPolicy: r.post_policy } as Conv;
       return {
         id: r.id,
         kind: r.kind,
@@ -173,6 +246,10 @@ export class ChatService implements OnModuleInit {
         visibility: r.visibility,
         color: r.color,
         spaceId: r.space_id,
+        categoryId: r.category_id,
+        position: r.position,
+        postPolicy: r.post_policy,
+        perms: this.permsFor(conv, { role: r.role } as MemberRow, r.space_id ? roles.get(r.space_id) : null),
         peer,
         faces,
         memberCount: ids.length,
@@ -205,40 +282,46 @@ export class ChatService implements OnModuleInit {
   }
 
   async get(actor: Actor, id: string): Promise<ConversationDetail> {
-    const { conv, member } = await this.access(actor, id);
+    const a = await this.access(actor, id);
+    if (!a.member && a.conv.visibility === 'public') await this.requireMember(actor, id);
+    const { conv } = a;
     const rows = await this.db.select().from(conversationMembers).where(eq(conversationMembers.conversationId, id)).orderBy(asc(conversationMembers.joinedAt));
     const people = await loadUsers(this.db, [...rows.map((r) => r.userId), conv.createdBy]);
     const members: ConversationMember[] = rows
       .filter((r) => people.has(r.userId))
       .map((r) => ({ ...people.get(r.userId)!, role: r.role, lastReadSeq: r.lastReadSeq, joinedAt: r.joinedAt }));
-    let summary: ConversationSummary;
-    if (member) [summary] = await this.summaries(actor, id);
-    else {
-      // Previewing a public channel without being in it.
-      const faces = members.slice(0, 3);
-      summary = {
-        id,
-        kind: conv.kind,
-        title: conv.name ?? 'Channel',
-        description: conv.description,
-        visibility: conv.visibility,
-        color: conv.color,
-        spaceId: conv.spaceId,
-        peer: null,
-        faces,
-        memberCount: members.length,
-        lastMessage: null,
-        lastMessageAt: conv.lastMessageAt,
-        lastSeq: conv.lastSeq,
-        lastReadSeq: conv.lastSeq,
-        unread: 0,
-        mentions: 0,
-        pinned: false,
-        muted: false,
-        role: 'member',
-      };
-    }
-    return { ...summary, members, createdAt: conv.createdAt, createdBy: conv.createdBy ? people.get(conv.createdBy) ?? null : null, joined: !!member };
+    const [summary] = await this.summaries(actor, id);
+    if (summary) return { ...summary, members, createdAt: conv.createdAt, createdBy: conv.createdBy ? people.get(conv.createdBy) ?? null : null, joined: true };
+    // A space admin looking into a private channel they are not on.
+    return {
+      id,
+      kind: conv.kind,
+      title: conv.name ?? 'Channel',
+      description: conv.description,
+      visibility: conv.visibility,
+      color: conv.color,
+      spaceId: conv.spaceId,
+      categoryId: conv.categoryId,
+      position: conv.position,
+      postPolicy: conv.postPolicy,
+      perms: { ...a.perms, post: false, attach: false, react: false },
+      peer: null,
+      faces: members.slice(0, 3),
+      memberCount: members.length,
+      lastMessage: null,
+      lastMessageAt: conv.lastMessageAt,
+      lastSeq: conv.lastSeq,
+      lastReadSeq: conv.lastSeq,
+      unread: 0,
+      mentions: 0,
+      pinned: false,
+      muted: false,
+      role: 'member',
+      members,
+      createdAt: conv.createdAt,
+      createdBy: conv.createdBy ? people.get(conv.createdBy) ?? null : null,
+      joined: false,
+    };
   }
 
   async create(actor: Actor, input: CreateConversationInput): Promise<{ id: string; created: boolean }> {
@@ -258,75 +341,131 @@ export class ChatService implements OnModuleInit {
       return { id, created: true };
     }
 
-    const others = await this.workspaceUsers(actor, (input.memberIds ?? []).filter((x) => x !== actor.id));
-    if (input.kind === 'group' && !others.length) throw new BadRequestException('Add at least one person');
-    if (input.kind === 'channel' && !input.name?.trim()) throw new BadRequestException('A channel needs a name');
-    if (input.spaceId) await this.perms.requireSpace(actor, input.spaceId, 'viewer');
+    if (input.kind === 'group') {
+      const others = await this.workspaceUsers(actor, (input.memberIds ?? []).filter((x) => x !== actor.id));
+      if (!others.length) throw new BadRequestException('Add at least one person');
+      if (others.length + 1 > GROUP_LIMIT) throw new BadRequestException(`A group message has at most ${GROUP_LIMIT} people — make a channel in a space for more`);
+      const id = await this.db.transaction(async (tx) => {
+        const [c] = await tx.insert(conversations).values({ workspaceId: actor.workspaceId, kind: 'group', name: input.name?.trim() || null, createdBy: actor.id }).returning();
+        await tx.insert(conversationMembers).values([
+          { conversationId: c.id, userId: actor.id, role: 'owner' as const },
+          ...others.map((userId) => ({ conversationId: c.id, userId, role: 'member' as const })),
+        ]);
+        await this.system(tx, c.id, actor, 'created the group');
+        return c.id;
+      });
+      this.realtime.publish([actor.id, ...others], { type: 'chat.conversation', conversationId: id });
+      return { id, created: true };
+    }
+
+    // Channels: in a space, created by its admins (Discord "Manage Channels").
+    if (!input.spaceId) throw new BadRequestException('A channel belongs to a space');
+    if (!input.name?.trim()) throw new BadRequestException('A channel needs a name');
+    const spaceRole = await this.perms.requireSpace(actor, input.spaceId, 'viewer');
+    if (!can(spaceRole, 'admin')) throw new ForbiddenException('Only space admins create channels');
+    if (input.categoryId) await this.category(input.spaceId, input.categoryId);
+    const visibility = input.visibility ?? 'public';
+    const privateMembers = visibility === 'private' ? await this.spaceViewers(actor, input.spaceId, (input.memberIds ?? []).filter((x) => x !== actor.id)) : [];
+    const everyone = visibility === 'public' ? await this.spaceMemberIds(input.spaceId) : [];
     const id = await this.db.transaction(async (tx) => {
+      const [{ max }] = await tx.select({ max: sql<number>`coalesce(max(${conversations.position}), -1)::int` }).from(conversations).where(eq(conversations.spaceId, input.spaceId!));
       const [c] = await tx
         .insert(conversations)
         .values({
           workspaceId: actor.workspaceId,
-          kind: input.kind,
-          name: input.name?.trim() || null,
+          kind: 'channel',
+          name: input.name!.trim(),
           description: input.description?.trim() || null,
-          visibility: input.kind === 'channel' ? input.visibility ?? 'public' : 'private',
-          spaceId: input.spaceId ?? null,
-          color: input.kind === 'channel' ? CHANNEL_COLORS[Math.floor(Math.random() * CHANNEL_COLORS.length)] : null,
+          visibility,
+          spaceId: input.spaceId,
+          categoryId: input.categoryId ?? null,
+          position: max + 1,
+          postPolicy: input.postPolicy ?? 'all',
+          color: CHANNEL_COLORS[Math.floor(Math.random() * CHANNEL_COLORS.length)],
           createdBy: actor.id,
         })
         .returning();
-      await tx.insert(conversationMembers).values([
-        { conversationId: c.id, userId: actor.id, role: 'owner' as const },
-        ...others.map((userId) => ({ conversationId: c.id, userId, role: 'member' as const })),
-      ]);
-      await this.system(tx, c.id, actor, input.kind === 'channel' ? `created the channel ${c.name}` : 'created the group');
-      await this.events.emit(tx, actor, 'chat.conversation_created', { spaceId: input.spaceId ?? null }, { conversationId: c.id, kind: input.kind, name: c.name });
-      return c.id;
+      const ids = [...new Set([actor.id, ...privateMembers, ...everyone])];
+      await tx.insert(conversationMembers).values(ids.map((userId) => ({ conversationId: c.id, userId, role: userId === actor.id ? ('owner' as const) : ('member' as const) })));
+      await this.system(tx, c.id, actor, `created the channel ${c.name}`);
+      await this.events.emit(tx, actor, 'chat.conversation_created', { spaceId: input.spaceId }, { conversationId: c.id, kind: 'channel', name: c.name });
+      return { id: c.id, ids };
     });
-    this.realtime.publish([actor.id, ...others], { type: 'chat.conversation', conversationId: id });
-    return { id, created: true };
+    this.realtime.publish(id.ids, { type: 'chat.conversation', conversationId: id.id });
+    return { id: id.id, created: true };
   }
 
-  async update(actor: Actor, id: string, input: { name?: string | null; description?: string | null; visibility?: 'public' | 'private' }) {
-    const { conv, member } = await this.requireMember(actor, id);
+  /** People explicitly in a space (its "server members"). */
+  private async spaceMemberIds(spaceId: string, tx: Tx = this.db) {
+    const rows = await tx.select({ id: spaceMembers.userId }).from(spaceMembers).where(eq(spaceMembers.spaceId, spaceId));
+    return rows.map((r) => r.id);
+  }
+
+  async update(
+    actor: Actor,
+    id: string,
+    input: { name?: string | null; description?: string | null; visibility?: 'public' | 'private'; postPolicy?: 'all' | 'admins'; categoryId?: string | null; position?: number },
+  ) {
+    const { conv, perms } = await this.requireMember(actor, id);
     if (conv.kind === 'dm') throw new BadRequestException('Direct messages have no settings');
-    if (conv.kind === 'channel' && member.role === 'member') throw new ForbiddenException('Only channel admins can change its settings');
+    if (!perms.manage) throw new ForbiddenException('Only channel or space admins can change its settings');
     if (conv.kind === 'channel' && input.name !== undefined && !input.name?.trim()) throw new BadRequestException('A channel needs a name');
+    if (conv.kind === 'channel' && input.categoryId) await this.category(conv.spaceId!, input.categoryId);
     await this.db.transaction(async (tx) => {
       const set: Partial<Conv> = {};
       if (input.name !== undefined) set.name = input.name?.trim() || null;
       if (input.description !== undefined) set.description = input.description?.trim() || null;
-      if (input.visibility !== undefined && conv.kind === 'channel') set.visibility = input.visibility;
+      if (conv.kind === 'channel') {
+        if (input.visibility !== undefined) set.visibility = input.visibility;
+        if (input.postPolicy !== undefined) set.postPolicy = input.postPolicy;
+        if (input.categoryId !== undefined) set.categoryId = input.categoryId;
+        if (input.position !== undefined) set.position = input.position;
+      }
       if (!Object.keys(set).length) return;
       await tx.update(conversations).set(set).where(eq(conversations.id, id));
       if (set.name !== undefined && set.name !== conv.name) await this.system(tx, id, actor, set.name ? `renamed the conversation to ${set.name}` : 'removed the conversation name');
-      if (set.visibility && set.visibility !== conv.visibility) await this.system(tx, id, actor, `made the channel ${set.visibility}`);
+      if (set.visibility && set.visibility !== conv.visibility) {
+        await this.system(tx, id, actor, `made the channel ${set.visibility}`);
+        // Public again: everyone in the space is in it.
+        if (set.visibility === 'public') {
+          const everyone = await this.spaceMemberIds(conv.spaceId!, tx);
+          if (everyone.length) await tx.insert(conversationMembers).values(everyone.map((userId) => ({ conversationId: id, userId, lastReadSeq: conv.lastSeq }))).onConflictDoNothing();
+        }
+      }
+      if (set.postPolicy && set.postPolicy !== conv.postPolicy) await this.system(tx, id, actor, set.postPolicy === 'admins' ? 'made this an announcement channel' : 'let everyone post again');
     });
+    await this.syncFolderAccess(id).catch(() => undefined);
     this.realtime.publish(await this.memberIds(id), { type: 'chat.conversation', conversationId: id });
   }
 
   async addMembers(actor: Actor, id: string, userIds: string[]) {
-    const { conv } = await this.requireMember(actor, id);
+    const { conv, perms } = await this.requireMember(actor, id);
     if (conv.kind === 'dm') throw new BadRequestException('Start a group to add more people to a direct message');
+    if (conv.kind === 'channel' && conv.visibility === 'public') throw new BadRequestException('Everyone in the space is already in a public channel');
+    if (conv.kind === 'channel' && !perms.manage) throw new ForbiddenException('Only channel or space admins add people to a private channel');
     const current = new Set(await this.memberIds(id));
-    const add = (await this.workspaceUsers(actor, userIds)).filter((u) => !current.has(u));
+    const candidates = (await this.workspaceUsers(actor, userIds)).filter((u) => !current.has(u));
+    const add = conv.kind === 'channel' ? await this.spaceViewers(actor, conv.spaceId!, candidates) : candidates;
     if (!add.length) return { added: 0 };
+    if (conv.kind === 'group' && current.size + add.length > GROUP_LIMIT) throw new BadRequestException(`A group message has at most ${GROUP_LIMIT} people`);
     const people = await loadUsers(this.db, add);
     await this.db.transaction(async (tx) => {
       // New members start "caught up": history is visible, but not counted as unread.
       await tx.insert(conversationMembers).values(add.map((userId) => ({ conversationId: id, userId, lastReadSeq: conv.lastSeq })));
       await this.system(tx, id, actor, `added ${add.map((u) => people.get(u)!.name).join(', ')}`);
     });
+    await this.syncFolderAccess(id).catch(() => undefined);
     this.realtime.publish([...current, ...add], { type: 'chat.conversation', conversationId: id });
     return { added: add.length };
   }
 
   async removeMember(actor: Actor, id: string, userId: string) {
-    const { conv, member } = await this.requireMember(actor, id);
+    const { conv, member, perms } = await this.requireMember(actor, id);
     if (conv.kind === 'dm') throw new BadRequestException('You cannot leave a direct message');
+    // Like a Discord server: you are in its public channels while you are in the space — mute one instead.
+    if (conv.kind === 'channel' && conv.visibility === 'public') throw new BadRequestException('Public channels include everyone in the space — mute it instead');
     const self = userId === actor.id;
-    if (!self && member.role === 'member') throw new ForbiddenException('Only admins can remove people');
+    if (!self && !(perms.manage && (conv.kind === 'channel' || member.role !== 'member'))) throw new ForbiddenException('Only admins can remove people');
     const before = await this.memberIds(id);
     if (!before.includes(userId)) throw new NotFoundException('Not a member');
     const people = await loadUsers(this.db, [userId]);
@@ -345,14 +484,15 @@ export class ChatService implements OnModuleInit {
       }
       await this.system(tx, id, actor, self ? 'left' : `removed ${people.get(userId)?.name ?? 'someone'}`);
     });
+    await this.syncFolderAccess(id).catch(() => undefined);
     this.realtime.publish(before, { type: 'chat.conversation', conversationId: id });
     this.realtime.publish([userId], { type: 'chat.conversation', conversationId: id, removed: true });
   }
 
   async setRole(actor: Actor, id: string, userId: string, role: 'admin' | 'member') {
-    const { conv, member } = await this.requireMember(actor, id);
+    const { conv, perms } = await this.requireMember(actor, id);
     if (conv.kind !== 'channel') throw new BadRequestException('Only channels have admins');
-    if (member.role === 'member') throw new ForbiddenException('Only admins can change roles');
+    if (!perms.manage) throw new ForbiddenException('Only admins can change roles');
     const [target] = await this.db.select().from(conversationMembers).where(and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, userId)));
     if (!target) throw new NotFoundException('Not a member');
     if (target.role === 'owner') throw new BadRequestException('The owner keeps full control');
@@ -360,14 +500,9 @@ export class ChatService implements OnModuleInit {
     this.realtime.publish(await this.memberIds(id), { type: 'chat.conversation', conversationId: id });
   }
 
+  /** Opening a public channel you can see (the member row is what holds your read marker). */
   async join(actor: Actor, id: string) {
-    const { conv, member } = await this.access(actor, id);
-    if (member) return;
-    await this.db.transaction(async (tx) => {
-      await tx.insert(conversationMembers).values({ conversationId: id, userId: actor.id, lastReadSeq: conv.lastSeq }).onConflictDoNothing();
-      await this.system(tx, id, actor, 'joined');
-    });
-    this.realtime.publish(await this.memberIds(id), { type: 'chat.conversation', conversationId: id });
+    await this.requireMember(actor, id);
   }
 
   async setPrefs(actor: Actor, id: string, input: { pinned?: boolean; muted?: boolean }) {
@@ -380,28 +515,190 @@ export class ChatService implements OnModuleInit {
     this.realtime.publish([actor.id], { type: 'chat.conversation', conversationId: id });
   }
 
-  async browse(actor: Actor, q?: string): Promise<ChannelListing[]> {
-    const rows = await this.db
-      .select({
-        id: conversations.id,
-        name: conversations.name,
-        description: conversations.description,
-        color: conversations.color,
-        memberCount: sql<number>`(SELECT count(*)::int FROM conversation_members m WHERE m.conversation_id = ${conversations.id})`,
-        joined: sql<boolean>`EXISTS (SELECT 1 FROM conversation_members m WHERE m.conversation_id = ${conversations.id} AND m.user_id = ${actor.id})`,
+  /**
+   * Keeps chat in step with space membership (called by SpacesService): joining a space puts you in its public
+   * channels; leaving it takes you out of every channel you can no longer see, and out of their file folders.
+   */
+  async spaceMembershipChanged(workspaceId: string, spaceId: string, userId: string) {
+    const who = { id: userId, name: '', workspaceId };
+    const role = (await this.perms.spaceRoles(who)).get(spaceId);
+    const channels = await this.db.select().from(conversations).where(and(eq(conversations.spaceId, spaceId), eq(conversations.kind, 'channel')));
+    if (!channels.length) return;
+    const explicit = (await this.spaceMemberIds(spaceId)).includes(userId);
+    const touched: string[] = [];
+    for (const c of channels) {
+      const stay = can(role, 'viewer') && (c.visibility === 'public' ? true : explicit || can(role, 'admin'));
+      if (!stay) {
+        const gone = await this.db.delete(conversationMembers).where(and(eq(conversationMembers.conversationId, c.id), eq(conversationMembers.userId, userId))).returning();
+        if (gone.length) touched.push(c.id);
+      } else if (c.visibility === 'public' && explicit) {
+        const added = await this.db.insert(conversationMembers).values({ conversationId: c.id, userId, lastReadSeq: c.lastSeq }).onConflictDoNothing().returning();
+        if (added.length) touched.push(c.id);
+      }
+    }
+    // A role change alone can turn upload rights on or off in private channel folders.
+    for (const c of channels) if (!touched.includes(c.id)) await this.syncFolderAccess(c.id).catch(() => undefined);
+    for (const id of touched) {
+      await this.syncFolderAccess(id).catch(() => undefined);
+      this.realtime.publish([userId, ...(await this.memberIds(id))], { type: 'chat.conversation', conversationId: id });
+    }
+  }
+
+  // ── Categories ────────────────────────────────────────────────────────────
+
+  private async category(spaceId: string, id: string) {
+    const [c] = await this.db.select().from(channelCategories).where(and(eq(channelCategories.id, id), eq(channelCategories.spaceId, spaceId)));
+    if (!c) throw new BadRequestException('Category not found in this space');
+    return c;
+  }
+
+  async categories(actor: Actor, spaceId: string): Promise<ChannelCategory[]> {
+    await this.perms.requireSpace(actor, spaceId, 'viewer');
+    return this.db
+      .select({ id: channelCategories.id, spaceId: channelCategories.spaceId, name: channelCategories.name, position: channelCategories.position })
+      .from(channelCategories)
+      .where(eq(channelCategories.spaceId, spaceId))
+      .orderBy(asc(channelCategories.position), asc(channelCategories.createdAt));
+  }
+
+  private async requireSpaceAdmin(actor: Actor, spaceId: string) {
+    const role = await this.perms.requireSpace(actor, spaceId, 'viewer');
+    if (!can(role, 'admin')) throw new ForbiddenException('Only space admins manage channels and categories');
+  }
+
+  async createCategory(actor: Actor, spaceId: string, name: string) {
+    await this.requireSpaceAdmin(actor, spaceId);
+    const [{ max }] = await this.db.select({ max: sql<number>`coalesce(max(${channelCategories.position}), -1)::int` }).from(channelCategories).where(eq(channelCategories.spaceId, spaceId));
+    const [c] = await this.db.insert(channelCategories).values({ spaceId, name: name.trim(), position: max + 1 }).returning();
+    await this.notifySpace(spaceId);
+    return { id: c.id, spaceId, name: c.name, position: c.position };
+  }
+
+  async updateCategory(actor: Actor, id: string, input: { name?: string; position?: number }) {
+    const [c] = await this.db.select().from(channelCategories).where(eq(channelCategories.id, id));
+    if (!c) throw new NotFoundException('Category not found');
+    await this.requireSpaceAdmin(actor, c.spaceId);
+    await this.db
+      .update(channelCategories)
+      .set({ ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.position !== undefined ? { position: input.position } : {}) })
+      .where(eq(channelCategories.id, id));
+    await this.notifySpace(c.spaceId);
+  }
+
+  /** Deleting a category keeps its channels (they move to the top, uncategorised). */
+  async deleteCategory(actor: Actor, id: string) {
+    const [c] = await this.db.select().from(channelCategories).where(eq(channelCategories.id, id));
+    if (!c) throw new NotFoundException('Category not found');
+    await this.requireSpaceAdmin(actor, c.spaceId);
+    await this.db.delete(channelCategories).where(eq(channelCategories.id, id));
+    await this.notifySpace(c.spaceId);
+  }
+
+  private async notifySpace(spaceId: string) {
+    const ids = await this.db
+      .selectDistinct({ id: conversationMembers.userId })
+      .from(conversationMembers)
+      .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
+      .where(eq(conversations.spaceId, spaceId));
+    this.realtime.publish(ids.map((r) => r.id), { type: 'chat.categories', spaceId });
+  }
+
+  // ── File folders ──────────────────────────────────────────────────────────
+
+  /**
+   * Where files sent in a conversation live (§68): a channel's folder "Chat files / #channel" inside its space
+   * (a private channel's folder is restricted to the channel's members); a DM's or group's folder under the
+   * creator's "Chat files", shared with the people in it. Created on the first upload.
+   */
+  async uploadFolder(actor: Actor, id: string): Promise<{ id: string }> {
+    const { conv } = await this.need(actor, id, 'attach', 'You cannot send files here');
+    const [found] = await this.db
+      .select({ id: resources.id })
+      .from(resources)
+      .where(and(eq(resources.workspaceId, actor.workspaceId), isNull(resources.trashedAt), sql`${resources.metadata}->>'chatConversation' = ${id}`))
+      .limit(1);
+    if (found) {
+      await this.syncFolderAccess(id);
+      return found;
+    }
+    const root = await this.chatRoot(actor, conv.spaceId);
+    // Channel folders belong to the space's owner, not to whoever uploaded first — leaving the channel must take
+    // the files away too. DM and group folders belong to the person who started the conversation.
+    const owner = conv.spaceId ? await this.spaceOwner(conv.spaceId, actor.id) : conv.createdBy ?? actor.id;
+    const [row] = await this.db
+      .insert(resources)
+      .values({
+        workspaceId: actor.workspaceId,
+        spaceId: conv.spaceId,
+        parentId: root.id,
+        path: [...root.path, root.id],
+        name: conv.kind === 'channel' ? `#${conv.name}` : (await this.summaries(actor, id))[0]?.title ?? 'Conversation',
+        type: 'folder',
+        ownerId: owner,
+        updatedBy: actor.id,
+        metadata: { chatConversation: id, ...(conv.kind !== 'channel' || conv.visibility === 'private' ? { restricted: true } : {}) },
+        description: 'Files sent in this conversation',
       })
-      .from(conversations)
-      .where(
-        and(
-          eq(conversations.workspaceId, actor.workspaceId),
-          eq(conversations.kind, 'channel'),
-          eq(conversations.visibility, 'public'),
-          q?.trim() ? ilike(conversations.name, `%${q.trim().replace(/[%_\\]/g, '\\$&')}%`) : undefined,
-        ),
-      )
-      .orderBy(asc(conversations.name))
-      .limit(100);
-    return rows.map((r) => ({ id: r.id, title: r.name ?? 'Channel', description: r.description, color: r.color, memberCount: r.memberCount, joined: r.joined }));
+      .returning({ id: resources.id });
+    await this.syncFolderAccess(id);
+    return row;
+  }
+
+  private async spaceOwner(spaceId: string, fallback: string) {
+    const [sp] = await this.db.select({ createdBy: spaces.createdBy }).from(spaces).where(eq(spaces.id, spaceId));
+    return sp?.createdBy ?? fallback;
+  }
+
+  /** "Chat files" at the root of the space (or of the sender's My Files for DMs and groups). */
+  private async chatRoot(actor: Actor, spaceId: string | null) {
+    const where = and(
+      eq(resources.workspaceId, actor.workspaceId),
+      isNull(resources.parentId),
+      spaceId ? eq(resources.spaceId, spaceId) : and(isNull(resources.spaceId), eq(resources.ownerId, actor.id)),
+      eq(resources.type, 'folder'),
+      isNull(resources.trashedAt),
+      sql`${resources.metadata}->>'chatFiles' = 'true'`,
+    );
+    const [found] = await this.db.select({ id: resources.id, path: resources.path }).from(resources).where(where).limit(1);
+    if (found) return found;
+    const [row] = await this.db
+      .insert(resources)
+      .values({ workspaceId: actor.workspaceId, spaceId, name: 'Chat files', type: 'folder', ownerId: spaceId ? await this.spaceOwner(spaceId, actor.id) : actor.id, updatedBy: actor.id, metadata: { chatFiles: true }, description: 'Files sent in Chat' })
+      .returning({ id: resources.id, path: resources.path });
+    return row;
+  }
+
+  /**
+   * Access to a restricted conversation folder is exactly its members: editors (may upload) are the people who
+   * can attach files, everyone else views. Public channel folders need nothing — the space's roles apply.
+   */
+  private async syncFolderAccess(conversationId: string) {
+    const [folder] = await this.db.select().from(resources).where(sql`${resources.metadata}->>'chatConversation' = ${conversationId}`).limit(1);
+    if (!folder || (folder.metadata as Record<string, unknown>).restricted !== true) return;
+    const [conv] = await this.db.select().from(conversations).where(eq(conversations.id, conversationId));
+    const members = await this.db.select().from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
+    // A DM / group folder whose owner left the conversation passes to someone still in it.
+    if (!conv.spaceId && members.length && !members.some((m) => m.userId === folder.ownerId)) {
+      const next = members.find((m) => m.role === 'owner') ?? members[0];
+      await this.db.update(resources).set({ ownerId: next.userId }).where(eq(resources.id, folder.id));
+      folder.ownerId = next.userId;
+    }
+    const want = new Map<string, Role>();
+    // Every member gets an entry, the folder owner too: owning a folder does not open the files others put in it.
+    for (const m of members) {
+      const spaceRole = conv.spaceId ? (await this.perms.spaceRoles({ id: m.userId, name: '', workspaceId: conv.workspaceId })).get(conv.spaceId) : null;
+      want.set(m.userId, this.permsFor(conv, m, spaceRole).attach ? 'editor' : 'viewer');
+    }
+    const current = await this.db
+      .select()
+      .from(aclEntries)
+      .where(and(eq(aclEntries.resourceId, folder.id), eq(aclEntries.principalType, 'user')));
+    for (const a of current) if (!want.has(a.principalId)) await this.db.delete(aclEntries).where(and(eq(aclEntries.resourceId, folder.id), eq(aclEntries.principalType, 'user'), eq(aclEntries.principalId, a.principalId)));
+    for (const [userId, role] of want)
+      await this.db
+        .insert(aclEntries)
+        .values({ resourceId: folder.id, principalType: 'user', principalId: userId, role, createdBy: folder.ownerId })
+        .onConflictDoUpdate({ target: [aclEntries.resourceId, aclEntries.principalType, aclEntries.principalId], set: { role } });
   }
 
   // ── Messages ──────────────────────────────────────────────────────────────
@@ -522,8 +819,11 @@ export class ChatService implements OnModuleInit {
   async send(actor: Actor, id: string, input: { body: string; threadRootId?: string | null; resourceIds?: string[]; grant?: 'viewer' | 'commenter' | 'editor' | 'none' }): Promise<ChatMessage> {
     const body = input.body.trim();
     if (!body && !input.resourceIds?.length) throw new BadRequestException('Message is empty');
+    // Files open with each person's own access (read → view, edit → edit); chat never hands out access (§68).
+    if (input.grant && input.grant !== 'none') throw new BadRequestException('Chat does not share files — people open them with their own access');
     const { row, root } = await this.db.transaction(async (tx) => {
-      const { conv } = await this.requireMember(actor, id, tx);
+      const { conv, perms } = await this.need(actor, id, 'post', 'You cannot post in this channel', tx);
+      if (input.resourceIds?.length && !perms.attach) throw new ForbiddenException('You cannot send files here');
       let root: MsgRow | null = null;
       if (input.threadRootId) {
         [root] = await tx.select().from(messages).where(and(eq(messages.id, input.threadRootId), eq(messages.conversationId, conv.id)));
@@ -534,33 +834,15 @@ export class ChatService implements OnModuleInit {
         // Sharing in chat never copies a file: people who cannot open it get access, or the sender sends anyway (§6.4).
         const missing = await this.missingAccess(actor, await this.memberIds(id, tx), refs, tx);
         if (missing.size && input.grant !== 'none') {
-          const myRoles = await this.perms.rolesFor(actor, refs.map((r) => r.row), tx);
-          if (!input.grant) {
-            const people = await loadUsers(tx, [...missing.values()].flat());
-            const problem: ChatAccessProblem = {
-              code: 'needs_access',
-              message: 'Some people in this conversation cannot open a file',
-              missing: refs
-                .filter((r) => missing.has(r.row.id))
-                .map((r) => ({
-                  resourceId: r.row.id,
-                  name: r.row.name,
-                  canShare: can(myRoles.get(r.row.id), 'admin'),
-                  users: missing.get(r.row.id)!.map((u) => ({ id: u, name: people.get(u)?.name ?? 'Someone' })),
-                })),
-            };
-            throw new ConflictException(problem);
-          }
-          for (const r of refs) {
-            const users = missing.get(r.row.id);
-            if (!users) continue;
-            if (!can(myRoles.get(r.row.id), 'admin')) throw new ForbiddenException(`You cannot share "${r.row.name}" — ask its owner`);
-            await tx
-              .insert(aclEntries)
-              .values(users.map((u) => ({ resourceId: r.row.id, principalType: 'user' as const, principalId: u, role: input.grant as Role, createdBy: actor.id })))
-              .onConflictDoNothing();
-            await this.events.emit(tx, actor, 'acl.changed', { resourceId: r.row.id, spaceId: r.row.spaceId }, { name: r.row.name, via: 'chat', conversationId: id, count: users.length, role: input.grant });
-          }
+          const people = await loadUsers(tx, [...missing.values()].flat());
+          const problem: ChatAccessProblem = {
+            code: 'needs_access',
+            message: 'Some people in this conversation cannot open a file — they will see it locked',
+            missing: refs
+              .filter((r) => missing.has(r.row.id))
+              .map((r) => ({ resourceId: r.row.id, name: r.row.name, users: missing.get(r.row.id)!.map((u) => ({ id: u, name: people.get(u)?.name ?? 'Someone' })) })),
+          };
+          throw new ConflictException(problem);
         }
       }
       const mentions = await this.mentionsIn(actor, body, tx);
@@ -597,7 +879,12 @@ export class ChatService implements OnModuleInit {
     const text = row.body.replace(MENTION, (_m, uid: string) => `@${people.get(uid.toLowerCase())?.name ?? 'someone'}`).replace(/\s+/g, ' ').trim();
     const url = `/chat/${conversationId}${root ? `?thread=${root.id}` : ''}`;
     const inConv = new Set(members);
-    const mentioned = row.mentions.filter((u) => inConv.has(u));
+    // Mentions reach whoever can read the conversation — in a public channel that is the whole space, opened yet or not.
+    const mentioned: string[] = [];
+    for (const u of row.mentions) {
+      if (inConv.has(u)) mentioned.push(u);
+      else if (conv.kind === 'channel' && (await this.access({ id: u, name: '', workspaceId: actor.workspaceId }, conversationId).then(() => true, () => false))) mentioned.push(u);
+    }
     await this.notifications.notify(actor, mentioned, { kind: 'chat.mention', title: `${actor.name} mentioned you in ${where}`, body: text || null, url, conversationId, messageId: row.id });
     if (root) {
       const repliers = await this.db.selectDistinct({ id: messages.senderId }).from(messages).where(eq(messages.threadRootId, root.id));
@@ -628,9 +915,9 @@ export class ChatService implements OnModuleInit {
 
   async remove(actor: Actor, messageId: string) {
     const row = await this.message(messageId);
-    const { member } = await this.requireMember(actor, row.conversationId);
+    const { perms } = await this.requireMember(actor, row.conversationId);
     if (row.kind !== 'text') throw new BadRequestException('System messages cannot be deleted');
-    if (row.senderId !== actor.id && member.role === 'member') throw new ForbiddenException('Only the sender or an admin can delete a message');
+    if (row.senderId !== actor.id && !perms.moderate) throw new ForbiddenException('Only the sender or an admin can delete a message');
     if (row.deletedAt) return;
     const [next] = await this.db.update(messages).set({ body: '', mentions: [], deletedAt: sql`now()`, pinnedAt: null, pinnedBy: null }).where(eq(messages.id, messageId)).returning();
     await this.db.delete(messageReactions).where(eq(messageReactions.messageId, messageId));
@@ -641,7 +928,7 @@ export class ChatService implements OnModuleInit {
 
   async react(actor: Actor, messageId: string, emoji: string) {
     const row = await this.message(messageId);
-    await this.requireMember(actor, row.conversationId);
+    await this.need(actor, row.conversationId, 'react', 'You cannot react in this channel');
     if (row.deletedAt || row.kind !== 'text') throw new BadRequestException('Cannot react to this message');
     const key = and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, actor.id), eq(messageReactions.emoji, emoji));
     const gone = await this.db.delete(messageReactions).where(key).returning();
@@ -653,29 +940,12 @@ export class ChatService implements OnModuleInit {
     return this.publishUpdate(actor, row);
   }
 
-  async uploadFolder(actor: Actor): Promise<{ id: string }> {
-    const where = and(
-      eq(resources.workspaceId, actor.workspaceId),
-      eq(resources.ownerId, actor.id),
-      isNull(resources.parentId),
-      isNull(resources.spaceId),
-      eq(resources.type, 'folder'),
-      isNull(resources.trashedAt),
-      sql`${resources.metadata}->>'chatFiles' = 'true'`,
-    );
-    const [found] = await this.db.select({ id: resources.id }).from(resources).where(where).limit(1);
-    if (found) return found;
-    const [row] = await this.db
-      .insert(resources)
-      .values({ workspaceId: actor.workspaceId, name: 'Chat files', type: 'folder', ownerId: actor.id, updatedBy: actor.id, metadata: { chatFiles: true }, description: 'Files you sent in Chat' })
-      .returning({ id: resources.id });
-    return row;
-  }
-
   /** Pins or unpins a message for everyone in the conversation (Pinned tab). */
   async pin(actor: Actor, messageId: string, pinned: boolean) {
     const row = await this.message(messageId);
-    await this.requireMember(actor, row.conversationId);
+    const { conv, perms } = await this.requireMember(actor, row.conversationId);
+    // Discord: pinning in a server channel is "Manage Messages"; anyone in a DM or group may pin.
+    if (conv.kind === 'channel' && !perms.moderate) throw new ForbiddenException('Only channel or space admins pin messages');
     if (row.deletedAt || row.kind !== 'text') throw new BadRequestException('Cannot pin this message');
     if (!!row.pinnedAt === pinned) return this.publishUpdate(actor, row);
     if (pinned) {

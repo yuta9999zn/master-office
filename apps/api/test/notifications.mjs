@@ -55,7 +55,11 @@ check('a mention reaches the person live', pushed?.notification.title === 'Claud
 check('the mention text uses names, not tokens', pushed?.notification.body === '@Hana Lee can you review the banner? @Claudia Chen @Ken Watanabe', pushed?.notification.body);
 check('the unread count goes up', (await count(hana)) === before + 1);
 check('mentioning yourself does not notify you', !(await inbox(claudia)).some((n) => n.kind === 'chat.mention' && n.title.includes('Claudia Chen mentioned')));
-check('people outside the conversation are not notified', !(await inbox(ken)).some((n) => n.kind === 'chat.mention'));
+check('people who can read the channel are notified, opened or not', (await inbox(ken)).some((n) => n.kind === 'chat.mention' && n.conversationId === marketing.id));
+const itm = (await list(claudia)).find((c) => c.title === 'ITM Japan - Project');
+await call('POST', `/chat/conversations/${itm.id}/messages`, { user: claudia, body: { body: `<@${ken}> private?` } });
+await sleep(300);
+check('people outside a private channel are not notified', !(await inbox(ken)).some((n) => n.conversationId === itm.id));
 
 // ── Thread replies ──────────────────────────────────────────────────────────
 const inThread = (n) => n.kind === 'chat.reply' && n.url.endsWith(`thread=${m1.id}`);

@@ -1,5 +1,6 @@
-// Phase 5 end-to-end: Chat — list and unread badges, live messages between two people, typing, mentions,
-// reactions, threads, edit/delete, read receipts, new DM / channel, browse & join, pin.
+// Phase 5 end-to-end: Chat, the Discord model (§68) — space rail and channels by category, unread badges, live
+// messages between two people, typing, mentions, reactions, threads, edit/delete, read receipts, DMs, channel
+// creation by space admins, read-only roles, files that never grant access, pins.
 // node e2e/chat-flow.mjs   (needs the web app + API + freshly seeded data)
 import { chromium } from 'playwright';
 import { tmpdir } from 'node:os';
@@ -34,20 +35,32 @@ const lastMessage = (page) => page.getByTestId('timeline').getByTestId('message'
 
 const claudia = await session('claudia@kaori.jp');
 const hana = await session('hana@kaori.jp');
+const space = async (page, name) => {
+  await page.locator(`[data-testid="rail-space"][data-name="${name}"]`).click();
+  await page.getByTestId('space-title').getByText(name, { exact: true }).waitFor({ timeout: 60000 });
+  // Opening a space opens its first channel (as Discord does): wait for that before touching anything.
+  await page.locator('[data-testid="conversation-list"] [aria-current="page"]').waitFor({ timeout: 30000 });
+  await page.getByTestId('conversation-title').waitFor();
+};
+const home = async (page) => {
+  await page.getByTestId('rail-home').click();
+  await page.getByText('Direct messages', { exact: true }).first().waitFor();
+};
 
-await step('the list shows conversations with unread badges and the sidebar total', claudia, async () => {
+await step('the rail shows spaces with mention counts; channels sit in categories; the sidebar total adds up', claudia, async () => {
   await claudia.goto(`${BASE}/chat`);
-  await row(claudia, 'Marketing Team').waitFor({ timeout: 60000 });
-  const badge = await row(claudia, 'Marketing Team').getByTestId('unread-badge').innerText();
-  if (badge !== '2') throw new Error('marketing badge ' + badge);
-  if ((await row(claudia, 'ITM Japan - Project').getByTestId('unread-badge').innerText()) !== '@3') throw new Error('mention badge');
-  if ((await claudia.getByTestId('chat-unread').innerText()) !== '5') throw new Error('sidebar total');
-  await claudia.getByText('Select a conversation').waitFor();
+  await claudia.getByTestId('space-rail').waitFor({ timeout: 60000 });
+  await claudia.locator('[data-testid="rail-space"][data-name="ITM Japan"] [data-testid="rail-badge"]').getByText('1').waitFor();
+  await until(claudia, () => document.querySelector('[data-testid="chat-unread"]')?.textContent === '5');
+  await space(claudia, 'Natural Beauty');
+  await claudia.locator('[data-testid="channel-category"][data-name="Information"] [data-title="Announcements"]').waitFor();
 });
 
-await step('opening a conversation shows the "New" divider and clears its unread count', claudia, async () => {
+await step('opening a channel shows the "New" divider and clears its unread count', claudia, async () => {
+  await space(claudia, 'Marketing');
   await row(claudia, 'Marketing Team').click();
   await claudia.getByTestId('conversation-title').getByText('Marketing Team').waitFor();
+  await claudia.getByTestId('conversation-subtitle').getByText(/Marketing ·/).waitFor();
   await claudia.getByTestId('new-divider').waitFor();
   await until(claudia, () => !document.querySelector('[data-title="Marketing Team"] [data-testid="unread-badge"]'));
   await until(claudia, () => document.querySelector('[data-testid="chat-unread"]')?.textContent === '3');
@@ -55,6 +68,7 @@ await step('opening a conversation shows the "New" divider and clears its unread
 
 await step('a message appears live for the other person, with typing first', hana, async () => {
   await hana.goto(`${BASE}/chat`);
+  await space(hana, 'Marketing');
   await row(hana, 'Marketing Team').click();
   await hana.getByTestId('composer').waitFor();
   await claudia.getByTestId('composer').click();
@@ -138,9 +152,10 @@ await step('deleting a message leaves a placeholder for everyone', claudia, asyn
   await lastMessage(hana).getByText('This message was deleted').waitFor();
 });
 
-await step('a direct message from the New menu, with "Seen" once read', claudia, async () => {
+
+await step('a direct message from Home, with "Seen" once read', claudia, async () => {
+  await home(claudia);
   await claudia.getByTestId('new-chat').click();
-  await claudia.getByRole('menuitem', { name: 'New message or group' }).click();
   await claudia.getByLabel('Search people').fill('Ken');
   await claudia.getByTestId('people-picker').getByRole('button', { name: /Ken Watanabe/ }).click();
   await claudia.getByTestId('start-chat').click();
@@ -157,44 +172,61 @@ await step('a direct message from the New menu, with "Seen" once read', claudia,
   await ken.context().close();
 });
 
-await step('creating a channel and finding it in Browse channels', claudia, async () => {
-  await claudia.getByTestId('new-chat').click();
-  await claudia.getByRole('menuitem', { name: 'Create a channel' }).click();
+await step('space admins create a channel in a category; everyone in the space has it at once', claudia, async () => {
+  await space(claudia, 'Natural Beauty');
+  await claudia.getByTestId('space-menu').click();
+  await claudia.getByRole('menuitem', { name: 'Create channel' }).click();
   await claudia.getByLabel('Channel name').fill('Holiday party');
   await claudia.getByLabel('Channel description').fill('Planning the year-end party');
+  await claudia.getByLabel('Category').selectOption({ label: 'Text channels' });
   await claudia.getByTestId('create-channel').click();
   await claudia.getByTestId('conversation-title').getByText('Holiday party').waitFor();
   await claudia.getByTestId('system-message').getByText('created the channel Holiday party').waitFor();
-
-  await hana.getByTestId('new-chat').click();
-  await hana.getByRole('menuitem', { name: 'Browse channels' }).click();
-  await hana.getByLabel('Search channels').fill('holiday');
-  const entry = hana.getByTestId('channel-directory').locator('[data-name="Holiday party"]');
-  await entry.waitFor();
-  await entry.getByRole('button', { name: 'Open' }).or(entry.getByRole('button', { name: 'Join' })).first().waitFor();
-  await entry.getByRole('button', { name: 'Holiday party' }).click();
-  await hana.getByTestId('join-banner').waitFor();
-  await hana.getByTestId('join-banner').getByRole('button', { name: 'Join channel' }).click();
-  await hana.getByTestId('composer').waitFor();
-  await claudia.getByTestId('system-message').getByText('joined').waitFor();
+  await claudia.locator('[data-testid="channel-category"][data-name="Text channels"] [data-title="Holiday party"]').waitFor();
+  await space(hana, 'Natural Beauty');
+  await row(hana, 'Holiday party').click();
+  await hana.getByTestId('conversation-title').getByText('Holiday party').waitFor();
+  await hana.getByTestId('composer').fill('Count me in!');
+  await hana.keyboard.press('Enter');
+  await lastMessage(claudia).getByText('Count me in!').waitFor();
 });
 
-await step('pinning moves a conversation into Pinned', claudia, async () => {
-  const r = row(claudia, 'Branch 625');
+await step('members cannot create channels; read-only roles get no composer', hana, async () => {
+  await space(hana, 'Natural Beauty');
+  await hana.getByTestId('space-menu').click();
+  if (await hana.getByRole('menuitem', { name: 'Create channel' }).count()) throw new Error('a member can create channels');
+  await hana.keyboard.press('Escape');
+  // Hana only views the Operations space (public, she is not a member): she reads, cannot write.
+  await space(hana, 'Operations');
+  await hana.getByTestId('space-role').getByText('read only').waitFor();
+  await row(hana, 'Operations').click();
+  await hana.getByTestId('conversation-title').getByText('Operations').waitFor();
+  await hana.getByTestId('read-only-banner').waitFor();
+  if (await hana.getByTestId('composer').count()) throw new Error('composer shown to a viewer');
+});
+
+await step('announcement channels: only admins post', hana, async () => {
+  await space(hana, 'Natural Beauty');
+  await row(hana, 'Announcements').click();
+  await hana.getByTestId('conversation-title').getByText('Announcements').waitFor();
+  await hana.getByTestId('read-only-banner').getByText(/announcement channel/).waitFor();
+});
+
+await step('pinning moves a direct message into Pinned', claudia, async () => {
+  await home(claudia);
+  const r = row(claudia, 'Hana Lee');
   await r.hover();
-  await r.getByRole('button', { name: 'Options for Branch 625' }).click();
+  await r.getByRole('button', { name: 'Options for Hana Lee' }).click();
   await claudia.getByRole('menuitem', { name: 'Pin to top' }).click();
   await until(claudia, () => {
     const list = document.querySelector('[data-testid="conversation-list"]');
     const rows = [...list.querySelectorAll('[data-testid="conversation-row"]')];
-    return list.textContent.includes('Pinned') && rows[0]?.getAttribute('data-title') === 'Branch 625';
+    return list.textContent.includes('Pinned') && rows[0]?.getAttribute('data-title') === 'Hana Lee';
   });
-  await claudia.getByRole('tab', { name: 'favorites' }).click();
-  await until(claudia, () => [...document.querySelectorAll('[data-testid="conversation-row"]')].map((r) => r.getAttribute('data-title')).join() === 'Branch 625');
-  await claudia.getByRole('tab', { name: 'all' }).click();
 });
 
 await step('file cards show live metadata and open the right editor', claudia, async () => {
+  await space(claudia, 'ITM Japan');
   await row(claudia, 'ITM Japan - Project').click();
   const card = claudia.getByTestId('timeline').locator('[data-testid="file-card"][data-name="Project Plan Sep.pptx"]');
   await card.waitFor();
@@ -214,7 +246,8 @@ const shareFromDrive = async (page, name) => {
   await page.getByTestId('composer-file').filter({ hasText: name }).waitFor();
 };
 
-await step('sharing a file someone cannot open asks first; "Send without sharing" leaves it locked', claudia, async () => {
+await step('chat never grants file access: people without it see a locked card', claudia, async () => {
+  await home(claudia);
   await row(claudia, 'Hana Lee').click();
   await claudia.getByTestId('conversation-title').getByText('Hana Lee').waitFor();
   await shareFromDrive(claudia, 'HR Manual');
@@ -222,55 +255,44 @@ await step('sharing a file someone cannot open asks first; "Send without sharing
   await claudia.keyboard.press('Enter');
   const dialog = claudia.getByTestId('access-dialog');
   await dialog.getByText('No access: Hana Lee').waitFor();
+  if (await claudia.getByTestId('share-and-send').count()) throw new Error('chat offers to share');
   await claudia.getByTestId('send-anyway').click();
   await lastMessage(claudia).locator('[data-testid="file-card"][data-name="HR Manual"]').waitFor();
+  await home(hana);
   await row(hana, 'Claudia Chen').click();
+  await hana.getByTestId('conversation-title').getByText('Claudia Chen').waitFor();
   await lastMessage(hana).locator('[data-testid="file-card"][data-locked="true"]').getByText('Restricted file').waitFor();
 });
 
-await step('"Share and send" gives access and the card opens for the other person', claudia, async () => {
-  await shareFromDrive(claudia, 'HR Manual');
-  await claudia.getByTestId('composer').fill('Here it is, with access this time');
-  await claudia.keyboard.press('Enter');
-  await claudia.getByTestId('access-dialog').waitFor();
-  await claudia.getByTestId('share-and-send').click();
-  const card = lastMessage(hana).locator('[data-testid="file-card"][data-name="HR Manual"]');
-  await card.waitFor();
-  await lastMessage(hana).getByText('Here it is, with access this time').waitFor();
-  await card.click();
-  await hana.waitForURL(/\/docs\//, { timeout: 30000 });
-  await hana.goBack();
-  await hana.getByTestId('composer').waitFor({ timeout: 30000 });
-});
-
-await step('uploading from the computer sends a file card (stored in "Chat files")', claudia, async () => {
+await step('a file uploaded into the conversation opens for its members', claudia, async () => {
+  await claudia.getByTestId('composer').fill('Here is the agenda');
   await claudia.getByTestId('composer-upload').setInputFiles({ name: 'agenda.txt', mimeType: 'text/plain', buffer: Buffer.from('Agenda: launch review') });
   await claudia.locator('[data-testid="composer-file"][data-status="ready"]').filter({ hasText: 'agenda.txt' }).waitFor();
   await claudia.getByTestId('composer').click();
   await claudia.keyboard.press('Enter');
-  await lastMessage(hana).locator('[data-testid="file-card"][data-name="agenda.txt"]').waitFor();
+  const card = lastMessage(hana).locator('[data-testid="file-card"][data-name="agenda.txt"]');
+  await card.waitFor();
   await claudia.getByRole('tab', { name: 'files' }).click();
   await claudia.getByTestId('files-view').locator('[data-testid="file-card"][data-name="agenda.txt"]').waitFor();
-  await claudia.getByTestId('files-view').locator('[data-testid="file-card"][data-name="HR Manual"]').waitFor();
   await claudia.getByRole('tab', { name: 'chat' }).click();
 });
 
 await step('pinning a message shows it in the Pinned tab for everyone', claudia, async () => {
-  const m = claudia.getByTestId('timeline').getByTestId('message').filter({ hasText: 'Here it is, with access this time' });
+  const m = claudia.getByTestId('timeline').getByTestId('message').filter({ hasText: 'Here is the agenda' });
   await m.hover();
   await m.getByRole('button', { name: 'More actions' }).click();
   await claudia.getByRole('menuitem', { name: 'Pin to conversation' }).click();
   await m.getByTestId('pinned-label').getByText('Pinned by you').waitFor();
   await hana.getByTestId('system-message').getByText('pinned a message').waitFor();
   await hana.getByRole('tab', { name: 'pinned' }).click();
-  await hana.getByTestId('pinned-message').getByText('Here it is, with access this time').waitFor();
+  await hana.getByTestId('pinned-message').getByText('Here is the agenda').waitFor();
   await hana.getByTestId('pinned-message').getByRole('button', { name: 'Unpin' }).click();
   await hana.getByText('No pinned messages').waitFor();
 });
 
 await step('Home shows recent chats', claudia, async () => {
   await claudia.goto(`${BASE}/home`);
-  await claudia.getByTestId('recent-chats').getByText('Holiday party').waitFor({ timeout: 60000 });
+  await claudia.getByTestId('recent-chats').getByText('Holiday party').first().waitFor({ timeout: 60000 });
 });
 
 await browser.close();

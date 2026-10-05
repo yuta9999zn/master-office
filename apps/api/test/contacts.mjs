@@ -29,7 +29,7 @@ check('cards carry contact details and skills', f.location === 'Tokyo, Japan' &&
 check('search by skill', (await search('japanese')).join() === 'fujita');
 const fin = await search('finance');
 check('search by department (and by the Finance space its members belong to)', fin.includes('huong') && fin.includes('hana') && !fin.includes('ken'), fin);
-check('search by project (space)', (await search('ITM Japan')).join() === ['claudia', 'fujita', 'minh'].join(), await search('ITM Japan'));
+check('search by project (space)', (await search('ITM Japan')).join() === ['claudia', 'fujita', 'mika', 'minh'].join(), await search('ITM Japan'));
 check('search by location', (await search('hanoi')).join() === 'huong');
 
 const rinaForHana = all.find((c) => c.id === rina);

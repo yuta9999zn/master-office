@@ -31,6 +31,8 @@ export function MessageItem({
   candidates,
   grouped,
   canModerate,
+  canReact = true,
+  canPin = true,
   inThread,
   editing,
   setEditing,
@@ -46,6 +48,10 @@ export function MessageItem({
   /** Follows a message from the same person within a few minutes: no avatar or name. */
   grouped: boolean;
   canModerate: boolean;
+  /** Reacting needs write access (commenter and up in a space). */
+  canReact?: boolean;
+  /** Pinning in a channel is for its admins; anyone in a DM or group may pin. */
+  canPin?: boolean;
   inThread?: boolean;
   editing: boolean;
   setEditing: (v: boolean) => void;
@@ -61,7 +67,7 @@ export function MessageItem({
   const mine = !!me && m.sender?.id === me;
   const pending = m.id.startsWith('tmp-');
   const deleted = !!m.deletedAt;
-  const toggle = (emoji: string) => !pending && react.mutate({ id: m.id, emoji });
+  const toggle = (emoji: string) => !pending && canReact && react.mutate({ id: m.id, emoji });
 
   const textless = !deleted && !m.body && m.attachments.length > 0;
   const bubble = textless ? null : (
@@ -174,12 +180,12 @@ export function MessageItem({
           className={cn('absolute -top-3 z-10 hidden items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 shadow-sm group-hover:flex', mine ? 'left-16' : 'right-6', menuOpen && 'flex')}
           data-testid="message-actions"
         >
-          {QUICK_REACTIONS.slice(0, 4).map((e) => (
+          {canReact && QUICK_REACTIONS.slice(0, 4).map((e) => (
             <button key={e} onClick={() => toggle(e)} className="flex size-7 items-center justify-center rounded-md text-[15px] hover:bg-hover" aria-label={`React ${e}`}>
               {e}
             </button>
           ))}
-          <EmojiPicker onPick={toggle} side="bottom" trigger={<button className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover" aria-label="More reactions"><SmilePlus size={15} /></button>} />
+          {canReact && <EmojiPicker onPick={toggle} side="bottom" trigger={<button className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover" aria-label="More reactions"><SmilePlus size={15} /></button>} />}
           {!inThread && (
             <Tip label="Reply in thread">
               <button onClick={() => onOpenThread?.(m)} className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover" aria-label="Reply in thread">
@@ -199,9 +205,11 @@ export function MessageItem({
                   Edit
                 </MenuItem>
               )}
-              <MenuItem icon={m.pinnedAt ? <PinOff /> : <Pin />} onSelect={() => pin.mutate({ id: m.id, pinned: !m.pinnedAt })}>
-                {m.pinnedAt ? 'Unpin' : 'Pin to conversation'}
-              </MenuItem>
+              {canPin && (
+                <MenuItem icon={m.pinnedAt ? <PinOff /> : <Pin />} onSelect={() => pin.mutate({ id: m.id, pinned: !m.pinnedAt })}>
+                  {m.pinnedAt ? 'Unpin' : 'Pin to conversation'}
+                </MenuItem>
+              )}
               <MenuItem
                 icon={<Copy />}
                 onSelect={() => {

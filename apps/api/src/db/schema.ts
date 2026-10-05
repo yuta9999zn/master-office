@@ -448,7 +448,23 @@ export const mailOutbox = pgTable(
   (t) => [index('mail_outbox_resource_idx').on(t.resourceId, t.createdAt)],
 );
 
-// ── Chat (Phase 5, docs/ARCHITECTURE.md §64) ────────────────────────────────
+// ── Chat (Phase 5, docs/ARCHITECTURE.md §64, Discord model §68) ─────────────
+
+/** Channel groups inside a space (Discord categories). */
+export const channelCategories = pgTable(
+  'channel_categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    position: integer('position').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('channel_categories_space_idx').on(t.spaceId)],
+);
+
 
 /** A direct message (two people), a group (several people, no name needed) or a channel (named, public or private). */
 export const conversations = pgTable(
@@ -462,7 +478,12 @@ export const conversations = pgTable(
     name: text('name'),
     description: text('description'),
     visibility: text('visibility').$type<'public' | 'private'>().notNull().default('private'),
-    spaceId: uuid('space_id').references(() => spaces.id, { onDelete: 'set null' }),
+    /** The space (Discord server) a channel belongs to; null for direct and group messages. */
+    spaceId: uuid('space_id').references(() => spaces.id, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id').references(() => channelCategories.id, { onDelete: 'set null' }),
+    position: integer('position').notNull().default(0),
+    /** 'admins' = announcement channel: only space / channel admins post. */
+    postPolicy: text('post_policy').$type<'all' | 'admins'>().notNull().default('all'),
     /** Both user ids, sorted — one DM per pair. */
     dmKey: text('dm_key').unique(),
     color: text('color'),

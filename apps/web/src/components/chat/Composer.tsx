@@ -20,7 +20,7 @@ interface ComposerProps {
   candidates: UserSummary[];
   people: Map<string, UserSummary>;
   /** Text (with <@id> mention tokens) and the files to send. */
-  /** `uploadsOnly`: every file was just uploaded here to be shared, so members get view access without asking. */
+  /** `uploadsOnly`: every file was just uploaded into the conversation's folder, so its members can open them. */
   onSubmit: (body: string, files: ChatAttachment[], opts: { uploadsOnly: boolean }) => void | Promise<unknown>;
   onTyping?: () => void;
   onEditLast?: () => void;
@@ -32,6 +32,8 @@ interface ComposerProps {
   testId?: string;
   /** Attach files from the computer or from Drive. */
   allowFiles?: boolean;
+  /** Where uploads go (the conversation's folder). */
+  conversationId?: string;
 }
 
 type Item = { key: string; name: string; status: 'uploading' | 'ready'; att?: ChatAttachment; uploaded?: boolean };
@@ -41,7 +43,7 @@ type Item = { key: string; name: string; status: 'uploading' | 'ready'; att?: Ch
  * ↑ in an empty box edits your last message, Esc cancels an edit. Files: "+" (upload / Drive), paste or drop.
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { placeholder, candidates, people, onSubmit, onTyping, onEditLast, onCancel, initial, compact, autoFocus, testId = 'composer', allowFiles },
+  { placeholder, candidates, people, onSubmit, onTyping, onEditLast, onCancel, initial, compact, autoFocus, testId = 'composer', allowFiles, conversationId },
   handle,
 ) {
   const start = useRef(initial !== undefined ? tokensToText(initial, people) : { text: '', names: new Map<string, string>() });
@@ -57,10 +59,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const lastTyping = useRef(0);
 
   const addFiles = (files: File[]) => {
-    if (!allowFiles || !files.length) return;
+    if (!allowFiles || !conversationId || !files.length) return;
     const batch: Item[] = files.map((f) => ({ key: Math.random().toString(36).slice(2), name: f.name || 'Pasted file', status: 'uploading', uploaded: true }));
     setItems((cur) => [...cur, ...batch]);
-    uploadForChat(files).then(
+    uploadForChat(conversationId, files).then(
       (created) => {
         ref.current?.focus();
         setItems((cur) =>

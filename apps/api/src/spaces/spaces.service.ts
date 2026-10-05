@@ -8,6 +8,7 @@ import { InjectDb } from '../db/db.module';
 import { auditEvents, spaceMembers, spaces, users } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { ChatService } from '../chat/chat.service';
 
 type SpaceRow = typeof spaces.$inferSelect;
 
@@ -17,6 +18,7 @@ export class SpacesService {
     @InjectDb() private readonly db: Db,
     private readonly perms: PermissionsService,
     private readonly events: EventsService,
+    private readonly chat: ChatService,
   ) {}
 
   private dto(s: SpaceRow, myRole: Role | null, memberCount?: number): Space {
@@ -105,6 +107,8 @@ export class SpacesService {
       const who = (await loadUsers(tx, [userId])).get(userId);
       await this.events.emit(tx, actor, 'space.member_changed', { spaceId: id }, { userId, userName: who?.name, role });
     });
+    // Chat follows the space: its public channels, private channel access and file folders (§68).
+    await this.chat.spaceMembershipChanged(actor.workspaceId, id, userId).catch(() => undefined);
   }
 
   async activity(actor: Actor, id: string): Promise<ActivityEvent[]> {

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useChatActions, useChatFiles, useChatPins, useConversation, useConversations, useMessages } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
-import { useMe, useUsers } from '@/lib/queries';
+import { useMe, useSpaces, useUsers } from '@/lib/queries';
 import { sendRealtime, useIsOnline, useTyping } from '@/lib/realtime';
 import { Avatar, AvatarStack, Button, cn, EmptyState, IconButton, Skeleton } from '../ui/primitives';
 import { FileCard, useSendFlow } from './attachments';
@@ -97,11 +97,21 @@ function Header({ conv, panel, setPanel }: { conv: ConversationDetail; panel: Pa
   const { prefs, removeMember } = useChatActions();
   const { data: me } = useMe();
   const online = useIsOnline(conv.peer?.id);
+  const { data: spaces } = useSpaces();
+  const spaceName = conv.spaceId ? spaces?.find((s) => s.id === conv.spaceId)?.name : null;
+  const canLeave = conv.kind === 'group' || (conv.kind === 'channel' && conv.visibility === 'private');
   const others = conv.members.filter((m) => m.id !== me?.user.id);
   const subtitle =
     conv.kind === 'dm'
       ? [online ? 'Active now' : 'Away', conv.peer?.title, conv.peer?.department].filter(Boolean).join(' · ')
-      : [`${conv.memberCount} member${conv.memberCount === 1 ? '' : 's'}`, conv.kind === 'channel' ? (conv.visibility === 'private' ? 'Private' : 'Public') : 'Group', conv.description].filter(Boolean).join(' · ');
+      : [
+          spaceName,
+          `${conv.memberCount} member${conv.memberCount === 1 ? '' : 's'}`,
+          conv.kind === 'channel' ? (conv.visibility === 'private' ? 'Private' : conv.postPolicy === 'admins' ? 'Announcements' : 'Public') : 'Group',
+          conv.description,
+        ]
+          .filter(Boolean)
+          .join(' · ');
   const toggle = (p: NonNullable<Panel>['kind']) => setPanel(panel?.kind === p ? null : (p === 'details' ? { kind: 'details' } : { kind: 'search' }));
 
   return (
@@ -137,7 +147,7 @@ function Header({ conv, panel, setPanel }: { conv: ConversationDetail; panel: Pa
       <IconButton label="Details" active={panel?.kind === 'details'} onClick={() => toggle('details')}>
         <Info size={18} />
       </IconButton>
-      {conv.joined && conv.kind !== 'dm' && me && (
+      {conv.joined && canLeave && me && (
         <IconButton label="Leave" onClick={() => removeMember.mutate({ id: conv.id, userId: me.user.id })}>
           <LogOut size={18} />
         </IconButton>
@@ -248,7 +258,7 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
     const mine = [...messages].reverse().find((m) => m.sender?.id === meId && m.kind === 'text' && !m.deletedAt && !m.id.startsWith('tmp-'));
     if (mine) setEditing(mine.id);
   };
-  const canModerate = conv.kind !== 'dm' && conv.role !== 'member';
+  const canModerate = conv.perms.moderate;
 
   return (
     <>
@@ -257,9 +267,9 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
         onScroll={onScroll}
         className="relative min-h-0 flex-1 overflow-y-auto pb-2"
         data-testid="timeline"
-        onDragOver={(e) => conv.joined && e.dataTransfer.types.includes('Files') && e.preventDefault()}
+        onDragOver={(e) => conv.perms.attach && e.dataTransfer.types.includes('Files') && e.preventDefault()}
         onDrop={(e) => {
-          if (!conv.joined || !e.dataTransfer.files.length) return;
+          if (!conv.perms.attach || !e.dataTransfer.files.length) return;
           e.preventDefault();
           composer.current?.addFiles([...e.dataTransfer.files]);
         }}
@@ -303,6 +313,8 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
                   candidates={candidates}
                   grouped={grouped && !isNew}
                   canModerate={canModerate}
+                  canReact={conv.perms.react}
+                  canPin={conv.kind !== 'channel' || conv.perms.moderate}
                   editing={editing === m.id}
                   setEditing={(v) => setEditing(v ? m.id : null)}
                   onOpenThread={onOpenThread}
@@ -340,10 +352,11 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
       )}
       <TypingLine names={typing} />
       <div className="px-5 pb-4">
-        {conv.joined ? (
+        {conv.joined && conv.perms.post ? (
           <Composer
             ref={composer}
-            allowFiles
+            allowFiles={conv.perms.attach}
+            conversationId={conv.id}
             key={conv.id}
             placeholder={`Message ${conv.kind === 'dm' ? conv.title : conv.kind === 'channel' ? `#${conv.title}` : conv.title}`}
             people={people}
@@ -353,17 +366,12 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
             autoFocus
             onSubmit={(body, files, { uploadsOnly }) => {
               atBottom.current = true;
-              return send({ body, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'viewer' as const } : {}) });
+              return send({ body, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'none' as const } : {}) });
             }}
           />
         ) : (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-canvas px-4 py-3" data-testid="join-banner">
-            <span className="text-[13px] text-ink-2">
-              You are viewing <span className="font-semibold">#{conv.title}</span>. Join to send messages.
-            </span>
-            <Button variant="primary" onClick={() => join.mutate(conv.id)} loading={join.isPending}>
-              Join channel
-            </Button>
+          <div className="rounded-xl border border-line bg-canvas px-4 py-3 text-[13px] text-muted" data-testid="read-only-banner">
+            {conv.postPolicy === 'admins' && conv.perms.react ? 'Only admins post in this announcement channel — you can read and react.' : 'You can read this channel. Your role in the space does not let you send messages here.'}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChannelListing, ChatAttachment, ChatFile, ChatMessage, ConversationDetail, ConversationSummary, RealtimeEvent, Resource, UserSummary } from '@workos/shared';
+import type { ChannelCategory, ChatAttachment, ChatFile, ChatMessage, ConversationDetail, ConversationSummary, RealtimeEvent, Resource, UserSummary } from '@workos/shared';
 import { type InfiniteData, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api, ApiError, uploadFile } from './api';
@@ -14,7 +14,7 @@ export const chatKeys = {
   one: (id: string) => ['chat', 'conversation', id] as const,
   messages: (id: string) => ['chat', 'messages', id] as const,
   thread: (mid: string) => ['chat', 'thread', mid] as const,
-  channels: (q: string) => ['chat', 'channels', q] as const,
+  categories: (spaceId: string) => ['chat', 'categories', spaceId] as const,
   files: (id: string) => ['chat', 'files', id] as const,
   pins: (id: string) => ['chat', 'pins', id] as const,
 };
@@ -24,8 +24,8 @@ export const chatKeys = {
 export const useConversations = () => useQuery({ queryKey: chatKeys.list, queryFn: () => api<ConversationSummary[]>('/chat/conversations'), staleTime: 30_000 });
 export const useConversation = (id?: string | null) =>
   useQuery({ queryKey: chatKeys.one(id ?? ''), queryFn: () => api<ConversationDetail>(`/chat/conversations/${id}`), enabled: !!id, retry: false });
-export const useChannels = (q: string, enabled = true) =>
-  useQuery({ queryKey: chatKeys.channels(q), queryFn: () => api<ChannelListing[]>(`/chat/channels?q=${encodeURIComponent(q)}`), enabled });
+export const useCategories = (spaceId?: string | null) =>
+  useQuery({ queryKey: chatKeys.categories(spaceId ?? ''), queryFn: () => api<ChannelCategory[]>(`/chat/spaces/${spaceId}/categories`), enabled: !!spaceId, staleTime: 60_000 });
 
 export const useMessages = (id: string) =>
   useInfiniteQuery({
@@ -117,7 +117,11 @@ export function applyChatEvent(qc: QueryClient, e: RealtimeEvent, me: string) {
       void qc.invalidateQueries({ queryKey: chatKeys.one(e.conversationId) });
       // System messages (joined, renamed…) were written with the change.
       void qc.invalidateQueries({ queryKey: chatKeys.messages(e.conversationId) });
-      void qc.invalidateQueries({ queryKey: ['chat', 'channels'] });
+      break;
+    }
+    case 'chat.categories': {
+      void qc.invalidateQueries({ queryKey: chatKeys.categories(e.spaceId) });
+      void qc.invalidateQueries({ queryKey: chatKeys.list });
       break;
     }
   }
@@ -147,18 +151,24 @@ export function useChatActions() {
   const refreshList = () => qc.invalidateQueries({ queryKey: chatKeys.list });
   return {
     create: useMutation({
-      mutationFn: (input: { kind: 'dm'; userId: string } | { kind: 'group'; name?: string | null; memberIds: string[] } | { kind: 'channel'; name: string; description?: string | null; visibility: 'public' | 'private'; memberIds: string[]; spaceId?: string | null }) =>
+      mutationFn: (input: { kind: 'dm'; userId: string } | { kind: 'group'; name?: string | null; memberIds: string[] } | { kind: 'channel'; name: string; description?: string | null; visibility: 'public' | 'private'; memberIds: string[]; spaceId: string; categoryId?: string | null; postPolicy?: 'all' | 'admins' }) =>
         api<{ id: string; created: boolean }>('/chat/conversations', { method: 'POST', json: input }),
       onSuccess: refreshList,
       onError,
     }),
     update: useMutation({
-      mutationFn: ({ id, ...input }: { id: string; name?: string | null; description?: string | null; visibility?: 'public' | 'private' }) => api(`/chat/conversations/${id}`, { method: 'PATCH', json: input }),
+      mutationFn: ({ id, ...input }: { id: string; name?: string | null; description?: string | null; visibility?: 'public' | 'private'; postPolicy?: 'all' | 'admins'; categoryId?: string | null }) =>
+        api(`/chat/conversations/${id}`, { method: 'PATCH', json: input }),
       onError,
     }),
     addMembers: useMutation({ mutationFn: ({ id, userIds }: { id: string; userIds: string[] }) => api<{ added: number }>(`/chat/conversations/${id}/members`, { method: 'POST', json: { userIds } }), onError }),
     removeMember: useMutation({ mutationFn: ({ id, userId }: { id: string; userId: string }) => api(`/chat/conversations/${id}/members/${userId}`, { method: 'DELETE' }), onSuccess: refreshList, onError }),
     setRole: useMutation({ mutationFn: ({ id, userId, role }: { id: string; userId: string; role: 'admin' | 'member' }) => api(`/chat/conversations/${id}/members/${userId}/role`, { method: 'PUT', json: { role } }), onError }),
+    createCategory: useMutation({
+      mutationFn: ({ spaceId, name }: { spaceId: string; name: string }) => api<ChannelCategory>(`/chat/spaces/${spaceId}/categories`, { method: 'POST', json: { name } }),
+      onSuccess: (c) => qc.invalidateQueries({ queryKey: chatKeys.categories(c.spaceId) }),
+      onError,
+    }),
     join: useMutation({ mutationFn: (id: string) => api(`/chat/conversations/${id}/join`, { method: 'POST' }), onSuccess: refreshList, onError }),
     prefs: useMutation({
       mutationFn: ({ id, ...input }: { id: string; pinned?: boolean; muted?: boolean }) => api(`/chat/conversations/${id}/prefs`, { method: 'PUT', json: input }),
@@ -177,11 +187,11 @@ export function useChatActions() {
   };
 }
 
-export type SendInput = { body: string; threadRootId?: string | null; resourceIds?: string[]; grant?: 'viewer' | 'commenter' | 'editor' | 'none'; preview?: ChatAttachment[] };
+export type SendInput = { body: string; threadRootId?: string | null; resourceIds?: string[]; grant?: 'none'; preview?: ChatAttachment[] };
 
-/** Uploads files from the computer into the sender's "Chat files" folder; returns the new resources. */
-export async function uploadForChat(files: File[]) {
-  const { id: parentId } = await api<{ id: string }>('/chat/upload-folder', { method: 'POST' });
+/** Uploads files into the conversation's own folder (in its space for channels, §68); returns the new resources. */
+export async function uploadForChat(conversationId: string, files: File[]) {
+  const { id: parentId } = await api<{ id: string }>(`/chat/conversations/${conversationId}/upload-folder`, { method: 'POST' });
   const out: Resource[] = [];
   for (const file of files) {
     const fd = new FormData();

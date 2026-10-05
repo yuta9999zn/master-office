@@ -104,33 +104,23 @@ export function ResourcePickerDialog({ open, onOpenChange, onPick }: { open: boo
   );
 }
 
-const ROLES = [
-  { id: 'viewer', label: 'Viewer' },
-  { id: 'commenter', label: 'Commenter' },
-  { id: 'editor', label: 'Editor' },
-] as const;
-
-function AccessDialog({ problem, onAnswer }: { problem: ChatAccessProblem | null; onAnswer: (grant: 'viewer' | 'commenter' | 'editor' | 'none' | null) => void }) {
-  const [role, setRole] = useState<'viewer' | 'commenter' | 'editor'>('viewer');
-  const canShare = !!problem?.missing.every((m) => m.canShare);
+function AccessDialog({ problem, onAnswer }: { problem: ChatAccessProblem | null; onAnswer: (send: boolean) => void }) {
   const people = (users: Pick<UserSummary, 'id' | 'name'>[]) => (users.length <= 3 ? users.map((u) => u.name).join(', ') : `${users.slice(0, 2).map((u) => u.name).join(', ')} and ${users.length - 2} others`);
   return (
     <Dialog
       open={!!problem}
-      onOpenChange={(v) => !v && onAnswer(null)}
-      title="Share before sending?"
-      description="Some people in this conversation can’t open what you’re sending."
+      onOpenChange={(v) => !v && onAnswer(false)}
+      title="Some people can’t open this"
+      description="Chat never shares files: people open them with their own access. Those without it will see a locked card."
       width={480}
       footer={
         <>
-          <Button variant="ghost" onClick={() => onAnswer('none')} data-testid="send-anyway">
-            Send without sharing
+          <Button variant="ghost" onClick={() => onAnswer(false)}>
+            Cancel
           </Button>
-          {canShare && (
-            <Button variant="primary" onClick={() => onAnswer(role)} data-testid="share-and-send">
-              Share and send
-            </Button>
-          )}
+          <Button variant="primary" onClick={() => onAnswer(true)} data-testid="send-anyway">
+            Send anyway
+          </Button>
         </>
       }
     >
@@ -139,30 +129,17 @@ function AccessDialog({ problem, onAnswer }: { problem: ChatAccessProblem | null
           <li key={m.resourceId} className="rounded-lg border border-line px-3 py-2 text-[13px]">
             <div className="font-medium text-ink">{m.name}</div>
             <div className="text-muted">No access: {people(m.users)}</div>
-            {!m.canShare && <div className="mt-0.5 text-[12px] text-amber-700">You can’t share this file — ask its owner.</div>}
           </li>
         ))}
       </ul>
-      {canShare && (
-        <label className="mt-3 flex items-center gap-2 text-[13px] text-ink-2">
-          Give them
-          <select value={role} onChange={(e) => setRole(e.target.value as typeof role)} className="h-8 rounded-md border border-line-strong bg-surface px-2" aria-label="Access to give">
-            {ROLES.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          access
-        </label>
-      )}
+      <p className="mt-3 text-[12px] text-muted">To give them access, share the file from Drive — or upload a copy here so it lives in this conversation’s folder.</p>
     </Dialog>
   );
 }
 
 /**
- * Sending with the "share before sending?" question of docs/ARCHITECTURE.md §6.4: a 409 opens the dialog and the
- * answer re-sends with `grant`. Uploaded files are shared with viewers right away (the sender uploaded them to share).
+ * Sending with the heads-up of §68: a 409 says who will see a file locked; "Send anyway" re-sends with grant 'none'.
+ * Chat itself never grants access to files.
  */
 export function useSendFlow(conversationId: string, me: UserSummary | undefined) {
   const send = useSendMessage(conversationId, me);
@@ -178,10 +155,10 @@ export function useSendFlow(conversationId: string, me: UserSummary | undefined)
   const dialog = (
     <AccessDialog
       problem={pending?.problem ?? null}
-      onAnswer={(grant) => {
+      onAnswer={(ok) => {
         const p = pending;
         setPending(null);
-        if (p && grant) void run({ ...p.input, grant });
+        if (p && ok) void run({ ...p.input, grant: 'none' });
       }}
     />
   );

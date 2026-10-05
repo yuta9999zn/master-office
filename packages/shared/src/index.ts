@@ -324,7 +324,7 @@ export interface ChatMessage {
 export interface ChatAccessProblem {
   code: 'needs_access';
   message: string;
-  missing: { resourceId: string; name: string; canShare: boolean; users: Pick<UserSummary, 'id' | 'name'>[] }[];
+  missing: { resourceId: string; name: string; users: Pick<UserSummary, 'id' | 'name'>[] }[];
 }
 
 /** A file shared in a conversation (Files tab). */
@@ -335,6 +335,27 @@ export interface ChatFile {
   file: ChatAttachment;
 }
 
+/**
+ * What the viewer may do in a conversation (§68). In channels it follows the role in the space, like Discord roles:
+ * viewer reads, commenter writes and reacts, editor also attaches files, admin / owner moderate and manage.
+ */
+export interface ChatPerms {
+  post: boolean;
+  attach: boolean;
+  react: boolean;
+  /** Delete others' messages. */
+  moderate: boolean;
+  /** Rename, change settings and members. */
+  manage: boolean;
+}
+
+export interface ChannelCategory {
+  id: string;
+  spaceId: string;
+  name: string;
+  position: number;
+}
+
 export interface ConversationSummary {
   id: string;
   kind: ConversationKind;
@@ -343,7 +364,13 @@ export interface ConversationSummary {
   description: string | null;
   visibility: 'public' | 'private';
   color: string | null;
+  /** The space (server) of a channel; null for direct and group messages. */
   spaceId: string | null;
+  categoryId: string | null;
+  position: number;
+  /** 'admins' = announcement channel. */
+  postPolicy: 'all' | 'admins';
+  perms: ChatPerms;
   /** The other person of a DM. */
   peer: UserSummary | null;
   /** A few members for the avatar of groups. */
@@ -391,6 +418,7 @@ export type RealtimeEvent =
   | { type: 'chat.read'; conversationId: string; userId: string; seq: number }
   | { type: 'chat.typing'; conversationId: string; user: Pick<UserSummary, 'id' | 'name'>; threadRootId: string | null }
   | { type: 'chat.conversation'; conversationId: string; removed?: boolean }
+  | { type: 'chat.categories'; spaceId: string }
   | { type: 'presence'; online: string[] }
   | { type: 'notification'; notification: AppNotification }
   | { type: 'notification.read'; ids: string[] | 'all' };
