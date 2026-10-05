@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -11,7 +11,13 @@ const submitBody = z.object({
   answers: z.record(z.string().max(64), z.unknown()),
   email: z.string().max(320).nullish(),
   editToken: z.string().max(64).nullish(),
+  sendCopy: z.boolean().optional(),
 });
+const gradesBody = z.object({
+  grades: z.record(z.string().max(64), z.object({ points: z.number().finite().nullish(), feedback: z.string().max(5000).optional() })),
+});
+const releaseBody = z.object({ ids: z.union([z.literal('all'), z.array(z.string().uuid()).max(5000)]) });
+const notifyBody = z.object({ on: z.boolean() });
 const deleteBody = z.object({ ids: z.union([z.literal('all'), z.array(z.string().uuid()).max(5000)]) });
 
 @Controller('forms')
@@ -32,7 +38,13 @@ export class FormsController {
   @Post(':id/responses')
   submit(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     const input = parse(submitBody, b);
-    return this.forms.submit(req.actor, id, { answers: input.answers as never, email: input.email, editToken: input.editToken });
+    return this.forms.submit(req.actor, id, { answers: input.answers as never, email: input.email, editToken: input.editToken, sendCopy: input.sendCopy });
+  }
+
+  /** "View score" — the respondent's own response token is the credential. */
+  @Get(':id/public/result')
+  result(@Param('id', ParseUUIDPipe) id: string, @Query('token') token = '') {
+    return this.forms.result(id, token.slice(0, 64));
   }
 
   @Post(':id/uploads')
@@ -65,6 +77,36 @@ export class FormsController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', contentDisposition(f.name, 'attachment'));
     res.send(f.body);
+  }
+
+  @Patch(':id/responses/:rid/grades')
+  grade(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Param('rid', ParseUUIDPipe) rid: string, @Body() b: unknown) {
+    return this.forms.grade(a, id, rid, parse(gradesBody, b).grades as never);
+  }
+
+  @Post(':id/release')
+  release(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.forms.release(a, id, parse(releaseBody, b).ids);
+  }
+
+  @Get(':id/notifications')
+  notifications(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.forms.subscription(a, id);
+  }
+
+  @Put(':id/notifications')
+  setNotifications(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.forms.setSubscription(a, id, parse(notifyBody, b).on);
+  }
+
+  @Get(':id/outbox')
+  outbox(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.forms.outbox(a, id);
+  }
+
+  @Get(':id/definition')
+  definition(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.forms.definition(a, id);
   }
 
   @Post(':id/sheet')

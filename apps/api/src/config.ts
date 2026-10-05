@@ -15,6 +15,11 @@ export const config = {
     secretAccessKey: process.env.S3_SECRET_KEY ?? 'workos-secret',
     bucket: process.env.S3_BUCKET ?? 'workos',
   },
+  // Outgoing e-mail (§62): e.g. smtp://localhost:1025 for Mailpit. Unset → mail is only recorded in mail_outbox.
+  mail: {
+    smtpUrl: process.env.SMTP_URL || null,
+    from: process.env.MAIL_FROM ?? 'Master Office <no-reply@master-office.local>',
+  },
   maxUploadBytes: 200 * 1024 * 1024,
   collab: {
     port: Number(process.env.COLLAB_PORT ?? 4001),

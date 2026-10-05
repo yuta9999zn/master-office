@@ -552,7 +552,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Câu trả lời ↔ Sheets | "Link to Sheets" tạo bảng tính cạnh form, ghi header (Timestamp, Email, Score, mỗi câu / mỗi dòng lưới) + mọi câu trả lời; câu trả lời mới được **nối dòng realtime** (transaction Yjs trên sheet, người ghi là người trả lời hoặc chủ form). CSV UTF-8 BOM cùng cột. Tab Responses: tóm tắt (thanh %, histogram, bảng lưới, danh sách chữ, file), theo câu, từng người (xoá), điểm trung bình; cập nhật live qua stateless message. |
 | Phát hành | Trang `/f/:id` ngoài app shell, theme (màu, nền, font, ảnh header), thanh tiến độ, xáo trộn câu/lựa chọn, nháp lưu trên máy, link điền sẵn `?entry.<id>=…`, mã nhúng iframe, xem tóm tắt (nếu bật). |
 | Sửa lỗi kèm theo | `DocStore.save` chỉ ghi `updated_by`/activity khi người sửa là UUID thật — trước đó một lần ghi hệ thống làm lưu thất bại (dữ liệu chỉ còn trong RAM). |
-| Giới hạn | Chưa có QR code, nhập câu hỏi từ form khác, thông báo email khi có câu trả lời (chờ module Mail), chấm điểm tay câu tự luận, "chỉ 1 câu trả lời" cho form công khai (cần đăng nhập). |
+| Giới hạn | "Chỉ 1 câu trả lời" cho form công khai (cần đăng nhập). QR, nhập câu hỏi, e-mail thông báo và chấm tay: §61–§63. |
 | Test | `apps/api/test/forms.mjs` (38 kiểm tra) + `apps/web/e2e/forms-flow.mjs` (9 bước: 2 người soạn, đổi loại, lựa chọn, bắt buộc, trả lời có lỗi → rẽ nhánh → gửi, Responses live, quiz, đóng form, Send, viewer). |
 
 
@@ -923,3 +923,35 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Xuất | HTML / PDF: chèn HTML của slide, co bằng `zoom` vào ~600 px; DOCX: chụp PNG trong Chromium (`drawing:<n>`, giống biểu đồ). |
 | Giới hạn | Chưa chèn ảnh vào hình vẽ; chưa có drawing dùng chung giữa tài liệu (Google Drawings riêng). |
 | Test | `docs-format-flow.mjs` (+2): heart + scribble + hộp chữ → lưu → xem trước có hình và chữ; mở lại có 3 phần tử, xoá hộp chữ → lưu → còn hình; DOCX có ảnh PNG, HTML có `<figure class="drawing">` với SVG. |
+
+## 61. Phase 8.1 — Forms: QR code & nhập câu hỏi từ form khác: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| QR | Send → **QR code** của link trả lời: thư viện `qrcode` vẽ SVG ngay trong trình duyệt (mức sửa lỗi M), **Download PNG** 1024 px cho poster / slide. Không cần server. |
+| Nhập câu hỏi | Nút **Import questions** trên thanh công cụ nổi → chọn form (gần đây hoặc tìm kiếm, chỉ form mình mở được) → tick mục cần lấy (mặc định mọi mục trừ section) → chèn sau mục đang chọn, **một bước undo**. Định nghĩa đọc qua `GET /forms/:id/definition` (quyền **viewer** — cùng điều kiện với việc đồng bộ Y.Doc của form, nên kèm đáp án quiz như Google). |
+| Nhân bản | `importItems` (form-model): id mới cho mục và lựa chọn; rẽ nhánh tới section được nhập theo section mới, tới section không nhập → "section kế tiếp"; `submit` giữ nguyên. Đáp án, điểm, validation đi kèm. |
+| Test | `forms.mjs` (+2): definition có đáp án cho người mở được form, 404 cho người không mở được. |
+
+## 62. Phase 8.1 — Forms: e-mail thông báo & bản sao cho người trả lời: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Hạ tầng mail | `MailService` (module chung, tiền thân của module Mail): mọi thư **ghi vào `mail_outbox`** trước (kind, to, subject, text, html, resource, status), rồi gửi SMTP nếu có `SMTP_URL` (`nodemailer`); không có thì chỉ ghi (`logged`). Gửi lỗi → `failed` + lỗi, **không bao giờ** làm hỏng thao tác gốc (gửi sau khi câu trả lời đã lưu, `void`). Dev: `docker compose --profile mail up -d` → Mailpit (SMTP :1025, hộp thư :8025). Thư HTML theo màu theme của form + bản text. |
+| Thông báo câu trả lời mới | Theo **từng người** như Google ("Get email notifications for new responses"): bảng `form_subscriptions (form, user)`, nút chuông trong tab Responses. Mỗi câu trả lời mới → một thư cho mỗi người đăng ký **còn quyền editor** (kiểm lại lúc gửi): ai trả lời, tổng số câu trả lời, điểm, từng câu, nút "View responses" (`/forms/:id?tab=responses`). `settings.notify` cũ bỏ không dùng. |
+| Bản sao cho người trả lời | Setting **Send responders a copy**: Off / When requested (ô "Send me a copy of my responses" ở trang cuối) / Always — cần thu thập email (verified hoặc tự nhập). Thư có mọi câu trả lời, điểm chỉ khi người trả lời được phép thấy (release ngay hoặc đã release), link sửa nếu cho sửa. Sửa câu trả lời cũng gửi lại bản sao. |
+| Outbox | `GET /forms/:id/outbox` (editor): 50 thư gần nhất của form — để kiểm tra / hỗ trợ, và là dữ liệu module Mail sẽ hiển thị. |
+| Giới hạn | Chưa có hàng đợi / thử lại cho thư lỗi; chưa gom thư (digest) khi form nhận rất nhiều câu trả lời; link trong thư dùng `WEB_ORIGIN`. |
+| Test | `forms.mjs` (+5): đăng ký (editor được, respondent không), thư cho người đăng ký, bản sao khi yêu cầu, outbox chỉ cho editor, tắt thông báo thì không gửi nữa. |
+
+## 63. Phase 8.1 — Forms: chấm điểm tay & công bố điểm: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Lưu | `form_responses.grades jsonb {itemId: {points?, feedback?}}` + `released_at`. Điểm tổng vẫn lưu ở `score` (CSV / Sheets / trung bình dùng như cũ), tính lại mỗi lần chấm bằng `scoreOf(form, answers, grades)`. |
+| Quy tắc điểm | `pointsFor`: điểm người chấm (0…điểm tối đa) **ghi đè** đáp án tự động; để trống = đáp án quyết định; câu có điểm mà không có đáp án (tự luận) = 0 cho tới khi chấm (`ungraded` → "Needs grading", "N responses to grade"). Sửa câu trả lời: giữ điểm chấm tay của câu **không đổi**, bỏ của câu đã đổi. |
+| Giao diện | Tab Responses → Individual: mỗi câu có điểm một ô "x / max" (placeholder = điểm tự động, ô vàng khi cần chấm) + phản hồi; lưu khi rời ô (`PATCH /forms/:id/responses/:rid/grades`), cập nhật live cho người khác qua stateless `responses`. Viền xanh/đỏ theo điểm chấm. |
+| Công bố | Release score = **Later**: nút "Release scores (N)" (tất cả chưa công bố) và "Release score" từng người (`POST /forms/:id/release`) → đặt `released_at`, gửi thư "Your score" có link **View score**; công bố lại không gửi trùng. |
+| View score | `/f/:id?result=<token>` (token riêng của câu trả lời — người có link là người trả lời): trước khi công bố chỉ báo "chưa công bố" (không lộ gì); sau đó: tổng điểm, điểm từng câu, phản hồi của người chấm (hoặc phản hồi đúng/sai soạn sẵn), đáp án đúng nếu bật "Respondents can see correct answers". Biên nhận sau khi gửi có link "View score" khi điểm chưa hiện ngay. Form gửi kèm vẫn qua `publicForm` (không đáp án). |
+| Giới hạn | Chưa chấm theo câu (Question view) hàng loạt; điểm mới không cập nhật ngược vào dòng đã ghi trong bảng tính liên kết; chưa có phản hồi chung cho cả bài. |
+| Test | `forms.mjs` (+14): tự luận 0 điểm tới khi chấm, chấm + phản hồi, ghi đè và xoá ghi đè, vượt tối đa / câu không điểm / respondent bị từ chối, release + thư, release lần hai = 0, View score trước/sau công bố, không lộ đáp án, sửa câu trả lời giữ điểm chấm. |

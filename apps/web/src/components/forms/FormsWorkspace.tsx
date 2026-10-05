@@ -3,7 +3,8 @@
 import { THEME_COLORS, type ItemType } from '@workos/form-model';
 import type { ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
-import { AlertTriangle, Copy, Eye, FileText, GripHorizontal, History, Image as ImageIcon, Link2, ListOrdered, Palette, PlusCircle, Rows3, Send, Type, Video, X } from 'lucide-react';
+import { AlertTriangle, Copy, Eye, FileText, GripHorizontal, History, Image as ImageIcon, Import, Link2, ListOrdered, Palette, PlusCircle, QrCode, Rows3, Send, Type, Video, X } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { Popover } from 'radix-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -14,6 +15,7 @@ import { HistoryPanel } from '../docs/HistoryPanel';
 import { useCollab } from '../docs/useCollab';
 import { TitleBar } from '../editor/TitleBar';
 import { Button, cn, Dialog, EmptyState, IconButton, Skeleton, Tip } from '../ui/primitives';
+import { FormQrCode, ImportQuestionsDialog } from './FormDialogs';
 import { FormStore, useForm } from './form-store';
 import { QuestionCard } from './QuestionCard';
 import { ResponsesTab, type FormResponseRow } from './ResponsesTab';
@@ -29,7 +31,9 @@ export function FormsWorkspace({ r }: { r: ResourceDetail }) {
   useEffect(() => () => store?.destroy(), [store]);
   const form = useForm(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
-  const [tab, setTab] = useState<'questions' | 'responses' | 'settings'>('questions');
+  const initialTab = useSearchParams().get('tab');
+  const [tab, setTab] = useState<'questions' | 'responses' | 'settings'>(initialTab === 'responses' || initialTab === 'settings' ? initialTab : 'questions');
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<string | null>('__header');
   const [share, setShare] = useState(false);
   const [send, setSend] = useState(false);
@@ -172,6 +176,7 @@ export function FormsWorkspace({ r }: { r: ResourceDetail }) {
                   void loadResponses();
                 }}
                 linking={linking}
+                onChanged={() => void loadResponses()}
                 onLinkSheet={async () => {
                   setLinking(true);
                   try {
@@ -282,6 +287,11 @@ export function FormsWorkspace({ r }: { r: ResourceDetail }) {
                       </button>
                     </Tip>
                   ))}
+                  <Tip label="Import questions" side="right">
+                    <button onClick={() => setImporting(true)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100" aria-label="Import questions" data-testid="import-questions">
+                      <Import size={20} />
+                    </button>
+                  </Tip>
                 </div>
               )}
             </div>
@@ -305,6 +315,21 @@ export function FormsWorkspace({ r }: { r: ResourceDetail }) {
       </div>
 
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
+      <ImportQuestionsDialog
+        open={importing}
+        formId={r.id}
+        onClose={() => setImporting(false)}
+        onImport={(src) => {
+          if (!store || !form) return;
+          const after = selected && selected !== '__header' ? selected : form.items[form.items.length - 1]?.id ?? null;
+          const ids = store.importItems(src, after);
+          toast.success(`Imported ${ids.length} item${ids.length === 1 ? '' : 's'}`);
+          if (ids.length) {
+            setSelected(ids[ids.length - 1]);
+            setTimeout(() => cardRefs.current.get(ids[0])?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+          }
+        }}
+      />
       <Dialog open={send} onOpenChange={setSend} title="Send form" description={form?.settings.access === 'public' ? 'Anyone with the link can respond' : 'People in your workspace with the link can respond'} width={540}>
         <div className="space-y-4">
           <div>
@@ -323,6 +348,12 @@ export function FormsWorkspace({ r }: { r: ResourceDetail }) {
               <FileText size={14} /> Embed HTML
             </div>
             <textarea readOnly rows={2} value={`<iframe src="${respondUrl}" width="640" height="800" frameborder="0">Loading…</iframe>`} className="input resize-none py-2 font-mono text-[12px]" onFocus={(e) => e.target.select()} aria-label="Embed HTML" />
+          </div>
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-ink">
+              <QrCode size={14} /> QR code
+            </div>
+            <FormQrCode url={respondUrl} title={form?.title ?? r.name} color={color} />
           </div>
           <p className="text-[12px] text-muted">
             <ListOrdered size={12} className="mr-1 inline" />

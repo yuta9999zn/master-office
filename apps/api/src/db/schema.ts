@@ -283,6 +283,9 @@ export const formResponses = pgTable(
     email: text('email'),
     answers: jsonb('answers').$type<Record<string, unknown>>().notNull(),
     score: jsonb('score').$type<{ points: number; max: number } | null>(),
+    // Manual grading (§63): per-question points/feedback, and when the score was released to the respondent.
+    grades: jsonb('grades').$type<Record<string, { points?: number | null; feedback?: string }>>().notNull().default({}),
+    releasedAt: ts('released_at'),
     editToken: text('edit_token').notNull(),
     submittedAt: ts('submitted_at').notNull().default(sql`now()`),
     updatedAt: ts('updated_at').notNull().default(sql`now()`),
@@ -398,4 +401,41 @@ export const qaVotes = pgTable(
     voter: text('voter').notNull(),
   },
   (t) => [primaryKey({ columns: [t.questionId, t.voter] })],
+);
+
+/** Editors who get an e-mail for every new response to a form (Google: "Get email notifications for new responses"). */
+export const formSubscriptions = pgTable(
+  'form_subscriptions',
+  {
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.formId, t.userId] })],
+);
+
+/**
+ * Every e-mail the system sends (§62). Delivered over SMTP when SMTP_URL is set, otherwise only recorded
+ * (status 'logged') — the outbox is also what the future Mail module shows as system mail.
+ */
+export const mailOutbox = pgTable(
+  'mail_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').notNull(),
+    to: text('to').notNull(),
+    subject: text('subject').notNull(),
+    text: text('text').notNull(),
+    html: text('html'),
+    resourceId: uuid('resource_id').references(() => resources.id, { onDelete: 'set null' }),
+    status: text('status').notNull().default('queued'),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    sentAt: ts('sent_at'),
+  },
+  (t) => [index('mail_outbox_resource_idx').on(t.resourceId, t.createdAt)],
 );

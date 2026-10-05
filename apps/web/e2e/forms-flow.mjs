@@ -119,6 +119,62 @@ await step('the Send dialog gives the responder link', mika, async () => {
   await mika.keyboard.press('Escape');
 });
 
+// ── Forms 8.1 (§61–§63) ─────────────────────────────────────────────────────
+const quiz = await (await mika.request.post(`${BASE}/api/resources`, { data: { name: `Grading quiz ${Date.now()}`, type: 'form' } })).json();
+
+await step('import questions from another form', mika, async () => {
+  await mika.goto(`${BASE}/forms/${quiz.id}`);
+  await mika.getByTestId('form-title').waitFor({ timeout: 60000 });
+  const before = await mika.locator('[data-testid="form-toolbar"]').count();
+  if (!before) throw new Error('no toolbar');
+  await mika.getByTestId('import-questions').click();
+  await mika.getByLabel('Search forms').fill('Customer Satisfaction Survey');
+  await mika.getByTestId('import-form-list').getByRole('button', { name: 'Customer Satisfaction Survey', exact: true }).click();
+  await mika.getByTestId('import-items').waitFor();
+  await mika.getByTestId('import-confirm').click();
+  await until(mika, () => document.body.innerText.includes('Which branch did you visit?') && document.body.innerText.includes('Rate each part of your visit'));
+});
+
+await step('Send shows a QR code of the responder link', mika, async () => {
+  await mika.getByTestId('form-send').click();
+  await mika.locator('[data-testid="form-qr"] svg').waitFor();
+  await mika.keyboard.press('Escape');
+});
+
+let resultToken = null;
+await step('manual grading in Individual view and releasing the score', mika, async () => {
+  await mika.getByTestId('tab-settings').click();
+  await mika.getByRole('switch', { name: 'Make this a quiz' }).click();
+  await mika.getByLabel('Release score').selectOption('later');
+  await mika.getByTestId('tab-questions').click();
+  await mika.getByText('Untitled question').first().click();
+  await mika.getByLabel('Points').first().fill('3');
+  await mika.waitForTimeout(1500);
+  const def = await (await mika.request.get(`${BASE}/api/forms/${quiz.id}/definition`)).json();
+  const q = def.items[0];
+  const r = await (await claudia.request.post(`${BASE}/api/forms/${quiz.id}/responses`, { data: { answers: { [q.id]: q.options[0].label } } })).json();
+  if (!r.resultToken) throw new Error('no result token: ' + JSON.stringify(r));
+  resultToken = r.resultToken;
+  await mika.getByTestId('tab-responses').click();
+  await mika.getByTestId('to-grade').waitFor();
+  await mika.getByRole('button', { name: 'individual' }).click();
+  await mika.getByTestId('grade-points').first().fill('2');
+  await mika.getByTestId('grade-feedback-toggle').first().click();
+  await mika.getByTestId('grade-feedback').fill('Nearly there');
+  await mika.getByTestId('grade-points').first().focus();
+  await until(mika, () => document.querySelector('[data-testid="individual-score"]')?.textContent?.includes('2 / 3'));
+  await mika.getByTestId('release-one').click();
+  await mika.getByTestId('released-badge').waitFor();
+});
+
+await step('the respondent sees the released score and feedback', claudia, async () => {
+  await claudia.goto(`${BASE}/f/${quiz.id}?result=${resultToken}`);
+  await claudia.getByTestId('result-score').waitFor({ timeout: 30000 });
+  const t = await claudia.getByTestId('result-score').innerText();
+  if (!t.includes('2 / 3')) throw new Error(t);
+  await claudia.getByTestId('result-feedback').getByText('Nearly there').waitFor();
+});
+
 await step('a viewer cannot edit the form', claudia, async () => {
   const sora = await session('sora@kaori.jp');
   await sora.goto(`${BASE}/forms/${survey.id}`);

@@ -2,12 +2,14 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { FormRespond } from '@/components/forms/FormRespond';
+import { FormRespond, FormResult } from '@/components/forms/FormRespond';
 
 /** Respondent page of a form (outside the app shell, like Google Forms' viewform). */
 function Respond() {
   const { id } = useParams<{ id: string }>();
   const q = useSearchParams();
+  const result = q.get('result');
+  if (result) return <FormResult formId={id} token={result} />;
   const prefill: Record<string, string> = {};
   for (const key of new Set(q.keys())) {
     if (key.startsWith('entry.')) prefill[key.slice(6)] = q.getAll(key).join('\u0000');

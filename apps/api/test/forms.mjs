@@ -168,6 +168,65 @@ setSettings(q.doc, { accepting: true, access: 'org', limitOne: false });
 await sleep(800);
 check('org forms accept people of the workspace', (await call('POST', `/forms/${created.id}/responses`, { user: sora, body: { answers: { [q1.id]: 'Pure' } } })).status === 201);
 
+// ── Forms 8.1: import questions, e-mail notifications & copies, manual grading, release (§61–§63) ──────────
+const def = await call('GET', `/forms/${created.id}/definition`, { user: claudia });
+check('the definition (for importing) includes answer keys for people who can open the form', def.status === 200 && def.data.items.length === 3 && def.data.items[0].quiz?.answers?.[0] === 'Pure', def.data);
+check('people who cannot open the form cannot read its definition', (await call('GET', `/forms/${created.id}/definition`, { user: ken })).status === 404);
+
+const sub = await call('PUT', `/forms/${created.id}/notifications`, { user: claudia, body: { on: true } });
+check('editors can turn on e-mail notifications for new responses', sub.status === 200 && sub.data.on === true && (await call('GET', `/forms/${created.id}/notifications`, { user: claudia })).data.on === true, sub.data);
+check('non-editors cannot subscribe', (await call('PUT', `/forms/${created.id}/notifications`, { user: sora, body: { on: true } })).status >= 403);
+
+add(q.doc, { id: 'q4', type: 'paragraph', title: 'Why is sunscreen important?', quiz: { points: 5 } });
+setSettings(q.doc, { releaseScore: 'later', collectEmail: 'input', sendCopy: 'requested' });
+await sleep(1500);
+r = await call('POST', `/forms/${created.id}/responses`, { user: mika, body: { answers: { [q1.id]: 'Pure', q2: 'Hydra Bloom', q4: 'It prevents UV damage.' }, email: 'student@example.com', sendCopy: true } });
+check('with "release later" the receipt has no score but a "view score" token', r.status === 201 && r.data.score === null && typeof r.data.resultToken === 'string', r.data);
+const resultToken = r.data.resultToken;
+const editTok = r.data.editToken;
+const pending = (await call('GET', `/forms/${created.id}/public/result?token=${resultToken}`)).data;
+check('"view score" before release says it is not released (no answers leak)', pending.released === false && pending.questions.length === 0 && pending.score === null, pending);
+check('an unknown result token is refused', (await call('GET', `/forms/${created.id}/public/result?token=nope`)).status === 404);
+await sleep(800);
+let box = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
+check('a new response e-mails the subscribed editor', box.some((m) => m.kind === 'form.response' && m.to === 'claudia@kaori.jp' && m.subject.includes('Product quiz')), box);
+check('the respondent who asked for it gets a copy of their answers', box.some((m) => m.kind === 'form.copy' && m.to === 'student@example.com'), box);
+check('the outbox is only for editors', (await call('GET', `/forms/${created.id}/outbox`, { user: sora })).status >= 403);
+
+let resp = (await call('GET', `/forms/${created.id}/responses`, { user: claudia })).data.find((x) => x.email === 'student@example.com');
+check('an essay without an answer key scores 0 until graded', resp.score?.points === 5 && resp.score?.max === 10 && resp.releasedAt === null, resp);
+let g = await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: claudia, body: { grades: { q4: { points: 4, feedback: 'Good point about UV.' } } } });
+check('manual grading sets points and feedback and re-scores', g.status === 200 && g.data.score.points === 9 && g.data.grades.q4.feedback === 'Good point about UV.', g.data);
+g = await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: claudia, body: { grades: { q2: { points: 1 } } } });
+check('graders can override an automatically marked answer', g.status === 200 && g.data.score.points === 7, g.data);
+g = await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: claudia, body: { grades: { q2: { points: null } } } });
+check('clearing the points goes back to the answer key', g.status === 200 && g.data.score.points === 9 && !('q2' in g.data.grades), g.data);
+check('points above the maximum are refused', (await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: claudia, body: { grades: { q4: { points: 6 } } } })).status === 400);
+check('questions without points cannot be graded', (await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: claudia, body: { grades: { q3: { points: 1 } } } })).status === 400);
+check('respondents cannot grade', (await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: sora, body: { grades: { q4: { points: 5 } } } })).status >= 403);
+
+const rel = await call('POST', `/forms/${created.id}/release`, { user: claudia, body: { ids: 'all' } });
+check('releasing scores marks responses released and e-mails respondents with an address', rel.status === 201 && rel.data.released >= 1 && rel.data.mailed === 1, rel.data);
+check('releasing again does nothing', (await call('POST', `/forms/${created.id}/release`, { user: claudia, body: { ids: 'all' } })).data.released === 0);
+await sleep(500);
+box = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
+check('the score e-mail is recorded', box.some((m) => m.kind === 'form.score' && m.to === 'student@example.com' && m.subject.startsWith('Your score')), box);
+const res = (await call('GET', `/forms/${created.id}/public/result?token=${resultToken}`)).data;
+const rq4 = res.questions?.find((x) => x.id === 'q4');
+const rq1 = res.questions?.find((x) => x.id === q1.id);
+check('after release "view score" shows points, feedback and correct answers', res.released === true && res.score.points === 9 && rq4?.points === 4 && rq4.feedback === 'Good point about UV.' && rq1?.correct === true && rq1.correctAnswers?.[0] === 'Pure', res);
+check('the released result never includes answer keys in the form', res.form.items.every((i) => !i.quiz?.answers), res.form.items.map((i) => i.quiz));
+
+r = await call('POST', `/forms/${created.id}/responses`, { user: mika, body: { answers: { [q1.id]: 'Rose', q2: 'Hydra Bloom', q4: 'It prevents UV damage.' }, email: 'student@example.com', editToken: editTok } });
+check('editing a graded response keeps grades of unchanged answers', r.status === 201 && r.data.score?.points === 7, r.data);
+
+await call('PUT', `/forms/${created.id}/notifications`, { user: claudia, body: { on: false } });
+const before = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data.filter((m) => m.kind === 'form.response').length;
+await call('POST', `/forms/${created.id}/responses`, { user: sora, body: { answers: { [q1.id]: 'Pure' }, email: 'sora@kaori.jp' } });
+await sleep(800);
+const after = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
+check('after turning notifications off no more response e-mails are sent', after.filter((m) => m.kind === 'form.response').length === before && !after.some((m) => m.kind === 'form.copy' && m.to === 'sora@kaori.jp'), after);
+
 // ── Delete, copy, versions ──────────────────────────────────────────────────
 const del = await call('POST', `/forms/${created.id}/responses/delete`, { user: claudia, body: { ids: 'all' } });
 check('editors can delete responses', del.status === 204 && (await call('GET', `/forms/${created.id}/responses`, { user: claudia })).data.length === 0);
@@ -181,10 +240,10 @@ const v1 = (await call('POST', `/resources/${created.id}/versions`, { user: clau
 q.doc.getMap('form').set('title', 'Renamed quiz');
 await sleep(800);
 const vc = (await call('GET', `/resources/${created.id}/versions/${v1.id}/content`, { user: claudia })).data;
-check('version preview returns the form', vc.form?.items?.length === 3);
+check('version preview returns the form', vc.form?.items?.length === 4);
 await call('POST', `/resources/${created.id}/versions/${v1.id}/restore`, { user: claudia });
 await sleep(800);
-check('restore brings back the earlier form for connected editors', q.doc.getMap('form').get('title') !== 'Renamed quiz' && itemsOf(q.doc).length === 3);
+check('restore brings back the earlier form for connected editors', q.doc.getMap('form').get('title') !== 'Renamed quiz' && itemsOf(q.doc).length === 4);
 
 q.provider.destroy();
 a.provider.destroy();

@@ -96,7 +96,8 @@ export interface FormSettings {
   quiz: boolean;
   releaseScore: 'immediately' | 'later';
   showCorrect: boolean;
-  notify: boolean;
+  notify: boolean; // unused: notifications are per person (form_subscriptions, §62)
+  sendCopy: 'off' | 'requested' | 'always'; // e-mail respondents a copy of their answers (§62)
   sheetId: string | null; // linked response spreadsheet
 }
 
@@ -125,6 +126,7 @@ export const DEFAULT_SETTINGS: FormSettings = {
   releaseScore: 'immediately',
   showCorrect: true,
   notify: false,
+  sendCopy: 'off',
   sheetId: null,
 };
 export const THEME_COLORS = ['#4F46E5', '#2563EB', '#0891B2', '#059669', '#65A30D', '#CA8A04', '#EA580C', '#DC2626', '#DB2777', '#7C3AED', '#475569', '#F28B9B'];
@@ -402,14 +404,33 @@ export function isCorrect(it: FormItem, a: Answer | undefined): boolean | null {
   return false;
 }
 
-export function scoreOf(f: PlainForm, answers: Answers): { points: number; max: number } {
+/** Manual grading (§63): points (overriding the answer key) and feedback per question, set by the form's editors. */
+export interface Grade {
+  points?: number | null;
+  feedback?: string;
+}
+export type Grades = Record<string, Grade>;
+
+/** Points a question earns: the grader's points when set, otherwise the answer key (0 when there is none). */
+export function pointsFor(it: FormItem, a: Answer | undefined, grade?: Grade): number {
+  const max = it.quiz?.points ?? 0;
+  if (grade && typeof grade.points === 'number') return Math.max(0, Math.min(max, grade.points));
+  return isCorrect(it, a) ? max : 0;
+}
+
+/** Questions that carry points but cannot be marked automatically (no answer key) and have not been graded yet. */
+export function ungraded(f: PlainForm, answers: Answers, grades: Grades = {}): FormItem[] {
+  return f.items.filter((it) => isQuestion(it.type) && (it.quiz?.points ?? 0) > 0 && !it.quiz?.answers?.length && !isEmpty(answers[it.id]) && typeof grades[it.id]?.points !== 'number');
+}
+
+export function scoreOf(f: PlainForm, answers: Answers, grades: Grades = {}): { points: number; max: number } {
   let points = 0;
   let max = 0;
   for (const it of f.items) {
     const p = it.quiz?.points ?? 0;
     if (!isQuestion(it.type) || !p) continue;
     max += p;
-    if (isCorrect(it, answers[it.id])) points += p;
+    points += pointsFor(it, answers[it.id], grades[it.id]);
   }
   return { points, max };
 }
@@ -417,6 +438,25 @@ export function scoreOf(f: PlainForm, answers: Answers): { points: number; max: 
 /** What respondents may see: no answer keys. */
 export function publicForm(f: PlainForm): PlainForm {
   return { ...f, settings: { ...f.settings, sheetId: null }, items: f.items.map((it) => (it.quiz ? { ...it, quiz: { points: it.quiz.points } } : it)) };
+}
+
+/**
+ * Copies of items imported from another form (§61): fresh ids for items and options; branching to an imported
+ * section follows it, branching to a section that was not imported falls back to "next section".
+ */
+export function importItems(src: FormItem[]): FormItem[] {
+  const ids = new Map(src.map((it) => [it.id, newId()]));
+  const target = (g: GoTo | undefined): GoTo | undefined => (g === undefined ? undefined : g === null || g === 'submit' ? g : ids.get(g) ?? null);
+  return src.map((it) => {
+    const copy: FormItem = { ...structuredClone(it), id: ids.get(it.id)! };
+    if (copy.options) copy.options = copy.options.map((o) => ({ ...o, id: newId(), ...(o.goTo !== undefined ? { goTo: target(o.goTo) } : {}) }));
+    if (copy.after !== undefined) {
+      const t = target(copy.after);
+      if (t) copy.after = t;
+      else delete copy.after;
+    }
+    return copy;
+  });
 }
 
 /** Text of an answer for CSV / Sheets / lists. */

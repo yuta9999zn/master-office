@@ -21,6 +21,7 @@ import { MacroTriggersService } from './sheets/macro-triggers.service';
 import { SlidesService } from './slides/slides.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
+import { MailService } from './mail/mail.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
@@ -46,6 +47,7 @@ import { WorkspaceController } from './users/workspace.controller';
     QaService,
     SlidesService,
     FormsService,
+    MailService,
     DocsService,
     CommentsService,
     ResourcesService,

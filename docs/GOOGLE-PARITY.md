@@ -67,7 +67,7 @@ Ký hiệu: ✅ Master Office đã có · ◐ có một phần · ❌ chưa có 
 | View / Tools | Slideshow, presenter view, speaker notes, grid view, zoom | ✅ |
 | | Motion panel (animations) ✅ · spelling ✅ (§54), publish to web / embed ✅, **Q&A khán giả** ✅ (§55) · dictate notes, linked objects ❌ | ◐ |
 
-## 4. Google Forms → Master Forms — ✅ xong 2026-10-03 (ARCHITECTURE §25); còn thiếu: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay
+## 4. Google Forms → Master Forms — ✅ xong 2026-10-03 (ARCHITECTURE §25); Forms 8.1 (QR, nhập câu hỏi, email thông báo, chấm tay) ✅ 2026-10-05 (§61–§63)
 
 | Khu vực | Tính năng cần có |
 |---|---|
@@ -100,4 +100,4 @@ Spelling & grammar ✅ (Docs) · translate · explore / AI (Phase 6) · chế đ
 | 8 ✅ | **3.3** | Sheets: ⭐ macro triggers + import ✅ (§46) · alternating colors ✅ (§47) · trigger theo lịch & form submit ✅ (§48) · show formulas ✅ (§49) · group rows/columns ✅ (§50) · filter views ✅ (§51) — Sheets 3.3 xong |
 | 9 ✅ | **4.2** | Slides: rotate menu ✅, shape sets ✅ / curve / polyline ✅ (§52), link tới slide ✅, autofit ✅ (§53), spelling trong Slides ✅ (§54), Q&A khán giả ✅ (§55) — Slides 4.2 xong |
 | 10 ✅ | **2.3** | Docs: H5–H6 ✅, small caps ✅, thụt lề ✅, line numbers ✅ (§56), calendar-event / placeholder chip ✅ (§57), citations ✅ (§58), section break & hướng trang theo section ✅ (§59), drawing ✅ (§60) — Docs 2.3 xong |
-| 11 | **8.1** | Forms: QR, nhập câu hỏi từ form khác, email thông báo, chấm tay |
+| 11 ✅ | **8.1** | Forms: QR ✅, nhập câu hỏi từ form khác ✅ (§61), email thông báo + bản sao cho người trả lời ✅ (§62), chấm tay + công bố điểm ✅ (§63) — Forms 8.1 xong |

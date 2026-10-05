@@ -1,7 +1,7 @@
 'use client';
 
-import { isCorrect, isQuestion, nextPage, pagesOf, validateAnswer, type Answer, type Answers, type FileAnswer, type FormItem, type PlainForm } from '@workos/form-model';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { answerText, isCorrect, isQuestion, nextPage, pagesOf, validateAnswer, type Answer, type Answers, type FileAnswer, type FormItem, type PlainForm } from '@workos/form-model';
+import { CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api, API_ORIGIN } from '@/lib/api';
 import { cn } from '../ui/primitives';
@@ -19,6 +19,7 @@ interface Receipt {
   confirmation: string;
   editToken: string | null;
   score: { points: number; max: number } | null;
+  resultToken: string | null;
   showSummary: boolean;
 }
 
@@ -35,6 +36,7 @@ export function FormRespond({ formId, editToken, prefill, summary }: { formId: s
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [sendCopy, setSendCopy] = useState(false);
   const seed = useRef(Math.random().toString(36)).current;
 
   useEffect(() => {
@@ -177,6 +179,11 @@ export function FormRespond({ formId, editToken, prefill, summary }: { formId: s
                 </div>
               )}
               <div className="flex flex-wrap gap-4 pt-1 text-[14px]">
+                {receipt.resultToken && !receipt.score && (
+                  <a href={`/f/${formId}?result=${receipt.resultToken}`} className="underline" style={{ color: theme.color }} data-testid="view-score-link">
+                    View score
+                  </a>
+                )}
                 {receipt.editToken && (
                   <a href={`/f/${formId}?edit=${receipt.editToken}`} className="underline" style={{ color: theme.color }} data-testid="edit-link">
                     Edit your response
@@ -217,7 +224,7 @@ export function FormRespond({ formId, editToken, prefill, summary }: { formId: s
     if (!check()) return;
     setSubmitting(true);
     try {
-      const res = await api<Receipt>(`/forms/${formId}/responses`, { method: 'POST', json: { answers, email: s.collectEmail === 'input' ? email : null, editToken } });
+      const res = await api<Receipt>(`/forms/${formId}/responses`, { method: 'POST', json: { answers, email: s.collectEmail === 'input' ? email : null, editToken, sendCopy } });
       setReceipt(res);
       try {
         localStorage.removeItem(draftKey(formId));
@@ -266,6 +273,18 @@ export function FormRespond({ formId, editToken, prefill, summary }: { formId: s
       {items.map((it) => (
         <ItemBlock key={it.id} it={it} value={answers[it.id]} error={errors[it.id]} color={theme.color} seed={seed} onUpload={upload} onChange={(v) => (setAnswers((a) => ({ ...a, [it.id]: v })), errors[it.id] && setErrors((x) => ({ ...x, [it.id]: '' })))} />
       ))}
+      {next === -1 && s.collectEmail !== 'off' && s.sendCopy !== 'off' && (
+        <div className="px-1 text-[13px] text-slate-700">
+          {s.sendCopy === 'requested' ? (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={sendCopy} onChange={(e) => setSendCopy(e.target.checked)} style={{ accentColor: theme.color }} data-testid="send-copy" />
+              Send me a copy of my responses
+            </label>
+          ) : (
+            <span>A copy of your responses will be emailed to {s.collectEmail === 'verified' ? view.respondent?.email ?? 'your address' : 'the address you provided'}.</span>
+          )}
+        </div>
+      )}
       {errors.__form && <div className="rounded-lg bg-red-50 px-4 py-3 text-[14px] text-red-700">{errors.__form}</div>}
       <div className="flex items-center gap-3 pb-10">
         {history.length > 0 && (
@@ -403,6 +422,66 @@ function SummaryView({ formId, form }: { formId: string; form: PlainForm }) {
               </Card>
             );
           })}
+    </Shell>
+  );
+}
+
+interface QuizResult {
+  form: PlainForm;
+  released: boolean;
+  score: { points: number; max: number } | null;
+  questions: { id: string; answer: Answer; points: number | null; max: number; correct: boolean | null; feedback: string | null; correctAnswers: string[] | null }[];
+}
+
+/** "View score" (§63): the respondent's graded answers, opened from the receipt or the score e-mail (?result=token). */
+export function FormResult({ formId, token }: { formId: string; token: string }) {
+  const [data, setData] = useState<QuizResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    api<QuizResult>(`/forms/${formId}/public/result?token=${encodeURIComponent(token)}`).then(setData, (e) => setErr((e as Error).message));
+  }, [formId, token]);
+  if (err) return <Shell color="#4F46E5" background="#EEF2FF"><Card><p className="text-[14px] text-slate-700">{err}</p></Card></Shell>;
+  if (!data) return <Shell color="#4F46E5" background="#EEF2FF"><Card><Loader2 className="mx-auto animate-spin text-slate-400" /></Card></Shell>;
+  const { form } = data;
+  const theme = form.theme;
+  const byId = new Map(form.items.map((i) => [i.id, i]));
+  return (
+    <Shell color={theme.color} background={theme.background}>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {theme.header && <img src={theme.header} alt="" className="h-40 w-full object-cover" />}
+        <div className="h-2.5" style={{ background: theme.color }} />
+        <div className="px-6 py-5">
+          <h1 className="text-[30px] leading-tight text-slate-900" style={{ fontFamily: theme.font }}>{form.title}</h1>
+          {data.released && data.score ? (
+            <p className="mt-3 text-[22px] font-medium" data-testid="result-score">
+              Total points: {data.score.points} / {data.score.max}
+            </p>
+          ) : (
+            <p className="mt-3 flex items-center gap-2 text-[14px] text-slate-700" data-testid="result-pending">
+              <Clock size={16} /> Your score hasn’t been released yet. You’ll get an e-mail when it is.
+            </p>
+          )}
+        </div>
+      </div>
+      {data.questions.map((q) => {
+        const it = byId.get(q.id);
+        if (!it) return null;
+        return (
+          <div key={q.id} className={cn('rounded-lg border bg-white px-6 py-5 shadow-sm', q.correct === true ? 'border-emerald-300' : q.correct === false ? 'border-red-300' : 'border-slate-200')} data-testid="result-question">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1 text-[15px] text-slate-900">{it.title}</div>
+              {q.points !== null && (
+                <span className={cn('shrink-0 text-[13px] font-medium', q.correct ? 'text-emerald-700' : 'text-red-700')}>
+                  {q.points} / {q.max}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 text-[14px] text-slate-700">{answerText(it, q.answer) || <span className="text-slate-400">(no answer)</span>}</div>
+            {q.correctAnswers && q.correct !== true && <div className="mt-2 rounded bg-emerald-50 px-3 py-1.5 text-[13px] text-emerald-800">Correct answer: {q.correctAnswers.join(', ')}</div>}
+            {q.feedback && <div className="mt-2 rounded bg-slate-50 px-3 py-1.5 text-[13px] text-slate-700" data-testid="result-feedback">Feedback: {q.feedback}</div>}
+          </div>
+        );
+      })}
     </Shell>
   );
 }

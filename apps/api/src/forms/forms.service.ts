@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
+  answerText,
   blankForm,
   FORM_MAP,
+  isCorrect,
   isQuestion,
+  pointsFor,
   pagesOf,
   publicForm,
   readForm,
@@ -14,17 +17,21 @@ import {
   writeForm,
   type Answers,
   type FormSettings,
+  type Grades,
   type PlainForm,
 } from '@workos/form-model';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { can } from '@workos/shared';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as Y from 'yjs';
 import type { Actor } from '../common/current-user';
 import { CollabService } from '../collab/collab.service';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { blobs, formResponses, resourceAssets, resources, users, workspaceMembers } from '../db/schema';
+import { config } from '../config';
+import { blobs, formResponses, formSubscriptions, resourceAssets, resources, users, workspaceMembers } from '../db/schema';
 import { DocStore } from '../docs/doc-store';
 import { EventsService } from '../events/events.service';
+import { MailService, mailHtml } from '../mail/mail.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
 import { SheetsService } from '../sheets/sheets.service';
@@ -53,6 +60,7 @@ export class FormsService {
     private readonly storage: StorageService,
     private readonly events: EventsService,
     private readonly sheets: SheetsService,
+    private readonly mail: MailService,
     private readonly moduleRef: ModuleRef,
   ) {}
 
@@ -126,7 +134,7 @@ export class FormsService {
     };
   }
 
-  async submit(actor: Actor | undefined, id: string, input: { answers: Answers; email?: string | null; editToken?: string | null }) {
+  async submit(actor: Actor | undefined, id: string, input: { answers: Answers; email?: string | null; editToken?: string | null; sendCopy?: boolean }) {
     const { row, form } = await this.load(id);
     const s = form.settings;
     if (!(await this.canRespond(actor, row, s))) throw new ForbiddenException('This form is only open to people in the organisation');
@@ -159,16 +167,23 @@ export class FormsService {
       if (!input.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) throw new BadRequestException({ message: 'Some answers need attention', errors: { __email: 'Enter a valid email address' } });
       email = input.email.trim();
     }
-    const score = s.quiz ? scoreOf(form, answers) : null;
+    const wantsCopy = !!email && (s.sendCopy === 'always' || (s.sendCopy === 'requested' && !!input.sendCopy));
 
     // Editing an earlier response (allowEdit) or a new one.
     if (input.editToken) {
       if (!s.allowEdit) throw new ForbiddenException('Responses to this form cannot be edited');
       const [prev] = await this.db.select().from(formResponses).where(and(eq(formResponses.formId, id), eq(formResponses.editToken, input.editToken)));
       if (!prev) throw new NotFoundException('Response not found');
-      await this.db.update(formResponses).set({ answers, score, email: email ?? prev.email, updatedAt: sql`now()` }).where(eq(formResponses.id, prev.id));
-      return this.receipt(form, prev.id, input.editToken, score);
+      // Manual grades stay only for answers the respondent did not change.
+      const prevAnswers = prev.answers as Answers;
+      const grades = Object.fromEntries(Object.entries(prev.grades ?? {}).filter(([q]) => JSON.stringify(prevAnswers[q]) === JSON.stringify(answers[q])));
+      const score = s.quiz ? scoreOf(form, answers, grades) : null;
+      await this.db.update(formResponses).set({ answers, score, grades, email: email ?? prev.email, updatedAt: sql`now()` }).where(eq(formResponses.id, prev.id));
+      if (wantsCopy) void this.sendCopy(id, form, { email: email!, answers, score, editToken: input.editToken, released: !!prev.releasedAt });
+      this.collab.notify(id, { type: 'responses' });
+      return this.receipt(form, prev.id, input.editToken, score, !!prev.releasedAt);
     }
+    const score = s.quiz ? scoreOf(form, answers) : null;
     if (s.limitOne) {
       if (!actor) throw new BadRequestException('Sign in to respond');
       const [dup] = await this.db.select({ id: formResponses.id }).from(formResponses).where(and(eq(formResponses.formId, id), eq(formResponses.respondentId, actor.id))).limit(1);
@@ -200,16 +215,189 @@ export class FormsService {
       }
     }
     this.collab.notify(id, { type: 'responses' });
+    void this.notifySubscribers(row, form, { respondent: actor?.name ?? null, email, answers, score });
+    if (wantsCopy) void this.sendCopy(id, form, { email: email!, answers, score, editToken, released: false });
     return this.receipt(form, created.id, editToken, score);
   }
 
-  private receipt(form: PlainForm, id: string, editToken: string, score: { points: number; max: number } | null) {
+  // ── E-mail (§62) ──────────────────────────────────────────────────────────
+
+  private webUrl(path: string) {
+    return `${config.webOrigin.replace(/\/$/, '')}${path}`;
+  }
+
+  /** Answer lines (question → answer text) for e-mails. */
+  private answerRows(form: PlainForm, answers: Answers): [string, string][] {
+    return form.items.filter((i) => isQuestion(i.type)).map((i) => [i.title, answerText(i, answers[i.id])]);
+  }
+
+  /** "Get email notifications for new responses": one mail per subscribed person who can still edit the form. */
+  private async notifySubscribers(row: typeof resources.$inferSelect, form: PlainForm, r: { respondent: string | null; email: string | null; answers: Answers; score: { points: number; max: number } | null }) {
+    try {
+      const subs = await this.db
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(formSubscriptions)
+        .innerJoin(users, eq(users.id, formSubscriptions.userId))
+        .where(eq(formSubscriptions.formId, row.id));
+      if (!subs.length) return;
+      const [{ n }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(formResponses).where(eq(formResponses.formId, row.id));
+      const who = r.respondent ?? r.email ?? 'Someone';
+      const url = this.webUrl(`/forms/${row.id}?tab=responses`);
+      const rows: [string, string][] = [...(r.score ? [['Score', `${r.score.points} / ${r.score.max}`] as [string, string]] : []), ...this.answerRows(form, r.answers)];
+      for (const u of subs) {
+        const role = await this.perms.roleFor({ id: u.id, name: u.name, workspaceId: row.workspaceId }, row);
+        if (!can(role, 'editor')) continue;
+        await this.mail.send({
+          kind: 'form.response',
+          to: u.email,
+          resourceId: row.id,
+          subject: `New response to "${form.title}"`,
+          text: `${who} responded to "${form.title}" (${n} response${n === 1 ? '' : 's'} so far).\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nView responses: ${url}\n\nTurn these e-mails off in the Responses tab.`,
+          html: mailHtml({ title: `New response to "${form.title}"`, intro: `${who} responded — ${n} response${n === 1 ? '' : 's'} so far.`, rows, button: { label: 'View responses', url }, footer: 'You get this because you turned on e-mail notifications for this form in Master Forms.', color: form.theme.color }),
+        });
+      }
+    } catch (e) {
+      this.log.warn(`response notifications for ${row.id}: ${(e as Error).message}`);
+    }
+  }
+
+  /** "Send responders a copy of their response". The score is included only when respondents may already see it. */
+  private async sendCopy(id: string, form: PlainForm, r: { email: string; answers: Answers; score: { points: number; max: number } | null; editToken: string; released: boolean }) {
+    const s = form.settings;
+    const showScore = s.quiz && r.score && (s.releaseScore === 'immediately' || r.released);
+    const rows: [string, string][] = [...(showScore ? [['Score', `${r.score!.points} / ${r.score!.max}`] as [string, string]] : []), ...this.answerRows(form, r.answers)];
+    const edit = s.allowEdit ? this.webUrl(`/f/${id}?edit=${r.editToken}`) : null;
+    await this.mail.send({
+      kind: 'form.copy',
+      to: r.email,
+      resourceId: id,
+      subject: `Your response to "${form.title}"`,
+      text: `Thanks for filling out "${form.title}". Here is what was received:\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}${edit ? `\n\nEdit your response: ${edit}` : ''}`,
+      html: mailHtml({ title: `Thanks for filling out "${form.title}"`, intro: 'Here is what was received.', rows, button: edit ? { label: 'Edit response', url: edit } : undefined, color: form.theme.color }),
+    });
+  }
+
+  async subscription(actor: Actor, id: string) {
+    await this.perms.require(actor, id, 'editor');
+    const [row] = await this.db.select().from(formSubscriptions).where(and(eq(formSubscriptions.formId, id), eq(formSubscriptions.userId, actor.id)));
+    return { on: !!row, delivering: this.mail.delivering };
+  }
+
+  async setSubscription(actor: Actor, id: string, on: boolean) {
+    await this.perms.require(actor, id, 'editor');
+    if (on) await this.db.insert(formSubscriptions).values({ formId: id, userId: actor.id }).onConflictDoNothing();
+    else await this.db.delete(formSubscriptions).where(and(eq(formSubscriptions.formId, id), eq(formSubscriptions.userId, actor.id)));
+    return this.subscription(actor, id);
+  }
+
+  /** E-mails recorded for a form (newest first) — what was sent to whom; the Mail module will show the same rows. */
+  async outbox(actor: Actor, id: string) {
+    await this.perms.require(actor, id, 'editor');
+    return this.mail.forResource(id);
+  }
+
+  // ── Import questions (§61) ────────────────────────────────────────────────
+
+  /** The full definition (answer keys included) for people who can open the form — like syncing its document. */
+  async definition(actor: Actor, id: string) {
+    await this.perms.require(actor, id, 'viewer');
+    const { form } = await this.load(id);
+    return { title: form.title, items: form.items };
+  }
+
+  // ── Manual grading & releasing scores (§63) ───────────────────────────────
+
+  async grade(actor: Actor, id: string, responseId: string, grades: Grades) {
+    await this.perms.require(actor, id, 'editor');
+    const { form } = await this.load(id);
+    if (!form.settings.quiz) throw new BadRequestException('This form is not a quiz');
+    const [r] = await this.db.select().from(formResponses).where(and(eq(formResponses.formId, id), eq(formResponses.id, responseId)));
+    if (!r) throw new NotFoundException('Response not found');
+    const next: Grades = { ...((r.grades ?? {}) as Grades) };
+    for (const [q, g] of Object.entries(grades)) {
+      const it = form.items.find((i) => i.id === q);
+      const max = it?.quiz?.points ?? 0;
+      if (!it || !max) throw new BadRequestException('That question has no points');
+      if (typeof g.points === 'number' && !(g.points >= 0 && g.points <= max)) throw new BadRequestException(`Points must be between 0 and ${max}`);
+      const merged = { ...next[q], ...g };
+      if (merged.points === null || merged.points === undefined) delete merged.points;
+      if (!merged.feedback?.trim()) delete merged.feedback;
+      if (Object.keys(merged).length) next[q] = merged;
+      else delete next[q];
+    }
+    const score = scoreOf(form, r.answers as Answers, next);
+    await this.db.update(formResponses).set({ grades: next, score }).where(eq(formResponses.id, r.id));
+    this.collab.notify(id, { type: 'responses' });
+    return { grades: next, score };
+  }
+
+  /** Releases scores ("Release score" in Google Forms) and e-mails each respondent whose address is known. */
+  async release(actor: Actor, id: string, ids: string[] | 'all') {
+    const { row } = await this.perms.require(actor, id, 'editor');
+    const { form } = await this.load(id);
+    if (!form.settings.quiz) throw new BadRequestException('This form is not a quiz');
+    if (ids !== 'all' && !ids.length) return { released: 0, mailed: 0 };
+    const where = and(eq(formResponses.formId, id), isNull(formResponses.releasedAt), ...(ids === 'all' ? [] : [inArray(formResponses.id, ids)]));
+    const released = await this.db.update(formResponses).set({ releasedAt: sql`now()` }).where(where).returning();
+    let mailed = 0;
+    for (const r of released) {
+      if (!r.email || !r.score) continue;
+      const url = this.webUrl(`/f/${id}?result=${r.editToken}`);
+      mailed++;
+      await this.mail.send({
+        kind: 'form.score',
+        to: r.email,
+        resourceId: id,
+        subject: `Your score for "${form.title}"`,
+        text: `Your score for "${form.title}" is ${r.score.points} / ${r.score.max}.\n\nView your score${form.settings.showCorrect ? ' and the correct answers' : ''}: ${url}`,
+        html: mailHtml({ title: `Your score for "${form.title}"`, intro: `${r.score.points} / ${r.score.max} points`, button: { label: 'View score', url }, color: form.theme.color }),
+      });
+    }
+    if (released.length) await this.events.emit(this.db, actor, 'form.scores_released', { resourceId: id, spaceId: row.spaceId }, { name: row.name, count: released.length });
+    this.collab.notify(id, { type: 'responses' });
+    return { released: released.length, mailed };
+  }
+
+  /** "View score": what a respondent may see of their graded response (the token is their response's own token). */
+  async result(id: string, token: string) {
+    const { form } = await this.load(id);
+    const [r] = await this.db.select().from(formResponses).where(and(eq(formResponses.formId, id), eq(formResponses.editToken, token)));
+    if (!r || !form.settings.quiz) throw new NotFoundException('Response not found');
+    const s = form.settings;
+    const pub = publicForm(form);
+    if (s.releaseScore === 'later' && !r.releasedAt) return { form: pub, released: false as const, score: null, questions: [] };
+    const answers = r.answers as Answers;
+    const grades = (r.grades ?? {}) as Grades;
+    const questions = form.items
+      .filter((i) => isQuestion(i.type))
+      .map((i) => {
+        const max = i.quiz?.points ?? 0;
+        const g = grades[i.id];
+        const auto = isCorrect(i, answers[i.id]);
+        const graded = typeof g?.points === 'number';
+        return {
+          id: i.id,
+          answer: answers[i.id] ?? null,
+          points: max ? pointsFor(i, answers[i.id], g) : null,
+          max,
+          correct: !max ? null : graded ? g!.points! >= max : auto,
+          feedback: g?.feedback || (auto === true ? i.quiz?.feedbackCorrect : auto === false ? i.quiz?.feedbackWrong : undefined) || null,
+          correctAnswers: s.showCorrect && i.quiz?.answers?.length ? i.quiz.answers : null,
+        };
+      });
+    return { form: pub, released: true as const, score: r.score, questions };
+  }
+
+
+  private receipt(form: PlainForm, id: string, editToken: string, score: { points: number; max: number } | null, released = false) {
     const s = form.settings;
     return {
       id,
       confirmation: s.confirmation,
       editToken: s.allowEdit ? editToken : null,
-      score: s.quiz && s.releaseScore === 'immediately' ? score : null,
+      score: s.quiz && (s.releaseScore === 'immediately' || released) ? score : null,
+      // "View score" link: the response's own token, shown for quizzes (scores released later show once released).
+      resultToken: s.quiz ? editToken : null,
       showSummary: s.showSummary,
     };
   }
@@ -264,7 +452,7 @@ export class FormsService {
       .leftJoin(users, eq(users.id, formResponses.respondentId))
       .where(eq(formResponses.formId, id))
       .orderBy(asc(formResponses.submittedAt));
-    return rows.map(({ r, name }) => ({ id: r.id, respondent: name ?? null, email: r.email, answers: r.answers, score: r.score, submittedAt: r.submittedAt, updatedAt: r.updatedAt }));
+    return rows.map(({ r, name }) => ({ id: r.id, respondent: name ?? null, email: r.email, answers: r.answers, score: r.score, grades: r.grades ?? {}, releasedAt: r.releasedAt, submittedAt: r.submittedAt, updatedAt: r.updatedAt }));
   }
 
   async deleteResponses(actor: Actor, id: string, ids: string[] | 'all') {

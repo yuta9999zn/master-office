@@ -67,6 +67,13 @@ export function SettingsTab({ form, store, editable }: { form: PlainForm; store:
             <option value="input">Responder input</option>
           </select>
         </Row>
+        <Row title="Send responders a copy of their response" hint={s.collectEmail === 'off' ? 'Collect email addresses first' : 'By e-mail, right after they submit'}>
+          <select value={s.collectEmail === 'off' ? 'off' : s.sendCopy} disabled={s.collectEmail === 'off'} onChange={(e) => set({ sendCopy: e.target.value as FormSettings['sendCopy'] })} className="h-9 rounded-md border border-slate-300 px-2 text-[13px] disabled:opacity-50" aria-label="Send responders a copy" data-testid="send-copy-select">
+            <option value="off">Off</option>
+            <option value="requested">When requested</option>
+            <option value="always">Always</option>
+          </select>
+        </Row>
         <Row title="Limit to 1 response" hint="Respondents must be signed in">
           <Switch label="Limit to 1 response" on={s.limitOne} onChange={(v) => set({ limitOne: v, ...(v && s.access === 'public' ? { access: 'org' } : {}) })} color={c} />
         </Row>

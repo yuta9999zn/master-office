@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_THEME,
   FORM_MAP,
+  importItems,
   itemIds,
   ITEMS_MAP,
   newId,
@@ -125,6 +126,18 @@ export class FormStore {
       for (const [k, v] of Object.entries(fresh)) if (!['id', 'title', 'type'].includes(k) && v !== undefined) m.set(k, v);
       if (keepOptions) m.set('options', cur.options);
     });
+  }
+
+  /** Inserts copies of another form's items after `afterId` (or at the end), in one undo step (§61). */
+  importItems(src: FormItem[], afterId: string | null): string[] {
+    const copies = importItems(src);
+    this.tx(() => {
+      for (const it of copies) this.items.set(it.id, createYItem(it));
+      const arr = this.order.toArray();
+      const at = afterId ? arr.indexOf(afterId) + 1 : arr.length;
+      this.order.insert(at > 0 ? at : arr.length, copies.map((c) => c.id));
+    });
+    return copies.map((c) => c.id);
   }
 
   duplicateItem(id: string): string | null {

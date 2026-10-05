@@ -1,9 +1,11 @@
 'use client';
 
-import { answerText, isCorrect, isQuestion, type Answer, type Answers, type FileAnswer, type FormItem, type PlainForm } from '@workos/form-model';
-import { ChevronLeft, ChevronRight, Download, ExternalLink, Paperclip, Table2, Trash2 } from 'lucide-react';
+import { answerText, isCorrect, isQuestion, pointsFor, ungraded, type Answer, type Answers, type FileAnswer, type FormItem, type Grade, type Grades, type PlainForm } from '@workos/form-model';
+import { Bell, BellOff, ChevronLeft, ChevronRight, Download, ExternalLink, MessageSquare, Paperclip, Send, Table2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { Button, cn, EmptyState } from '../ui/primitives';
 import type { FormStore } from './form-store';
@@ -14,7 +16,82 @@ export interface FormResponseRow {
   email: string | null;
   answers: Answers;
   score: { points: number; max: number } | null;
+  grades: Grades;
+  releasedAt: string | null;
   submittedAt: string;
+}
+
+/** Points + feedback for one question of one response (manual grading, §63). Empty points = the answer key decides. */
+function GradeBox({ it, answer, grade, onSave }: { it: FormItem; answer: Answer | undefined; grade: Grade | undefined; onSave: (g: Grade) => void }) {
+  const max = it.quiz?.points ?? 0;
+  const auto = pointsFor(it, answer);
+  const [pts, setPts] = useState(typeof grade?.points === 'number' ? String(grade.points) : '');
+  const [fb, setFb] = useState(grade?.feedback ?? '');
+  const [showFb, setShowFb] = useState(!!grade?.feedback);
+  const needs = !it.quiz?.answers?.length && typeof grade?.points !== 'number';
+  const savePoints = () => {
+    const v = pts.trim() === '' ? null : Number(pts);
+    if (v !== null && !(v >= 0 && v <= max)) return (toast.error(`Points must be between 0 and ${max}`), setPts(typeof grade?.points === 'number' ? String(grade.points) : ''));
+    if (v !== (typeof grade?.points === 'number' ? grade.points : null)) onSave({ points: v });
+  };
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3" data-testid="grade-box">
+      <div className="flex items-center gap-2 text-[13px]">
+        <input
+          value={pts}
+          onChange={(e) => setPts(e.target.value.replace(/[^\d.]/g, ''))}
+          onBlur={savePoints}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          placeholder={String(auto)}
+          inputMode="decimal"
+          className={cn('h-8 w-14 rounded-md border px-2 text-right tabular-nums', needs ? 'border-amber-400 bg-amber-50' : 'border-slate-300')}
+          aria-label={`Points for ${it.title}`}
+          data-testid="grade-points"
+        />
+        <span className="text-slate-600">/ {max}</span>
+        {needs && <span className="text-[12px] text-amber-700">Needs grading</span>}
+        <button onClick={() => setShowFb(!showFb)} className="ml-auto flex items-center gap-1 rounded px-2 py-1 text-slate-600 hover:bg-slate-100" data-testid="grade-feedback-toggle">
+          <MessageSquare size={14} /> {grade?.feedback ? 'Edit feedback' : 'Add feedback'}
+        </button>
+      </div>
+      {showFb && (
+        <textarea
+          value={fb}
+          onChange={(e) => setFb(e.target.value)}
+          onBlur={() => fb !== (grade?.feedback ?? '') && onSave({ feedback: fb })}
+          rows={2}
+          placeholder="Feedback for the respondent"
+          className="mt-2 w-full resize-y rounded-md border border-slate-300 px-2 py-1.5 text-[13px]"
+          aria-label={`Feedback for ${it.title}`}
+          data-testid="grade-feedback"
+        />
+      )}
+    </div>
+  );
+}
+
+/** "Get email notifications for new responses" — per person, like Google Forms (§62). */
+function NotifyToggle({ resourceId, color }: { resourceId: string; color: string }) {
+  const [st, setSt] = useState<{ on: boolean; delivering: boolean } | null>(null);
+  useEffect(() => {
+    api<{ on: boolean; delivering: boolean }>(`/forms/${resourceId}/notifications`).then(setSt, () => setSt(null));
+  }, [resourceId]);
+  if (!st) return null;
+  const flip = async () => {
+    try {
+      const next = await api<{ on: boolean; delivering: boolean }>(`/forms/${resourceId}/notifications`, { method: 'PUT', json: { on: !st.on } });
+      setSt(next);
+      toast.success(next.on ? 'You’ll get an e-mail for each new response' : 'E-mail notifications turned off');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+  return (
+    <button onClick={() => void flip()} className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-slate-700 hover:bg-slate-100" title={st.delivering ? undefined : 'No mail server is configured: e-mails are recorded but not delivered'} data-testid="notify-toggle" aria-pressed={st.on}>
+      {st.on ? <Bell size={15} style={{ color }} /> : <BellOff size={15} />}
+      {st.on ? 'E-mail notifications on' : 'Get e-mail notifications'}
+    </button>
+  );
 }
 
 const isOther = (x: unknown): x is { other: string } => !!x && typeof x === 'object' && 'other' in (x as object);
@@ -163,6 +240,7 @@ export function ResponsesTab({
   onDelete,
   onLinkSheet,
   linking,
+  onChanged,
 }: {
   form: PlainForm;
   store: FormStore;
@@ -172,6 +250,7 @@ export function ResponsesTab({
   onDelete: (ids: string[] | 'all') => void;
   onLinkSheet: () => void;
   linking: boolean;
+  onChanged?: () => void;
 }) {
   const [view, setView] = useState<'summary' | 'question' | 'individual'>('summary');
   const [qIndex, setQIndex] = useState(0);
@@ -183,6 +262,26 @@ export function ResponsesTab({
   const q = questions[Math.min(qIndex, questions.length - 1)];
   const avg = s.quiz && rows.length ? rows.reduce((t, x) => t + (x.score?.points ?? 0), 0) / rows.length : null;
   const maxScore = rows.find((x) => x.score)?.score?.max ?? 0;
+  const laterRelease = s.quiz && s.releaseScore === 'later';
+  const unreleased = laterRelease ? rows.filter((x) => !x.releasedAt) : [];
+  const toGrade = s.quiz ? rows.filter((x) => ungraded(form, x.answers, x.grades).length > 0).length : 0;
+  const saveGrade = async (responseId: string, itemId: string, g: Grade) => {
+    try {
+      await api(`/forms/${resourceId}/responses/${responseId}/grades`, { method: 'PATCH', json: { grades: { [itemId]: g } } });
+      onChanged?.();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+  const release = async (ids: string[] | 'all') => {
+    try {
+      const res = await api<{ released: number; mailed: number }>(`/forms/${resourceId}/release`, { method: 'POST', json: { ids } });
+      toast.success(`Released ${res.released} score${res.released === 1 ? '' : 's'}${res.mailed ? ` · ${res.mailed} e-mail${res.mailed === 1 ? '' : 's'} sent` : ''}`);
+      onChanged?.();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   return (
     <div className="space-y-3" data-testid="responses-tab">
@@ -204,6 +303,11 @@ export function ResponsesTab({
             <a href={`/api/forms/${resourceId}/responses.csv`} className="flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] text-slate-700 hover:bg-slate-100">
               <Download size={14} /> CSV
             </a>
+            {editable && laterRelease && unreleased.length > 0 && (
+              <Button size="sm" variant="primary" icon={<Send size={13} />} onClick={() => void release('all')} data-testid="release-all">
+                Release scores ({unreleased.length})
+              </Button>
+            )}
             {editable && rows.length > 0 && (
               <Button size="sm" variant="ghost" icon={<Trash2 size={14} />} className="text-red-600" onClick={() => onDelete('all')}>
                 Delete all
@@ -211,7 +315,10 @@ export function ResponsesTab({
             )}
           </div>
         </div>
-        <label className="mt-3 flex items-center justify-end gap-2 text-[13px] text-slate-700">
+        <div className="mt-3 flex items-center gap-2">
+        {editable && <NotifyToggle resourceId={resourceId} color={color} />}
+        {toGrade > 0 && <span className="rounded bg-amber-50 px-2 py-0.5 text-[12px] text-amber-800" data-testid="to-grade">{toGrade} response{toGrade === 1 ? '' : 's'} to grade</span>}
+        <label className="ml-auto flex items-center justify-end gap-2 text-[13px] text-slate-700">
           Accepting responses
           <button
             role="switch"
@@ -225,6 +332,7 @@ export function ResponsesTab({
             <span className={cn('absolute top-0.5 size-4 rounded-full bg-white shadow transition', s.accepting ? 'left-[18px]' : 'left-0.5')} />
           </button>
         </label>
+        </div>
         {!s.accepting && <div className="mt-2 rounded bg-slate-100 px-3 py-2 text-[13px] text-slate-600">{s.closedMessage}</div>}
         <div className="mt-4 flex justify-center gap-8 border-t border-slate-200 pt-1">
           {(['summary', 'question', 'individual'] as const).map((v) => (
@@ -291,10 +399,18 @@ export function ResponsesTab({
             <span className="ml-3 text-slate-700">{r.respondent ?? r.email ?? 'Anonymous'}</span>
             <span className="text-slate-500">· {formatDateTime(r.submittedAt)}</span>
             {r.score && (
-              <span className="rounded bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+              <span className="rounded bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700" data-testid="individual-score">
                 {r.score.points} / {r.score.max}
               </span>
             )}
+            {laterRelease &&
+              (r.releasedAt ? (
+                <span className="text-[12px] text-slate-500" data-testid="released-badge">Released</span>
+              ) : editable ? (
+                <button onClick={() => void release([r.id])} className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium hover:bg-slate-100" style={{ color }} data-testid="release-one">
+                  <Send size={12} /> Release score
+                </button>
+              ) : null)}
             {editable && (
               <button onClick={() => (onDelete([r.id]), setRIndex(Math.max(0, rIndex - 1)))} className="ml-auto rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label="Delete this response">
                 <Trash2 size={16} />
@@ -303,11 +419,14 @@ export function ResponsesTab({
           </div>
           {questions.map((it) => {
             const a: Answer | undefined = r.answers[it.id];
-            const ok = s.quiz && it.quiz?.answers?.length ? isCorrect(it, a) : null;
+            const g = r.grades?.[it.id];
+            const graded = typeof g?.points === 'number';
+            const ok = !s.quiz || !it.quiz?.points ? null : graded ? g!.points! >= it.quiz.points : it.quiz.answers?.length ? isCorrect(it, a) : null;
             return (
-              <div key={it.id} className={cn('rounded-lg border bg-white p-5', ok === true ? 'border-emerald-300' : ok === false ? 'border-red-300' : 'border-slate-200')}>
+              <div key={it.id} className={cn('rounded-lg border bg-white p-5', ok === true ? 'border-emerald-300' : ok === false ? 'border-red-300' : 'border-slate-200')} data-testid="individual-answer">
                 <div className="text-[14px] text-slate-900">{it.title}</div>
                 <div className="mt-2 text-[14px] text-slate-700">{answerText(it, a) || <span className="text-slate-400">(no answer)</span>}</div>
+                {s.quiz && (it.quiz?.points ?? 0) > 0 && editable && <GradeBox key={`${r.id}:${it.id}:${JSON.stringify(g ?? null)}`} it={it} answer={a} grade={g} onSave={(x) => void saveGrade(r.id, it.id, x)} />}
               </div>
             );
           })}

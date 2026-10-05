@@ -30,6 +30,11 @@ services:
       DISABLE_SECURITY_PLUGIN: "true"
       OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
     ports: ["9200:9200"]
+  # §62 outgoing mail catcher — start with: docker compose --profile mail up -d, set SMTP_URL=smtp://localhost:1025, inbox at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: [mail]
+    ports: ["1025:1025", "8025:8025"]
 volumes:
   pgdata:
   s3data:
