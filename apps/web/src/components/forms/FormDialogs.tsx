@@ -39,7 +39,13 @@ export function ImportQuestionsDialog({ open, formId, onClose, onImport }: { ope
       setLoading(null);
     }
   };
-  const toggle = (id: string) => setPicked((p) => (p.has(id) ? (p.delete(id), new Set(p)) : new Set(p.add(id))));
+  // Copy before changing: React may call the updater twice, so it must not mutate the current set.
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const chosen = source?.items.filter((i) => picked.has(i.id)) ?? [];
 
   return (

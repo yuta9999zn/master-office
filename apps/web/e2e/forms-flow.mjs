@@ -130,9 +130,19 @@ await step('import questions from another form', mika, async () => {
   await mika.getByTestId('import-questions').click();
   await mika.getByLabel('Search forms').fill('Customer Satisfaction Survey');
   await mika.getByTestId('import-form-list').getByRole('button', { name: 'Customer Satisfaction Survey', exact: true }).click();
-  await mika.getByTestId('import-items').waitFor();
+  const items = mika.getByTestId('import-items');
+  await items.waitFor();
+  // Pick a single, optional item: required questions would block the quiz response submitted in the next steps.
+  // Sections start unticked, so "Select all" may be off: tick then untick to clear everything.
+  await items.getByRole('checkbox', { name: 'Select all' }).check();
+  await items.getByRole('checkbox', { name: 'Select all' }).uncheck();
+  await items.getByRole('checkbox', { name: 'Rate each part of your visit' }).check();
+  if ((await mika.getByTestId('import-confirm').innerText()).trim() !== 'Import 1 item') throw new Error('selection not counted');
   await mika.getByTestId('import-confirm').click();
-  await until(mika, () => document.body.innerText.includes('Which branch did you visit?') && document.body.innerText.includes('Rate each part of your visit'));
+  // The imported item becomes the selected one, so its title sits in an input.
+  const shown = (t) => document.body.innerText.includes(t) || [...document.querySelectorAll('input, textarea')].some((e) => e.value === t);
+  await until(mika, shown, 'Rate each part of your visit');
+  if (await mika.evaluate(shown, 'Which branch did you visit?')) throw new Error('an unselected item was imported');
 });
 
 await step('Send shows a QR code of the responder link', mika, async () => {

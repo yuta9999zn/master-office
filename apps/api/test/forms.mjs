@@ -206,7 +206,8 @@ check('questions without points cannot be graded', (await call('PATCH', `/forms/
 check('respondents cannot grade', (await call('PATCH', `/forms/${created.id}/responses/${resp.id}/grades`, { user: sora, body: { grades: { q4: { points: 5 } } } })).status >= 403);
 
 const rel = await call('POST', `/forms/${created.id}/release`, { user: claudia, body: { ids: 'all' } });
-check('releasing scores marks responses released and e-mails respondents with an address', rel.status === 201 && rel.data.released >= 1 && rel.data.mailed === 1, rel.data);
+// Every response so far has an address (ken and sora signed in, the student typed one), so each gets an e-mail.
+check('releasing scores marks responses released and e-mails respondents with an address', rel.status === 201 && rel.data.released === 3 && rel.data.mailed === 3, rel.data);
 check('releasing again does nothing', (await call('POST', `/forms/${created.id}/release`, { user: claudia, body: { ids: 'all' } })).data.released === 0);
 await sleep(500);
 box = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
