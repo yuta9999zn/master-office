@@ -38,6 +38,13 @@ export const users = pgTable('users', {
   avatarColor: text('avatar_color').notNull().default('#3370ff'),
   title: text('title'),
   department: text('department'),
+  // Profile (Contacts, §67).
+  phone: text('phone'),
+  location: text('location'),
+  /** Short status line under the name ("よろしくお願いします。"). */
+  status: text('status'),
+  skills: text('skills').array().notNull().default(sql`'{}'::text[]`),
+  managerId: uuid('manager_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   createdAt: ts('created_at').notNull().default(sql`now()`),
 });
 
@@ -54,6 +61,7 @@ export const workspaceMembers = pgTable(
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     role: role('role').notNull().default('editor'),
+    joinedAt: ts('joined_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })],
 );

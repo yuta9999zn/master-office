@@ -395,7 +395,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | **4** | Slides editor (canvas element tree + Yjs), theme/layout/background, bảng, biểu đồ (liên kết Sheets), comment theo đối tượng, speaker notes, slide sorter, trình chiếu + presenter view, PPTX import/export, PDF/PNG/HTML | **xong** — xem §23 |
 | 4.1 | Animation, nhóm đối tượng (group), section, crop ảnh, video, SmartArt → diagram, .ppt/.odp qua LibreOffice | |
 | **8** | **Forms** (kéo lên trước Phase 5 theo lộ trình Google parity): trình soạn cộng tác, 12 loại câu hỏi + tiêu đề/ảnh/video/section, rẽ nhánh, kiểm tra hợp lệ, quiz, cài đặt, trang trả lời `/f/:id`, tab Responses (tóm tắt / theo câu / từng người), liên kết Sheets, CSV | **xong** — xem §25 |
-| **5** | Chat (conversation, message, resource card, WS) + Notifications | đang làm — chat lõi + realtime xong (§64); tiếp: thẻ tài liệu & file, thông báo, Contacts |
+| **5** | Chat (conversation, message, resource card, WS) + Notifications | **xong** — chat & realtime §64, file & ghim §65, thông báo §66, Contacts & hồ sơ §67 |
 | 6 | Search (OpenSearch, outbox, indexer) + AI layer | |
 | 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | |
 
@@ -999,3 +999,16 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | Giao diện | Chuông trên top bar với badge đỏ; popover: All / Unread / Mentions, avatar người làm + biểu tượng loại, tiêu đề, trích đoạn, "x mins ago", chấm xanh chưa đọc. Link `/chat/:id?thread=<tin gốc>` mở panel thread bên cạnh hội thoại. |
 | Giới hạn | Chưa có thông báo đẩy của trình duyệt / e-mail tổng hợp, chưa có cài đặt bật/tắt theo loại, chưa gom nhiều trả lời thành một mục; Forms (thư báo câu trả lời) vẫn đi qua e-mail §62. |
 | Test | `notifications.mjs` (22): mention live + nội dung dùng tên, tự nhắc / người ngoài không bị báo, trả lời thread (người mở đầu, mọi người trong thread), tin thường không báo, đọc hội thoại đọc mention (và báo tab khác), thread chỉ đọc khi mở, chia sẻ / gỡ quyền, bình luận mới / trả lời / bình luận trên file của mình, đánh dấu đọc (của người khác = 0, một mục, tất cả, bộ lọc chưa đọc). `notifications-flow.mjs` (5): badge + toast, mở mention → hội thoại và hết badge, link trả lời mở thread, file được chia sẻ mở editor, Mark all as read. |
+
+## 67. Phase 5 — Contacts & hồ sơ người dùng: quyết định
+
+| Vấn đề | Quyết định |
+|---|---|
+| Dữ liệu | Thêm vào `users`: `phone`, `location`, `status` (dòng trạng thái dưới tên), `skills text[]`, `manager_id` (quản lý trực tiếp); `workspace_members.joined_at` (ngày vào). "Projects" = các **Space** người đó là thành viên — không có bảng riêng. |
+| Ai thấy gì | Mọi người trong workspace thấy thẻ của nhau (tên, chức danh, phòng ban, liên hệ, kỹ năng, quản lý). Những gì nói về công việc thì **lọc theo quyền người xem**: Projects chỉ gồm Space người xem thấy được; tab Files = file người đó sở hữu mà người xem mở được (`ResourcesService.toDtos`); tab Activity = sự kiện do người đó làm mà người xem được thấy (`visibleActivity`, dùng chung với Recent Activity ở Home). |
+| Tìm kiếm | Một ô tìm cho tên, e-mail, chức danh, phòng ban, nơi làm, kỹ năng và tên Space; nhóm theo **Department / Skills / Project** (một người có thể ở nhiều nhóm kỹ năng / dự án). |
+| Sửa hồ sơ | Ai cũng sửa **thông tin liên hệ của mình** (trạng thái, điện thoại, nơi làm, kỹ năng — cắt khoảng trắng, bỏ trùng, tối đa 20). Chức danh, phòng ban và quản lý là **của tổ chức**: chỉ chủ workspace sửa (cho mọi người); quản lý phải trong workspace, không phải chính mình, không tạo vòng lặp báo cáo. |
+| Sơ đồ tổ chức | Tab Organization: chuỗi quản lý từ trên xuống, người đang xem (tô xanh), cấp dưới trực tiếp; bấm để đi tới hồ sơ khác. |
+| Giao diện | `/contacts` và `/contacts/:id` (theo "over view 2.png" ô 2–3): danh bạ (ô tìm, tab All / Department / Skills / Project, dòng: avatar + chấm online, tên, chức danh · phòng ban, kỹ năng, nút **Chat**, menu xem hồ sơ / chép e-mail) bên cạnh hồ sơ (ảnh bìa theo màu người dùng, avatar lớn + online, trạng thái, Chat / Video call (chờ Meetings, Phase 7) / E-mail / Edit profile, tab Overview · Organization · Files · Activity). Menu người dùng → **Profile**; hồ sơ trong DM có **View profile**. |
+| Giới hạn | Chưa có ảnh đại diện / ảnh bìa tải lên, chưa có khách bên ngoài (External, ô 7 của ảnh), chưa có danh bạ nhiều workspace / đồng bộ từ SSO-HR. |
+| Test | `contacts.mjs` (26): danh bạ, chi tiết liên hệ, tìm theo kỹ năng / phòng ban / Space / nơi làm, Projects lọc theo quyền, quản lý / chuỗi / cấp dưới, file của người đó lọc theo quyền, activity của người đó, 404, cờ sửa, tự sửa (cắt, bỏ trùng, xoá trường), không tự đổi chức danh / không sửa người khác, chủ workspace đổi chức danh / phòng ban / quản lý, chặn vòng lặp / tự quản lý / người ngoài. `contacts-flow.mjs` (7): tìm kỹ năng, nhóm phòng ban / dự án, trường hồ sơ, sơ đồ tổ chức + Files, Chat từ hồ sơ, View profile từ DM, tự sửa hồ sơ từ menu người dùng. |

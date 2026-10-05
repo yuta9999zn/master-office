@@ -33,16 +33,19 @@ import { SpacesService } from './spaces/spaces.service';
 import { SpellingController } from './spelling/spelling.controller';
 import { SpellingService } from './spelling/spelling.service';
 import { StorageService } from './storage/storage.service';
+import { ContactsController } from './users/contacts.controller';
+import { ContactsService } from './users/contacts.service';
 import { UsersController } from './users/users.controller';
 import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController],
   providers: [
     SpellingService,
     RealtimeService,
     NotificationsService,
+    ContactsService,
     ChatService,
     PermissionsService,
     EventsService,

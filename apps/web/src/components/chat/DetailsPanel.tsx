@@ -2,6 +2,7 @@
 
 import type { ConversationDetail } from '@workos/shared';
 import { Ellipsis, Mail, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useChatActions, useChatSearch } from '@/lib/chat';
 import { formatDate, formatShort } from '@/lib/format';
@@ -183,6 +184,9 @@ function PeerCard({ conv, onClose }: { conv: ConversationDetail; onClose: () => 
         <div className="mt-3 text-[17px] font-semibold text-ink">{p.name}</div>
         <div className="text-[13px] text-muted">{[p.title, p.department].filter(Boolean).join(' · ')}</div>
         <div className="mt-1 text-[12px] text-subtle">{online ? 'Active now' : 'Away'}</div>
+        <Link href={`/contacts/${p.id}`} className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-hover" data-testid="view-profile">
+          View profile
+        </Link>
       </div>
       <dl className="space-y-3 border-t border-line px-5 py-4 text-[13px]">
         <div className="flex items-center gap-3">

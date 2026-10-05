@@ -57,7 +57,7 @@ export class ResourcesService {
 
   // ── Serialization ──────────────────────────────────────────────────────────
 
-  private async toDtos(actor: Actor, rows: Row[], tx: Tx = this.db, minRole: Role = 'viewer'): Promise<Resource[]> {
+  async toDtos(actor: Actor, rows: Row[], tx: Tx = this.db, minRole: Role = 'viewer'): Promise<Resource[]> {
     if (!rows.length) return [];
     const [roles, owners, starred] = await runAll(tx !== this.db, [
       () => this.perms.rolesFor(actor, rows, tx),

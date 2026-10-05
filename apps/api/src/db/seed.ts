@@ -49,6 +49,27 @@ async function main() {
     .insert(s.workspaceMembers)
     .values(inserted.map((x) => ({ workspaceId: ws.id, userId: x.id, role: (x.id === u.claudia.id ? 'owner' : 'editor') as Role })));
 
+  // Profiles for Contacts (§67), mirroring the "Hồ sơ người dùng" reference (Fujita, ITM Japan).
+  const profiles: Record<Who, { phone: string; location: string; skills: string[]; manager?: Who; status?: string; joined: string }> = {
+    claudia: { phone: '+81 90-1111-0001', location: 'Tokyo, Japan', skills: ['Leadership', 'Operations', 'Strategy'], status: 'Focus time until 11:00', joined: '2022-04-01' },
+    hana: { phone: '+84 90-555-0102', location: 'Ho Chi Minh City, Vietnam', skills: ['Marketing', 'Design', 'SNS'], manager: 'claudia', joined: '2023-02-13' },
+    mika: { phone: '+81 80-2222-0103', location: 'Osaka, Japan', skills: ['Operations', 'Management'], manager: 'claudia', joined: '2022-09-01' },
+    yuki: { phone: '+81 80-3333-0104', location: 'Branch 575, Tokyo', skills: ['Customer Support', 'Sales'], manager: 'mika', joined: '2023-06-05' },
+    sora: { phone: '+81 80-4444-0105', location: 'Branch 625, Tokyo', skills: ['Operations', 'Logistics'], manager: 'mika', joined: '2023-07-10' },
+    rina: { phone: '+81 90-5555-0106', location: 'Tokyo, Japan', skills: ['HR', 'Recruitment'], manager: 'claudia', joined: '2022-11-21' },
+    fujita: { phone: '+81 90-1234-5678', location: 'Tokyo, Japan', skills: ['Management', 'Project', 'Japanese'], manager: 'claudia', status: 'よろしくお願いします。', joined: '2024-01-15' },
+    ken: { phone: '+81 70-6666-0108', location: 'Tokyo, Japan', skills: ['Engineering', 'System', 'Inventory'], manager: 'mika', joined: '2024-03-04' },
+    huong: { phone: '+84 91-777-0109', location: 'Hanoi, Vietnam', skills: ['Finance', 'Accounting'], manager: 'claudia', joined: '2026-09-28' },
+    minh: { phone: '+84 93-888-0110', location: 'Ho Chi Minh City, Vietnam', skills: ['Design', 'Branding'], manager: 'hana', joined: '2024-05-20' },
+  };
+  for (const [who, p] of Object.entries(profiles) as [Who, (typeof profiles)[Who]][]) {
+    await db
+      .update(s.users)
+      .set({ phone: p.phone, location: p.location, skills: p.skills, status: p.status ?? null, managerId: p.manager ? u[p.manager].id : null })
+      .where(sql`id = ${u[who].id}`);
+    await db.update(s.workspaceMembers).set({ joinedAt: new Date(p.joined).toISOString() }).where(sql`user_id = ${u[who].id}`);
+  }
+
   // ── Spaces ────────────────────────────────────────────────────────────────
   const sp: Record<string, typeof s.spaces.$inferSelect> = {};
   async function space(

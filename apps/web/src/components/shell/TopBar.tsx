@@ -3,6 +3,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, UserRound } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { setDevUser } from '@/lib/api';
 import { useMe, useUsers } from '@/lib/queries';
 import { useUi } from '@/lib/store';
@@ -56,6 +57,7 @@ export function TopBar() {
 function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Parameters<typeof Avatar>[0]['user'] & { id: string } }) {
   const { data: users } = useUsers();
   const qc = useQueryClient();
+  const router = useRouter();
   return (
     <Menu>
       <MenuTrigger asChild>
@@ -69,7 +71,7 @@ function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Par
         </button>
       </MenuTrigger>
       <MenuContent align="end" className="w-64">
-        <MenuItem icon={<UserRound />} disabled>
+        <MenuItem icon={<UserRound />} onSelect={() => user && router.push(`/contacts/${user.id}`)}>
           Profile
         </MenuItem>
         <MenuItem icon={<Settings />} disabled>

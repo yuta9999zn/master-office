@@ -411,3 +411,42 @@ export interface AppNotification {
   readAt: string | null;
   createdAt: string;
 }
+
+// ── Contacts & profiles (§67) ───────────────────────────────────────────────
+
+/** A person in the directory: the summary plus what the Contacts list shows and searches. */
+export interface Contact extends UserSummary {
+  phone: string | null;
+  location: string | null;
+  status: string | null;
+  skills: string[];
+  managerId: string | null;
+  /** Spaces the person belongs to that the viewer can see ("Projects"). */
+  projects: { id: string; name: string; color: string | null }[];
+  joinedAt: string | null;
+}
+
+export interface UserProfile extends Contact {
+  manager: UserSummary | null;
+  /** The chain above the manager, nearest first (Organization tab). */
+  chain: UserSummary[];
+  reports: UserSummary[];
+  /** Files the person owns that the viewer can open, most recently updated first. */
+  files: Resource[];
+  activity: ActivityEvent[];
+  isMe: boolean;
+  /** The viewer may edit this profile (themselves, or a workspace owner). */
+  canEdit: boolean;
+  /** Only workspace owners change title, department and manager of other people. */
+  canEditOrg: boolean;
+}
+
+export interface UpdateProfileInput {
+  phone?: string | null;
+  location?: string | null;
+  status?: string | null;
+  skills?: string[];
+  title?: string | null;
+  department?: string | null;
+  managerId?: string | null;
+}
