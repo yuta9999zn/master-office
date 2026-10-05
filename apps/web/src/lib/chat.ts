@@ -1,9 +1,9 @@
 'use client';
 
-import type { ChannelListing, ChatMessage, ConversationDetail, ConversationSummary, RealtimeEvent, UserSummary } from '@workos/shared';
+import type { ChannelListing, ChatAttachment, ChatFile, ChatMessage, ConversationDetail, ConversationSummary, RealtimeEvent, Resource, UserSummary } from '@workos/shared';
 import { type InfiniteData, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { api } from './api';
+import { api, ApiError, uploadFile } from './api';
 
 type Page = { messages: ChatMessage[]; hasMore: boolean };
 type Pages = InfiniteData<Page, number | undefined>;
@@ -15,6 +15,8 @@ export const chatKeys = {
   messages: (id: string) => ['chat', 'messages', id] as const,
   thread: (mid: string) => ['chat', 'thread', mid] as const,
   channels: (q: string) => ['chat', 'channels', q] as const,
+  files: (id: string) => ['chat', 'files', id] as const,
+  pins: (id: string) => ['chat', 'pins', id] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -39,6 +41,9 @@ export const useThread = (mid?: string | null) =>
 
 export const useChatSearch = (id: string, q: string) =>
   useQuery({ queryKey: ['chat', 'search', id, q], queryFn: () => api<ChatMessage[]>(`/chat/conversations/${id}/search?q=${encodeURIComponent(q)}`), enabled: q.trim().length > 1 });
+
+export const useChatFiles = (id: string, enabled = true) => useQuery({ queryKey: chatKeys.files(id), queryFn: () => api<ChatFile[]>(`/chat/conversations/${id}/files`), enabled });
+export const useChatPins = (id: string, enabled = true) => useQuery({ queryKey: chatKeys.pins(id), queryFn: () => api<ChatMessage[]>(`/chat/conversations/${id}/pins`), enabled });
 
 /** Unread across conversations that are not muted (sidebar badge). */
 export function useUnreadTotal() {
@@ -86,12 +91,15 @@ export function applyChatEvent(qc: QueryClient, e: RealtimeEvent, me: string) {
       if (msg.threadRootId) qc.setQueryData<Thread>(chatKeys.thread(msg.threadRootId), (d) => upsertInThread(d, msg));
       else qc.setQueryData<Pages>(chatKeys.messages(e.conversationId), (d) => upsertInPages(d, msg, true));
       if (!msg.threadRootId) void qc.invalidateQueries({ queryKey: chatKeys.list });
+      if (msg.attachments.length) void qc.invalidateQueries({ queryKey: chatKeys.files(e.conversationId) });
       break;
     }
     case 'chat.message.updated': {
       const msg = forViewer(e.message, me);
       qc.setQueryData<Pages>(chatKeys.messages(e.conversationId), (d) => upsertInPages(d, msg, false));
       qc.setQueryData<Thread>(chatKeys.thread(msg.threadRootId ?? msg.id), (d) => upsertInThread(d, msg));
+      void qc.invalidateQueries({ queryKey: chatKeys.pins(e.conversationId) });
+      if (msg.deletedAt) void qc.invalidateQueries({ queryKey: chatKeys.files(e.conversationId) });
       break;
     }
     case 'chat.read': {
@@ -152,9 +160,42 @@ export function useChatActions() {
     }),
     edit: useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => api<ChatMessage>(`/chat/messages/${id}`, { method: 'PATCH', json: { body } }), onError }),
     remove: useMutation({ mutationFn: (id: string) => api(`/chat/messages/${id}`, { method: 'DELETE' }), onError }),
+    pin: useMutation({ mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => api<ChatMessage>(`/chat/messages/${id}/pin`, { method: 'PUT', json: { pinned } }), onError }),
     react: useMutation({ mutationFn: ({ id, emoji }: { id: string; emoji: string }) => api<ChatMessage>(`/chat/messages/${id}/reactions`, { method: 'POST', json: { emoji } }), onError }),
   };
 }
+
+export type SendInput = { body: string; threadRootId?: string | null; resourceIds?: string[]; grant?: 'viewer' | 'commenter' | 'editor' | 'none'; preview?: ChatAttachment[] };
+
+/** Uploads files from the computer into the sender's "Chat files" folder; returns the new resources. */
+export async function uploadForChat(files: File[]) {
+  const { id: parentId } = await api<{ id: string }>('/chat/upload-folder', { method: 'POST' });
+  const out: Resource[] = [];
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('parentId', parentId);
+    out.push(await uploadFile<Resource>('/resources/upload', fd));
+  }
+  return out;
+}
+
+export const attachmentOf = (r: Pick<Resource, 'id' | 'name' | 'type' | 'mimeType' | 'sizeBytes' | 'metadata'>): ChatAttachment => ({
+  id: r.id,
+  accessible: true,
+  source: 'attachment',
+  name: r.name,
+  type: r.type,
+  mimeType: r.mimeType ?? null,
+  sizeBytes: r.sizeBytes ?? null,
+  metadata: (r.metadata as Record<string, unknown>) ?? null,
+  owner: null,
+  updatedAt: null,
+  trashed: false,
+});
+
+/** 409 from sending: who cannot open which file (the caller asks the sender what to do). */
+export const accessProblem = (e: unknown) => (e instanceof ApiError && e.status === 409 && (e.body as { code?: string })?.code === 'needs_access' ? (e.body as import('@workos/shared').ChatAccessProblem) : null);
 
 /**
  * Sends with an optimistic copy (id "tmp-…") that the pushed or returned message replaces.
@@ -162,7 +203,7 @@ export function useChatActions() {
 export function useSendMessage(conversationId: string, me: UserSummary | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { body: string; threadRootId?: string | null }) => api<ChatMessage>(`/chat/conversations/${conversationId}/messages`, { method: 'POST', json: input }),
+    mutationFn: ({ preview: _p, ...input }: SendInput) => api<ChatMessage>(`/chat/conversations/${conversationId}/messages`, { method: 'POST', json: input }),
     onMutate: (input) => {
       if (!me) return;
       const tmp: ChatMessage = {
@@ -178,6 +219,9 @@ export function useSendMessage(conversationId: string, me: UserSummary | undefin
         lastReplyAt: null,
         repliers: [],
         reactions: [],
+        attachments: input.preview ?? [],
+        pinnedAt: null,
+        pinnedBy: null,
         createdAt: new Date().toISOString(),
         editedAt: null,
         deletedAt: null,
@@ -194,7 +238,8 @@ export function useSendMessage(conversationId: string, me: UserSummary | undefin
       void qc.invalidateQueries({ queryKey: chatKeys.list });
     },
     onError: (e: Error, input, ctx) => {
-      toast.error(e.message);
+      // A missing-access question is answered by the caller, not shown as an error.
+      if (!accessProblem(e)) toast.error(e.message);
       const drop = (list: ChatMessage[]) => list.filter((m) => m.id !== ctx?.tmp);
       if (input.threadRootId) qc.setQueryData<Thread>(chatKeys.thread(input.threadRootId), (d) => (d ? { ...d, replies: drop(d.replies) } : d));
       else qc.setQueryData<Pages>(chatKeys.messages(conversationId), (d) => (d && d.pages.length ? { ...d, pages: [{ ...d.pages[0], messages: drop(d.pages[0].messages) }, ...d.pages.slice(1)] } : d));
@@ -223,6 +268,13 @@ export function textToTokens(text: string, names: Map<string, string>) {
   let out = text;
   for (const [name, id] of [...names].sort((a, b) => b[0].length - a[0].length)) out = out.split(`@${name}`).join(`<@${id}>`);
   return out;
+}
+
+/** Preview of a conversation's last message: its text, or the files it carries. */
+export function lastMessageText(lm: { body: string; files?: number }, people: Map<string, UserSummary>) {
+  const text = previewText(lm.body, people);
+  if (text || !lm.files) return text;
+  return lm.files === 1 ? '📎 File' : `📎 ${lm.files} files`;
 }
 
 /** One-line preview for lists ("Hana: File đã gửi nhé"), with mentions as names and Markdown marks removed. */

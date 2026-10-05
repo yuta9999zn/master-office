@@ -5,7 +5,7 @@ import { BellOff, Check, Ellipsis, Hash, LogOut, MessageSquarePlus, Pin, PinOff,
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { previewText, useChatActions, useConversations } from '@/lib/chat';
+import { lastMessageText, useChatActions, useConversations } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
 import { useMe, useUsers } from '@/lib/queries';
 import { useTypingStore } from '@/lib/realtime';
@@ -138,7 +138,7 @@ function Row({ c, active, people, me }: { c: ConversationSummary; active: boolea
   const preview = typing.length
     ? `${typing.map((t) => t.name.split(' ')[0]).join(', ')} ${typing.length > 1 ? 'are' : 'is'} typing…`
     : lm
-      ? `${who ? `${who}${lm.kind === 'text' ? ': ' : ' '}` : ''}${previewText(lm.body, people)}`
+      ? `${who ? `${who}${lm.kind === 'text' ? ': ' : ' '}` : ''}${lastMessageText(lm, people)}`
       : c.description ?? 'No messages yet';
   const bold = c.unread > 0 && !c.muted;
 

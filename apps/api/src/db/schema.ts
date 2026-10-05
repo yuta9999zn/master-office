@@ -505,6 +505,8 @@ export const messages = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
     editedAt: ts('edited_at'),
     deletedAt: ts('deleted_at'),
+    pinnedAt: ts('pinned_at'),
+    pinnedBy: uuid('pinned_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => [uniqueIndex('messages_conversation_seq_idx').on(t.conversationId, t.seq), index('messages_thread_idx').on(t.threadRootId, t.createdAt)],
 );
@@ -522,4 +524,21 @@ export const messageReactions = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
+);
+
+/** Files a message points at (§65): attachments and internal links. Never a copy — the resource itself. */
+export const messageRefs = pgTable(
+  'message_refs',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    /** 'attachment' (picked or uploaded) or 'link' (a pasted link to a file). */
+    source: text('source').$type<'attachment' | 'link'>().notNull().default('attachment'),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.resourceId] }), index('message_refs_resource_idx').on(t.resourceId)],
 );

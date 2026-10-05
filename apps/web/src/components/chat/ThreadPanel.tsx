@@ -3,10 +3,11 @@
 import type { ConversationDetail } from '@workos/shared';
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSendMessage, useThread } from '@/lib/chat';
+import { useThread } from '@/lib/chat';
 import { useMe, useUsers } from '@/lib/queries';
 import { sendRealtime, useTyping } from '@/lib/realtime';
 import { EmptyState, Skeleton } from '../ui/primitives';
+import { useSendFlow } from './attachments';
 import { Composer } from './Composer';
 import { TypingLine } from './ConversationView';
 import { MessageItem } from './MessageItem';
@@ -16,7 +17,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
   const { data, error } = useThread(rootId);
   const { data: me } = useMe();
   const { data: users } = useUsers();
-  const send = useSendMessage(conv.id, me?.user);
+  const { send, dialog } = useSendFlow(conv.id, me?.user);
   const people = useMemo(() => new Map((users ?? []).map((u) => [u.id, u])), [users]);
   const candidates = useMemo(() => conv.members.filter((m) => m.id !== me?.user.id), [conv.members, me?.user.id]);
   const typing = useTyping(conv.id, rootId);
@@ -79,10 +80,12 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
             autoFocus
             testId="thread-composer"
             onTyping={() => sendRealtime({ type: 'typing', conversationId: conv.id, threadRootId: rootId })}
-            onSubmit={(body) => send.mutateAsync({ body, threadRootId: rootId }).catch(() => undefined)}
+            allowFiles
+            onSubmit={(body, files, { uploadsOnly }) => send({ body, threadRootId: rootId, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'viewer' as const } : {}) })}
           />
         </div>
       )}
+      {dialog}
     </aside>
   );
 }

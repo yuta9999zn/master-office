@@ -1,12 +1,13 @@
 'use client';
 
 import type { ChatMessage, UserSummary } from '@workos/shared';
-import { Copy, Ellipsis, MessageSquareText, Pencil, SmilePlus, Trash2 } from 'lucide-react';
+import { Copy, Ellipsis, MessageSquareText, Pencil, Pin, PinOff, SmilePlus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useChatActions } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
 import { Avatar, AvatarStack, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Tip } from '../ui/primitives';
+import { FileCard } from './attachments';
 import { Composer } from './Composer';
 import { EmojiPicker, MessageText, QUICK_REACTIONS } from './bits';
 
@@ -55,14 +56,15 @@ export function MessageItem({
   receipt?: string;
   highlight?: boolean;
 }) {
-  const { react, edit, remove } = useChatActions();
+  const { react, edit, remove, pin } = useChatActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const mine = !!me && m.sender?.id === me;
   const pending = m.id.startsWith('tmp-');
   const deleted = !!m.deletedAt;
   const toggle = (emoji: string) => !pending && react.mutate({ id: m.id, emoji });
 
-  const bubble = (
+  const textless = !deleted && !m.body && m.attachments.length > 0;
+  const bubble = textless ? null : (
     <div
       className={cn(
         'relative w-fit max-w-full rounded-2xl px-3.5 py-2 text-[14px] leading-[1.5] text-ink [overflow-wrap:anywhere]',
@@ -90,6 +92,11 @@ export function MessageItem({
             </Tip>
           </div>
         )}
+        {m.pinnedAt && !deleted && (
+          <div className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-amber-700" data-testid="pinned-label">
+            <Pin size={11} className="rotate-45" /> Pinned{m.pinnedBy ? ` by ${m.pinnedBy.id === me ? 'you' : m.pinnedBy.name}` : ''}
+          </div>
+        )}
         {editing ? (
           <div className="w-[min(560px,60vw)]">
             <Composer
@@ -110,6 +117,13 @@ export function MessageItem({
           </div>
         ) : (
           bubble
+        )}
+        {!!m.attachments.length && !deleted && (
+          <div className={cn('mt-1 flex flex-col gap-1.5', mine && 'items-end', pending && 'opacity-60')}>
+            {m.attachments.map((a) => (
+              <FileCard key={a.id} a={a} />
+            ))}
+          </div>
         )}
         {!!m.reactions.length && !deleted && (
           <div className={cn('mt-1 flex flex-wrap gap-1', mine && 'justify-end')}>
@@ -185,6 +199,9 @@ export function MessageItem({
                   Edit
                 </MenuItem>
               )}
+              <MenuItem icon={m.pinnedAt ? <PinOff /> : <Pin />} onSelect={() => pin.mutate({ id: m.id, pinned: !m.pinnedAt })}>
+                {m.pinnedAt ? 'Unpin' : 'Pin to conversation'}
+              </MenuItem>
               <MenuItem
                 icon={<Copy />}
                 onSelect={() => {

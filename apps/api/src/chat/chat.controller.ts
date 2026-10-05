@@ -21,7 +21,13 @@ const updateBody = z.object({ name: z.string().max(80).nullish(), description: z
 const membersBody = z.object({ userIds: z.array(z.string().uuid()).min(1).max(1000) });
 const roleBody = z.object({ role: z.enum(['admin', 'member']) });
 const prefsBody = z.object({ pinned: z.boolean().optional(), muted: z.boolean().optional() });
-const sendBody = z.object({ body: z.string().max(20_000), threadRootId: z.string().uuid().nullish() });
+const sendBody = z.object({
+  body: z.string().max(20_000),
+  threadRootId: z.string().uuid().nullish(),
+  resourceIds: z.array(z.string().uuid()).max(10).optional(),
+  grant: z.enum(['viewer', 'commenter', 'editor', 'none']).optional(),
+});
+const pinBody = z.object({ pinned: z.boolean() });
 const editBody = z.object({ body: z.string().max(20_000) });
 const reactBody = z.object({ emoji: z.string().min(1).max(16) });
 const readBody = z.object({ seq: z.number().int().min(0) });
@@ -112,6 +118,27 @@ export class ChatController {
   @Post('chat/conversations/:id/messages')
   send(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     return this.chat.send(a, id, parse(sendBody, b));
+  }
+
+  @Get('chat/conversations/:id/files')
+  files(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.files(a, id);
+  }
+
+  @Get('chat/conversations/:id/pins')
+  pins(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.pins(a, id);
+  }
+
+  /** Where files dropped into chat are uploaded: the sender's "Chat files" folder in My Files. */
+  @Post('chat/upload-folder')
+  uploadFolder(@CurrentUser() a: Actor) {
+    return this.chat.uploadFolder(a);
+  }
+
+  @Put('chat/messages/:mid/pin')
+  pin(@CurrentUser() a: Actor, @Param('mid', ParseUUIDPipe) mid: string, @Body() b: unknown) {
+    return this.chat.pin(a, mid, parse(pinBody, b).pinned);
   }
 
   @Get('chat/messages/:mid/thread')

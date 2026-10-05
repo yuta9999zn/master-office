@@ -2,6 +2,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Parsed JSON error body, when there is one (e.g. the 409 "needs access" details from chat). */
+    public readonly body?: unknown,
   ) {
     super(message);
   }
@@ -20,13 +22,15 @@ export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
   });
   if (!res.ok) {
     let message = res.statusText;
+    let body: unknown;
     try {
-      const body = await res.json();
-      message = Array.isArray(body.message) ? body.message.join(', ') : body.message ?? message;
+      body = await res.json();
+      const b = body as { message?: string | string[] };
+      message = Array.isArray(b.message) ? b.message.join(', ') : b.message ?? message;
     } catch {
       /* non-JSON error */
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();

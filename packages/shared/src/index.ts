@@ -279,6 +279,24 @@ export interface ChatReaction {
   mine: boolean;
 }
 
+/**
+ * A file a message points at (§65), with live metadata. Shown only to people who can open it — for everyone
+ * else it is a locked card (`accessible: false`, no name).
+ */
+export interface ChatAttachment {
+  id: string;
+  accessible: boolean;
+  source: 'attachment' | 'link';
+  name: string | null;
+  type: ResourceType | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  metadata: Record<string, unknown> | null;
+  owner: string | null;
+  updatedAt: string | null;
+  trashed: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -294,9 +312,27 @@ export interface ChatMessage {
   /** Up to three people who replied in the thread (for the avatar row under the message). */
   repliers: UserSummary[];
   reactions: ChatReaction[];
+  attachments: ChatAttachment[];
+  pinnedAt: string | null;
+  pinnedBy: UserSummary | null;
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
+}
+
+/** 409 from sending: some members cannot open a file — the sender chooses to share it, or send anyway. */
+export interface ChatAccessProblem {
+  code: 'needs_access';
+  message: string;
+  missing: { resourceId: string; name: string; canShare: boolean; users: Pick<UserSummary, 'id' | 'name'>[] }[];
+}
+
+/** A file shared in a conversation (Files tab). */
+export interface ChatFile {
+  messageId: string;
+  sender: UserSummary | null;
+  sentAt: string;
+  file: ChatAttachment;
 }
 
 export interface ConversationSummary {
@@ -313,7 +349,7 @@ export interface ConversationSummary {
   /** A few members for the avatar of groups. */
   faces: UserSummary[];
   memberCount: number;
-  lastMessage: { body: string; sender: string | null; senderId: string | null; kind: 'text' | 'system'; createdAt: string } | null;
+  lastMessage: { body: string; sender: string | null; senderId: string | null; kind: 'text' | 'system'; createdAt: string; files: number } | null;
   lastMessageAt: string | null;
   lastSeq: number;
   lastReadSeq: number;

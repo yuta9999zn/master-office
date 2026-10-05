@@ -1,16 +1,19 @@
 'use client';
 
 import type { ChatMessage, ConversationDetail, UserSummary } from '@workos/shared';
-import { ArrowDown, Bell, BellOff, Info, Loader2, LogOut, Pin, PinOff, Search } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useChatActions, useConversation, useConversations, useMessages, useSendMessage } from '@/lib/chat';
+import { ArrowDown, Bell, BellOff, FileText, Info, Loader2, LogOut, Pin, PinOff, Search } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useChatActions, useChatFiles, useChatPins, useConversation, useConversations, useMessages } from '@/lib/chat';
+import { formatShort } from '@/lib/format';
 import { useMe, useUsers } from '@/lib/queries';
 import { sendRealtime, useIsOnline, useTyping } from '@/lib/realtime';
-import { AvatarStack, Button, cn, EmptyState, IconButton, Skeleton } from '../ui/primitives';
+import { Avatar, AvatarStack, Button, cn, EmptyState, IconButton, Skeleton } from '../ui/primitives';
+import { FileCard, useSendFlow } from './attachments';
 import { ChannelGlyph, ConversationAvatar } from './bits';
-import { Composer } from './Composer';
+import { Composer, type ComposerHandle } from './Composer';
 import { DetailsPanel, SearchPanel } from './DetailsPanel';
 import { MessageItem, SystemLine } from './MessageItem';
+import { MessageText } from './bits';
 import { ThreadPanel } from './ThreadPanel';
 
 type Panel = { kind: 'thread'; id: string } | { kind: 'details' } | { kind: 'search' } | null;
@@ -21,6 +24,16 @@ function dayLabel(iso: string) {
   const today = new Date();
   const diff = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : dayFmt.format(d);
+}
+
+function byDay(items: { day: string; at: string; node: ReactNode }[]) {
+  const out: { day: string; at: string; nodes: ReactNode[] }[] = [];
+  for (const it of items) {
+    const last = out.at(-1);
+    if (last?.day === it.day) last.nodes.push(it.node);
+    else out.push({ day: it.day, at: it.at, nodes: [it.node] });
+  }
+  return out;
 }
 
 export function TypingLine({ names }: { names: string[] }) {
@@ -34,8 +47,10 @@ export function TypingLine({ names }: { names: string[] }) {
 export function ConversationView({ id }: { id: string }) {
   const { data: conv, error } = useConversation(id);
   const [panel, setPanel] = useState<Panel>(null);
+  const [tab, setTab] = useState<'chat' | 'files' | 'pinned'>('chat');
   useEffect(() => {
     setPanel(null);
+    setTab('chat');
   }, [id]);
 
   if (error) return <EmptyState title="Can’t open this conversation">{(error as Error).message}</EmptyState>;
@@ -51,7 +66,22 @@ export function ConversationView({ id }: { id: string }) {
     <div className="flex min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col bg-surface">
         <Header conv={conv} panel={panel} setPanel={setPanel} />
-        <Timeline key={conv.id} conv={conv} onOpenThread={(m) => setPanel({ kind: 'thread', id: m.id })} highlight={null} />
+        <nav className="flex shrink-0 gap-1 border-b border-line px-5" role="tablist" aria-label="Conversation views">
+          {(['chat', 'files', 'pinned'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={cn('-mb-px border-b-2 px-3 py-2 text-[13px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-600' : 'border-transparent text-muted hover:text-ink')}
+            >
+              {t}
+            </button>
+          ))}
+        </nav>
+        {tab === 'chat' && <Timeline key={conv.id} conv={conv} onOpenThread={(m) => setPanel({ kind: 'thread', id: m.id })} highlight={null} />}
+        {tab === 'files' && <FilesView conv={conv} />}
+        {tab === 'pinned' && <PinsView conv={conv} onOpenThread={(mid) => setPanel({ kind: 'thread', id: mid })} />}
       </div>
       {panel?.kind === 'thread' && <ThreadPanel conv={conv} rootId={panel.id} onClose={() => setPanel(null)} />}
       {panel?.kind === 'details' && <DetailsPanel conv={conv} onClose={() => setPanel(null)} />}
@@ -120,7 +150,8 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
   const { data: users } = useUsers();
   const { data: list } = useConversations();
   const { read, join } = useChatActions();
-  const send = useSendMessage(conv.id, me?.user);
+  const { send, dialog } = useSendFlow(conv.id, me?.user);
+  const composer = useRef<ComposerHandle>(null);
   const people = useMemo(() => new Map((users ?? []).map((u) => [u.id, u])), [users]);
   const meId = me?.user.id;
   const candidates = useMemo(() => {
@@ -218,7 +249,18 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
 
   return (
     <>
-      <div ref={scroller} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto pb-2" data-testid="timeline">
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto pb-2"
+        data-testid="timeline"
+        onDragOver={(e) => conv.joined && e.dataTransfer.types.includes('Files') && e.preventDefault()}
+        onDrop={(e) => {
+          if (!conv.joined || !e.dataTransfer.files.length) return;
+          e.preventDefault();
+          composer.current?.addFiles([...e.dataTransfer.files]);
+        }}
+      >
         {isFetchingNextPage && (
           <div className="flex justify-center py-2 text-muted">
             <Loader2 size={16} className="animate-spin" />
@@ -231,18 +273,17 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
             <Skeleton className="ml-auto h-10 w-1/3" />
           </div>
         )}
-        {messages.map((m, i) => {
+        {byDay(
+          messages.map((m, i) => {
           const prev = messages[i - 1];
           const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
           const grouped = !newDay && !!prev && prev.kind === 'text' && m.kind === 'text' && prev.sender?.id === m.sender?.id && new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60_000 && !prev.replyCount;
           const isNew = firstUnread.current !== null && m.seq > firstUnread.current && (!prev || prev.seq <= firstUnread.current) && m.sender?.id !== meId && m.kind === 'text' && !m.id.startsWith('tmp-');
-          return (
+          return {
+            day: new Date(m.createdAt).toDateString(),
+            at: m.createdAt,
+            node: (
             <Fragment key={m.id}>
-              {newDay && (
-                <div className="sticky top-0 z-[5] flex justify-center py-2">
-                  <span className="rounded-full border border-line bg-surface px-3 py-0.5 text-[11.5px] font-medium text-muted shadow-sm">{dayLabel(m.createdAt)}</span>
-                </div>
-              )}
               {isNew && (
                 <div className="flex items-center gap-2 px-5 py-1" data-testid="new-divider">
                   <span className="h-px flex-1 bg-red-300" />
@@ -268,8 +309,18 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
                 />
               )}
             </Fragment>
-          );
-        })}
+            ),
+          };
+        }),
+        ).map((g) => (
+          // A section per day keeps each sticky date inside its own day (no stacked labels).
+          <section key={g.day}>
+            <div className="sticky top-0 z-[5] flex justify-center py-2">
+              <span className="rounded-full border border-line bg-surface px-3 py-0.5 text-[11.5px] font-medium text-muted shadow-sm">{dayLabel(g.at)}</span>
+            </div>
+            {g.nodes}
+          </section>
+        ))}
       </div>
       {showJump && (
         <div className="relative">
@@ -288,6 +339,8 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
       <div className="px-5 pb-4">
         {conv.joined ? (
           <Composer
+            ref={composer}
+            allowFiles
             key={conv.id}
             placeholder={`Message ${conv.kind === 'dm' ? conv.title : conv.kind === 'channel' ? `#${conv.title}` : conv.title}`}
             people={people}
@@ -295,9 +348,9 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
             onTyping={onTyping}
             onEditLast={editLast}
             autoFocus
-            onSubmit={(body) => {
+            onSubmit={(body, files, { uploadsOnly }) => {
               atBottom.current = true;
-              return send.mutateAsync({ body }).catch(() => undefined);
+              return send({ body, resourceIds: files.map((f) => f.id), preview: files, ...(uploadsOnly ? { grant: 'viewer' as const } : {}) });
             }}
           />
         ) : (
@@ -311,7 +364,90 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
           </div>
         )}
       </div>
+      {dialog}
     </>
+  );
+}
+
+function FilesView({ conv }: { conv: ConversationDetail }) {
+  const { data, isLoading } = useChatFiles(conv.id);
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-5" data-testid="files-view">
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}</div>
+      ) : !data?.length ? (
+        <EmptyState icon={<FileText size={32} />} title="No files yet">
+          Files and links to documents shared here show up in this tab.
+        </EmptyState>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {data.map((f) => (
+            <li key={f.messageId + f.file.id} className="space-y-1">
+              <FileCard a={f.file} />
+              <div className="flex items-center gap-1.5 px-1 text-[11.5px] text-muted">
+                {f.sender && <Avatar user={f.sender} size={16} />}
+                {f.sender?.name ?? 'Someone'} · {formatShort(f.sentAt)}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PinsView({ conv, onOpenThread }: { conv: ConversationDetail; onOpenThread: (mid: string) => void }) {
+  const { data, isLoading } = useChatPins(conv.id);
+  const { data: users } = useUsers();
+  const { data: me } = useMe();
+  const { pin } = useChatActions();
+  const people = useMemo(() => new Map((users ?? []).map((u) => [u.id, u])), [users]);
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-5" data-testid="pins-view">
+      {isLoading ? (
+        <Skeleton className="h-20" />
+      ) : !data?.length ? (
+        <EmptyState icon={<Pin size={32} />} title="No pinned messages">
+          Pin important messages from the message menu so everyone can find them here.
+        </EmptyState>
+      ) : (
+        <ul className="space-y-3">
+          {data.map((m) => (
+            <li key={m.id} className="rounded-xl border border-line bg-surface p-3.5" data-testid="pinned-message">
+              <div className="flex items-center gap-2 text-[12px]">
+                {m.sender && <Avatar user={m.sender} size={22} />}
+                <span className="font-semibold text-ink-2">{m.sender?.name}</span>
+                <span className="text-subtle">{formatShort(m.createdAt)}</span>
+                <span className="flex-1" />
+                {conv.joined && (
+                  <button onClick={() => pin.mutate({ id: m.id, pinned: false })} className="rounded-md px-2 py-0.5 text-muted hover:bg-hover">
+                    Unpin
+                  </button>
+                )}
+              </div>
+              {m.body && (
+                <div className="mt-1.5 text-[14px] leading-relaxed text-ink">
+                  <MessageText body={m.body} people={people} me={me?.user.id} />
+                </div>
+              )}
+              {m.attachments.map((a) => (
+                <div key={a.id} className="mt-2">
+                  <FileCard a={a} compact />
+                </div>
+              ))}
+              <div className="mt-2 flex items-center gap-3 text-[11.5px] text-subtle">
+                {m.pinnedBy && <span>Pinned by {m.pinnedBy.id === me?.user.id ? 'you' : m.pinnedBy.name}</span>}
+                {m.replyCount > 0 && (
+                  <button onClick={() => onOpenThread(m.id)} className="font-medium text-brand-600 hover:underline">
+                    {m.replyCount} {m.replyCount === 1 ? 'reply' : 'replies'}
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

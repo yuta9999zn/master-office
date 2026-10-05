@@ -8,7 +8,7 @@ import { ConversationAvatar } from '@/components/chat/bits';
 import { ActivityList } from '@/components/drive/DetailsPanel';
 import { AppIcon, Button, CardHeader, EmptyState, FileIcon, LogoMark, Skeleton } from '@/components/ui/primitives';
 import { APPS } from '@/lib/apps';
-import { previewText, useConversations } from '@/lib/chat';
+import { lastMessageText, useConversations } from '@/lib/chat';
 import { firstName, formatBytes, formatShort } from '@/lib/format';
 import { useActivity, useMe, useResourceActions, useResources, useStats, useUsers } from '@/lib/queries';
 import { hrefFor, typeLabel } from '@/lib/resources';
@@ -125,7 +125,7 @@ function RecentChats() {
                 <ConversationAvatar c={c} size={38} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[14px] font-medium text-ink">{c.title}</div>
-                  <div className="truncate text-[12px] text-muted">{lm ? who + previewText(lm.body, people) : c.description ?? 'No messages yet'}</div>
+                  <div className="truncate text-[12px] text-muted">{lm ? who + lastMessageText(lm, people) : c.description ?? 'No messages yet'}</div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="text-[11.5px] text-subtle">{c.lastMessageAt ? formatShort(c.lastMessageAt) : ''}</span>

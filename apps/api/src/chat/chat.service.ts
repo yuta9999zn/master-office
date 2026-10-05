@@ -1,11 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
-import type { ChannelListing, ChatMessage, ConversationDetail, ConversationKind, ConversationMember, ConversationRole, ConversationSummary, UserSummary } from '@workos/shared';
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { can, type ChannelListing, type ChatAccessProblem, type ChatAttachment, type ChatFile, type ChatMessage, type ConversationDetail, type ConversationKind, type ConversationMember, type ConversationRole, type ConversationSummary, type Role, type UserSummary } from '@workos/shared';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { conversationMembers, conversations, messageReactions, messages, users, workspaceMembers } from '../db/schema';
+import { aclEntries, conversationMembers, conversations, messageReactions, messageRefs, messages, resources, users, workspaceMembers } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -13,6 +13,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 type Conv = typeof conversations.$inferSelect;
 type MsgRow = typeof messages.$inferSelect;
 type MemberRow = typeof conversationMembers.$inferSelect;
+type ResourceRow = typeof resources.$inferSelect;
 
 const MENTION = /<@([0-9a-f-]{36})>/gi;
 const CHANNEL_COLORS = ['#2563eb', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
@@ -127,6 +128,7 @@ export class ChatService implements OnModuleInit {
       lm_sender: string | null;
       lm_at: Date | null;
       lm_deleted: Date | null;
+      lm_files: string | null;
     }>(sql`
       SELECT c.id, c.kind, c.name, c.description, c.visibility, c.color, c.space_id, c.last_seq, c.last_message_at,
              m.role, m.last_read_seq, m.pinned, m.muted,
@@ -134,11 +136,12 @@ export class ChatService implements OnModuleInit {
                 AND x.deleted_at IS NULL AND x.kind = 'text' AND x.sender_id IS DISTINCT FROM ${actor.id}) AS unread,
              (SELECT count(*) FROM messages x WHERE x.conversation_id = c.id AND x.seq > m.last_read_seq AND x.thread_root_id IS NULL
                 AND x.deleted_at IS NULL AND ${actor.id}::uuid = ANY(x.mentions)) AS mentions,
-             lm.body AS lm_body, lm.kind AS lm_kind, lm.sender_id AS lm_sender, lm.created_at AS lm_at, lm.deleted_at AS lm_deleted
+             lm.body AS lm_body, lm.kind AS lm_kind, lm.sender_id AS lm_sender, lm.created_at AS lm_at, lm.deleted_at AS lm_deleted,
+             (SELECT count(*) FROM message_refs r WHERE r.message_id = lm.id) AS lm_files
       FROM conversation_members m
       JOIN conversations c ON c.id = m.conversation_id
       LEFT JOIN LATERAL (
-        SELECT x.body, x.kind, x.sender_id, x.created_at, x.deleted_at FROM messages x
+        SELECT x.id, x.body, x.kind, x.sender_id, x.created_at, x.deleted_at FROM messages x
         WHERE x.conversation_id = c.id AND x.thread_root_id IS NULL ORDER BY x.seq DESC LIMIT 1
       ) lm ON true
       WHERE m.user_id = ${actor.id} ${only ? sql`AND c.id = ${only}` : sql``}`);
@@ -178,6 +181,7 @@ export class ChatService implements OnModuleInit {
               senderId: r.lm_sender,
               kind: r.lm_kind,
               createdAt: iso(r.lm_at)!,
+              files: r.lm_deleted ? 0 : Number(r.lm_files ?? 0),
             }
           : null,
         lastMessageAt: iso(r.last_message_at),
@@ -468,9 +472,53 @@ export class ChatService implements OnModuleInit {
     return row;
   }
 
-  async send(actor: Actor, id: string, input: { body: string; threadRootId?: string | null }): Promise<ChatMessage> {
+  /** Links in the text that point at files of this workspace (any URL containing a resource id). */
+  private linkedIds(body: string) {
+    const ids = new Set<string>();
+    for (const url of body.match(/https?:\/\/[^\s<>]+/gi) ?? []) for (const m of url.matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)) ids.add(m[0].toLowerCase());
+    return [...ids];
+  }
+
+  /**
+   * The files a message will point at: picked attachments (must be viewable by the sender) and links to files the
+   * sender can open (others are ignored — a link to something you cannot see is just text).
+   */
+  private async refsFor(actor: Actor, attachmentIds: string[], body: string, tx: Tx) {
+    const attach = [...new Set(attachmentIds.map((x) => x.toLowerCase()))];
+    const links = this.linkedIds(body).filter((x) => !attach.includes(x));
+    const all = [...attach, ...links];
+    if (!all.length) return [];
+    if (all.length > 10) throw new BadRequestException('A message can carry at most 10 files');
+    const rows = await tx.select().from(resources).where(and(inArray(resources.id, all), eq(resources.workspaceId, actor.workspaceId)));
+    const roles = await this.perms.rolesFor(actor, rows, tx);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const out: { row: ResourceRow; source: 'attachment' | 'link' }[] = [];
+    for (const id of attach) {
+      const row = byId.get(id);
+      if (!row || row.trashedAt || !can(roles.get(id), 'viewer')) throw new NotFoundException('File not found');
+      out.push({ row, source: 'attachment' });
+    }
+    for (const id of links) {
+      const row = byId.get(id);
+      if (row && !row.trashedAt && can(roles.get(id), 'viewer')) out.push({ row, source: 'link' });
+    }
+    return out;
+  }
+
+  /** Members (other than the sender) who cannot open each file. */
+  private async missingAccess(actor: Actor, memberIds: string[], refs: { row: ResourceRow }[], tx: Tx) {
+    const others = memberIds.filter((m) => m !== actor.id);
+    const missing = new Map<string, string[]>();
+    for (const userId of others) {
+      const roles = await this.perms.rolesFor({ id: userId, name: '', workspaceId: actor.workspaceId }, refs.map((r) => r.row), tx);
+      for (const r of refs) if (!can(roles.get(r.row.id), 'viewer')) missing.set(r.row.id, [...(missing.get(r.row.id) ?? []), userId]);
+    }
+    return missing;
+  }
+
+  async send(actor: Actor, id: string, input: { body: string; threadRootId?: string | null; resourceIds?: string[]; grant?: 'viewer' | 'commenter' | 'editor' | 'none' }): Promise<ChatMessage> {
     const body = input.body.trim();
-    if (!body) throw new BadRequestException('Message is empty');
+    if (!body && !input.resourceIds?.length) throw new BadRequestException('Message is empty');
     const { row, root } = await this.db.transaction(async (tx) => {
       const { conv } = await this.requireMember(actor, id, tx);
       let root: MsgRow | null = null;
@@ -478,8 +526,43 @@ export class ChatService implements OnModuleInit {
         [root] = await tx.select().from(messages).where(and(eq(messages.id, input.threadRootId), eq(messages.conversationId, conv.id)));
         if (!root || root.threadRootId || root.kind !== 'text') throw new NotFoundException('Thread not found');
       }
+      const refs = await this.refsFor(actor, input.resourceIds ?? [], body, tx);
+      if (refs.length) {
+        // Sharing in chat never copies a file: people who cannot open it get access, or the sender sends anyway (§6.4).
+        const missing = await this.missingAccess(actor, await this.memberIds(id, tx), refs, tx);
+        if (missing.size && input.grant !== 'none') {
+          const myRoles = await this.perms.rolesFor(actor, refs.map((r) => r.row), tx);
+          if (!input.grant) {
+            const people = await loadUsers(tx, [...missing.values()].flat());
+            const problem: ChatAccessProblem = {
+              code: 'needs_access',
+              message: 'Some people in this conversation cannot open a file',
+              missing: refs
+                .filter((r) => missing.has(r.row.id))
+                .map((r) => ({
+                  resourceId: r.row.id,
+                  name: r.row.name,
+                  canShare: can(myRoles.get(r.row.id), 'admin'),
+                  users: missing.get(r.row.id)!.map((u) => ({ id: u, name: people.get(u)?.name ?? 'Someone' })),
+                })),
+            };
+            throw new ConflictException(problem);
+          }
+          for (const r of refs) {
+            const users = missing.get(r.row.id);
+            if (!users) continue;
+            if (!can(myRoles.get(r.row.id), 'admin')) throw new ForbiddenException(`You cannot share "${r.row.name}" — ask its owner`);
+            await tx
+              .insert(aclEntries)
+              .values(users.map((u) => ({ resourceId: r.row.id, principalType: 'user' as const, principalId: u, role: input.grant as Role, createdBy: actor.id })))
+              .onConflictDoNothing();
+            await this.events.emit(tx, actor, 'acl.changed', { resourceId: r.row.id, spaceId: r.row.spaceId }, { name: r.row.name, via: 'chat', conversationId: id, count: users.length, role: input.grant });
+          }
+        }
+      }
       const mentions = await this.mentionsIn(actor, body, tx);
       const row = await this.insert(tx, id, { senderId: actor.id, kind: 'text', body, mentions, threadRootId: root?.id ?? null });
+      if (refs.length) await tx.insert(messageRefs).values(refs.map((r, position) => ({ messageId: row.id, resourceId: r.row.id, position, source: r.source })));
       if (root) {
         [root] = await tx
           .update(messages)
@@ -496,11 +579,10 @@ export class ChatService implements OnModuleInit {
       return { row, root };
     });
     const members = await this.memberIds(id);
-    const [msg, rootMsg] = await this.serialize(actor, root ? [row, root] : [row]);
-    this.realtime.publish(members, { type: 'chat.message', conversationId: id, message: msg });
-    if (rootMsg) this.realtime.publish(members, { type: 'chat.message.updated', conversationId: id, message: rootMsg });
+    await this.publishRows(actor, members, 'chat.message', [row]);
+    if (root) await this.publishRows(actor, members, 'chat.message.updated', [root]);
     else this.realtime.publish([actor.id], { type: 'chat.read', conversationId: id, userId: actor.id, seq: row.seq });
-    return msg;
+    return (await this.serialize(actor, [row]))[0];
   }
 
   async edit(actor: Actor, messageId: string, body: string) {
@@ -509,9 +591,17 @@ export class ChatService implements OnModuleInit {
     if (row.senderId !== actor.id || row.kind !== 'text') throw new ForbiddenException('Only the sender can edit a message');
     if (row.deletedAt) throw new BadRequestException('The message was deleted');
     const text = body.trim();
-    if (!text) throw new BadRequestException('Message is empty');
-    const mentions = await this.mentionsIn(actor, text, this.db);
-    const [next] = await this.db.update(messages).set({ body: text, mentions, editedAt: sql`now()` }).where(eq(messages.id, messageId)).returning();
+    const attached = await this.db.select({ id: messageRefs.resourceId }).from(messageRefs).where(and(eq(messageRefs.messageId, messageId), eq(messageRefs.source, 'attachment')));
+    if (!text && !attached.length) throw new BadRequestException('Message is empty');
+    const next = await this.db.transaction(async (tx) => {
+      const mentions = await this.mentionsIn(actor, text, tx);
+      // Links are re-read from the new text; attachments stay.
+      await tx.delete(messageRefs).where(and(eq(messageRefs.messageId, messageId), eq(messageRefs.source, 'link')));
+      const links = (await this.refsFor(actor, [], text, tx)).filter((r) => !attached.some((a) => a.id === r.row.id));
+      if (links.length) await tx.insert(messageRefs).values(links.map((r, i) => ({ messageId, resourceId: r.row.id, position: attached.length + i, source: 'link' as const })));
+      const [n] = await tx.update(messages).set({ body: text, mentions, editedAt: sql`now()` }).where(eq(messages.id, messageId)).returning();
+      return n;
+    });
     return this.publishUpdate(actor, next);
   }
 
@@ -521,8 +611,10 @@ export class ChatService implements OnModuleInit {
     if (row.kind !== 'text') throw new BadRequestException('System messages cannot be deleted');
     if (row.senderId !== actor.id && member.role === 'member') throw new ForbiddenException('Only the sender or an admin can delete a message');
     if (row.deletedAt) return;
-    const [next] = await this.db.update(messages).set({ body: '', mentions: [], deletedAt: sql`now()` }).where(eq(messages.id, messageId)).returning();
+    const [next] = await this.db.update(messages).set({ body: '', mentions: [], deletedAt: sql`now()`, pinnedAt: null, pinnedBy: null }).where(eq(messages.id, messageId)).returning();
     await this.db.delete(messageReactions).where(eq(messageReactions.messageId, messageId));
+    // The files themselves stay in Drive; the message just stops pointing at them.
+    await this.db.delete(messageRefs).where(eq(messageRefs.messageId, messageId));
     await this.publishUpdate(actor, next);
   }
 
@@ -540,10 +632,115 @@ export class ChatService implements OnModuleInit {
     return this.publishUpdate(actor, row);
   }
 
-  private async publishUpdate(actor: Actor, row: MsgRow) {
-    const [msg] = await this.serialize(actor, [row]);
-    this.realtime.publish(await this.memberIds(row.conversationId), { type: 'chat.message.updated', conversationId: row.conversationId, message: msg });
+  async uploadFolder(actor: Actor): Promise<{ id: string }> {
+    const where = and(
+      eq(resources.workspaceId, actor.workspaceId),
+      eq(resources.ownerId, actor.id),
+      isNull(resources.parentId),
+      isNull(resources.spaceId),
+      eq(resources.type, 'folder'),
+      isNull(resources.trashedAt),
+      sql`${resources.metadata}->>'chatFiles' = 'true'`,
+    );
+    const [found] = await this.db.select({ id: resources.id }).from(resources).where(where).limit(1);
+    if (found) return found;
+    const [row] = await this.db
+      .insert(resources)
+      .values({ workspaceId: actor.workspaceId, name: 'Chat files', type: 'folder', ownerId: actor.id, updatedBy: actor.id, metadata: { chatFiles: true }, description: 'Files you sent in Chat' })
+      .returning({ id: resources.id });
+    return row;
+  }
+
+  /** Pins or unpins a message for everyone in the conversation (Pinned tab). */
+  async pin(actor: Actor, messageId: string, pinned: boolean) {
+    const row = await this.message(messageId);
+    await this.requireMember(actor, row.conversationId);
+    if (row.deletedAt || row.kind !== 'text') throw new BadRequestException('Cannot pin this message');
+    if (!!row.pinnedAt === pinned) return this.publishUpdate(actor, row);
+    if (pinned) {
+      const [{ n }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(messages).where(and(eq(messages.conversationId, row.conversationId), isNotNull(messages.pinnedAt)));
+      if (n >= 50) throw new BadRequestException('A conversation can have at most 50 pinned messages');
+    }
+    const next = await this.db.transaction(async (tx) => {
+      const [n] = await tx.update(messages).set(pinned ? { pinnedAt: sql`now()`, pinnedBy: actor.id } : { pinnedAt: null, pinnedBy: null }).where(eq(messages.id, messageId)).returning();
+      if (pinned) await this.system(tx, row.conversationId, actor, 'pinned a message');
+      return n;
+    });
+    const msg = await this.publishUpdate(actor, next);
+    if (pinned) this.realtime.publish(await this.memberIds(row.conversationId), { type: 'chat.conversation', conversationId: row.conversationId });
     return msg;
+  }
+
+  async pins(actor: Actor, id: string): Promise<ChatMessage[]> {
+    await this.access(actor, id);
+    const rows = await this.db.select().from(messages).where(and(eq(messages.conversationId, id), isNotNull(messages.pinnedAt))).orderBy(desc(messages.pinnedAt));
+    return this.serialize(actor, rows);
+  }
+
+  /** Files shared in the conversation, newest first, once per file (Files tab). */
+  async files(actor: Actor, id: string): Promise<ChatFile[]> {
+    await this.access(actor, id);
+    const rows = await this.db
+      .select({ messageId: messageRefs.messageId, resourceId: messageRefs.resourceId, source: messageRefs.source, senderId: messages.senderId, sentAt: messages.createdAt })
+      .from(messageRefs)
+      .innerJoin(messages, eq(messages.id, messageRefs.messageId))
+      .where(and(eq(messages.conversationId, id), isNull(messages.deletedAt)))
+      .orderBy(desc(messages.seq))
+      .limit(500);
+    const seen = new Set<string>();
+    const latest = rows.filter((r) => !seen.has(r.resourceId) && seen.add(r.resourceId));
+    const cards = await this.cards(actor, latest);
+    const people = await loadUsers(this.db, latest.map((r) => r.senderId));
+    return latest.map((r) => ({ messageId: r.messageId, sender: r.senderId ? people.get(r.senderId) ?? null : null, sentAt: r.sentAt, file: cards.get(`${r.messageId}:${r.resourceId}`)! }));
+  }
+
+  /** Live file cards for the viewer; files the viewer cannot open are locked (no name). */
+  private async cards(viewer: Actor, refs: { messageId: string; resourceId: string; source: 'attachment' | 'link' }[]) {
+    const out = new Map<string, ChatAttachment>();
+    if (!refs.length) return out;
+    const rows = await this.db.select().from(resources).where(inArray(resources.id, [...new Set(refs.map((r) => r.resourceId))]));
+    const roles = await this.perms.rolesFor(viewer, rows);
+    const owners = await loadUsers(this.db, rows.map((r) => r.ownerId));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const ref of refs) {
+      const r = byId.get(ref.resourceId);
+      const ok = !!r && can(roles.get(r.id), 'viewer');
+      out.set(`${ref.messageId}:${ref.resourceId}`, {
+        id: ref.resourceId,
+        accessible: ok,
+        source: ref.source,
+        name: ok ? r.name : null,
+        type: ok ? r.type : null,
+        mimeType: ok ? r.mimeType : null,
+        sizeBytes: ok ? r.sizeBytes : null,
+        metadata: ok ? r.metadata : null,
+        owner: ok ? owners.get(r.ownerId)?.name ?? null : null,
+        updatedAt: ok ? r.updatedAt : null,
+        trashed: ok && !!r.trashedAt,
+      });
+    }
+    return out;
+  }
+
+  private async publishUpdate(actor: Actor, row: MsgRow) {
+    await this.publishRows(actor, await this.memberIds(row.conversationId), 'chat.message.updated', [row]);
+    return (await this.serialize(actor, [row]))[0];
+  }
+
+  /**
+   * Pushes messages to members. Messages with files are serialized per recipient, because a file card shows its
+   * name only to people who can open it; everything else is one payload for all.
+   */
+  private async publishRows(actor: Actor, members: string[], type: 'chat.message' | 'chat.message.updated', rows: MsgRow[]) {
+    const withFiles = rows.length ? await this.db.select({ id: messageRefs.messageId }).from(messageRefs).where(inArray(messageRefs.messageId, rows.map((r) => r.id))).limit(1) : [];
+    if (!withFiles.length) {
+      for (const msg of await this.serialize(actor, rows)) this.realtime.publish(members, { type, conversationId: msg.conversationId, message: msg });
+      return;
+    }
+    for (const userId of members) {
+      const viewer = { id: userId, name: '', workspaceId: actor.workspaceId };
+      for (const msg of await this.serialize(viewer, rows)) this.realtime.publish([userId], { type, conversationId: msg.conversationId, message: msg });
+    }
   }
 
   async read(actor: Actor, id: string, seq: number) {
@@ -559,13 +756,13 @@ export class ChatService implements OnModuleInit {
   }
 
   /**
-   * Reactions are per-viewer (`mine`), so every message is serialized for the caller. Realtime pushes reuse the
-   * sender's view — clients recompute `mine` from the user lists they get (see web lib/chat.ts).
+   * Serialized for one viewer: `mine` on reactions and which file cards are open to them. Clients recompute `mine`
+   * from `userIds` for pushed messages (see web lib/chat.ts).
    */
   private async serialize(actor: Actor, rows: MsgRow[]): Promise<ChatMessage[]> {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
-    const [reactions, repliers] = await Promise.all([
+    const [reactions, repliers, refs] = await Promise.all([
       this.db
         .select({ messageId: messageReactions.messageId, emoji: messageReactions.emoji, userId: messageReactions.userId, name: users.name })
         .from(messageReactions)
@@ -578,8 +775,9 @@ export class ChatService implements OnModuleInit {
             .from(messages)
             .where(inArray(messages.threadRootId, rows.filter((r) => r.replyCount > 0).map((r) => r.id)))
         : Promise.resolve([] as { root: string | null; senderId: string | null }[]),
+      this.db.select().from(messageRefs).where(inArray(messageRefs.messageId, ids)).orderBy(asc(messageRefs.position)),
     ]);
-    const people = await loadUsers(this.db, [...rows.map((r) => r.senderId), ...repliers.map((r) => r.senderId)]);
+    const [people, cards] = await Promise.all([loadUsers(this.db, [...rows.map((r) => r.senderId), ...rows.map((r) => r.pinnedBy), ...repliers.map((r) => r.senderId)]), this.cards(actor, refs)]);
     return rows.map((r) => {
       const mine = reactions.filter((x) => x.messageId === r.id);
       const grouped = new Map<string, { emoji: string; ids: string[]; names: string[] }>();
@@ -606,6 +804,9 @@ export class ChatService implements OnModuleInit {
           .map((x) => people.get(x.senderId!)!)
           .filter(Boolean),
         reactions: [...grouped.values()].map((g) => ({ emoji: g.emoji, count: g.ids.length, users: g.names.slice(0, 10), mine: g.ids.includes(actor.id), userIds: g.ids })),
+        attachments: r.deletedAt ? [] : refs.filter((x) => x.messageId === r.id).map((x) => cards.get(`${x.messageId}:${x.resourceId}`)!),
+        pinnedAt: r.pinnedAt,
+        pinnedBy: r.pinnedBy ? people.get(r.pinnedBy) ?? null : null,
         createdAt: r.createdAt,
         editedAt: r.editedAt,
         deletedAt: r.deletedAt,

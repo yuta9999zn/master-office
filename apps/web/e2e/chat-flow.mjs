@@ -194,6 +194,80 @@ await step('pinning moves a conversation into Pinned', claudia, async () => {
   await claudia.getByRole('tab', { name: 'all' }).click();
 });
 
+await step('file cards show live metadata and open the right editor', claudia, async () => {
+  await row(claudia, 'ITM Japan - Project').click();
+  const card = claudia.getByTestId('timeline').locator('[data-testid="file-card"][data-name="Project Plan Sep.pptx"]');
+  await card.waitFor();
+  if (!(await card.innerText()).includes('PPTX')) throw new Error(await card.innerText());
+  await card.click();
+  await claudia.waitForURL(/\/slides\//, { timeout: 30000 });
+  await claudia.goBack();
+  await claudia.getByTestId('conversation-title').getByText('ITM Japan - Project').waitFor({ timeout: 30000 });
+});
+
+const shareFromDrive = async (page, name) => {
+  await page.getByRole('button', { name: 'Attach' }).click();
+  await page.getByRole('menuitem', { name: 'Share from Drive' }).click();
+  await page.getByLabel('Search files').fill(name);
+  await page.getByTestId('file-picker').locator(`[data-name="${name}"]`).click();
+  await page.getByTestId('pick-files').click();
+  await page.getByTestId('composer-file').filter({ hasText: name }).waitFor();
+};
+
+await step('sharing a file someone cannot open asks first; "Send without sharing" leaves it locked', claudia, async () => {
+  await row(claudia, 'Hana Lee').click();
+  await claudia.getByTestId('conversation-title').getByText('Hana Lee').waitFor();
+  await shareFromDrive(claudia, 'HR Manual');
+  await claudia.getByTestId('composer').click();
+  await claudia.keyboard.press('Enter');
+  const dialog = claudia.getByTestId('access-dialog');
+  await dialog.getByText('No access: Hana Lee').waitFor();
+  await claudia.getByTestId('send-anyway').click();
+  await lastMessage(claudia).locator('[data-testid="file-card"][data-name="HR Manual"]').waitFor();
+  await row(hana, 'Claudia Chen').click();
+  await lastMessage(hana).locator('[data-testid="file-card"][data-locked="true"]').getByText('Restricted file').waitFor();
+});
+
+await step('"Share and send" gives access and the card opens for the other person', claudia, async () => {
+  await shareFromDrive(claudia, 'HR Manual');
+  await claudia.getByTestId('composer').fill('Here it is, with access this time');
+  await claudia.keyboard.press('Enter');
+  await claudia.getByTestId('access-dialog').waitFor();
+  await claudia.getByTestId('share-and-send').click();
+  const card = lastMessage(hana).locator('[data-testid="file-card"][data-name="HR Manual"]');
+  await card.waitFor();
+  await lastMessage(hana).getByText('Here it is, with access this time').waitFor();
+  await card.click();
+  await hana.waitForURL(/\/docs\//, { timeout: 30000 });
+  await hana.goBack();
+  await hana.getByTestId('composer').waitFor({ timeout: 30000 });
+});
+
+await step('uploading from the computer sends a file card (stored in "Chat files")', claudia, async () => {
+  await claudia.getByTestId('composer-upload').setInputFiles({ name: 'agenda.txt', mimeType: 'text/plain', buffer: Buffer.from('Agenda: launch review') });
+  await claudia.locator('[data-testid="composer-file"][data-status="ready"]').filter({ hasText: 'agenda.txt' }).waitFor();
+  await claudia.getByTestId('composer').click();
+  await claudia.keyboard.press('Enter');
+  await lastMessage(hana).locator('[data-testid="file-card"][data-name="agenda.txt"]').waitFor();
+  await claudia.getByRole('tab', { name: 'files' }).click();
+  await claudia.getByTestId('files-view').locator('[data-testid="file-card"][data-name="agenda.txt"]').waitFor();
+  await claudia.getByTestId('files-view').locator('[data-testid="file-card"][data-name="HR Manual"]').waitFor();
+  await claudia.getByRole('tab', { name: 'chat' }).click();
+});
+
+await step('pinning a message shows it in the Pinned tab for everyone', claudia, async () => {
+  const m = claudia.getByTestId('timeline').getByTestId('message').filter({ hasText: 'Here it is, with access this time' });
+  await m.hover();
+  await m.getByRole('button', { name: 'More actions' }).click();
+  await claudia.getByRole('menuitem', { name: 'Pin to conversation' }).click();
+  await m.getByTestId('pinned-label').getByText('Pinned by you').waitFor();
+  await hana.getByTestId('system-message').getByText('pinned a message').waitFor();
+  await hana.getByRole('tab', { name: 'pinned' }).click();
+  await hana.getByTestId('pinned-message').getByText('Here it is, with access this time').waitFor();
+  await hana.getByTestId('pinned-message').getByRole('button', { name: 'Unpin' }).click();
+  await hana.getByText('No pinned messages').waitFor();
+});
+
 await step('Home shows recent chats', claudia, async () => {
   await claudia.goto(`${BASE}/home`);
   await claudia.getByTestId('recent-chats').getByText('Holiday party').waitFor({ timeout: 60000 });

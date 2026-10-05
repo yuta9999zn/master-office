@@ -11,13 +11,15 @@ type Msg = {
   system?: boolean;
   reactions?: [string, string[]][];
   replies?: { who: string; body: string; ago: number }[];
+  /** Names of seeded files attached to the message. */
+  files?: string[];
 };
 
 /**
  * Chat demo data mirroring the "Chat tổng quan" reference (over view 2.png): channels for spaces and projects,
  * a design group and a few direct messages. Claudia (the default dev user) has unread messages in two of them.
  */
-export async function seedChat(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
+export async function seedChat(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string, fileId: (name: string) => Promise<string>) {
   const now = Date.now();
   const at = (ago: number) => new Date(now - ago * 60_000).toISOString();
   // "@hana" in seed text → the stored mention token.
@@ -65,6 +67,7 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
         })
         .returning();
       if (!m.system) topSeqs.push(row.seq);
+      for (const [position, name] of (m.files ?? []).entries()) await db.insert(s.messageRefs).values({ messageId: row.id, resourceId: await fileId(name), position });
       for (const [emoji, who] of m.reactions ?? []) await db.insert(s.messageReactions).values(who.map((k) => ({ messageId: row.id, userId: u[k].id, emoji })));
       for (const r of m.replies ?? [])
         await db.insert(s.messages).values({ conversationId: c.id, seq: ++seq, senderId: u[r.who].id, body: fmt(r.body), mentions: mentionsOf(r.body), threadRootId: row.id, createdAt: at(r.ago) });
@@ -110,6 +113,7 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
       { who: 'hana', body: 'created the channel Marketing Team', ago: 9 * day, system: true },
       {
         who: 'hana',
+        files: ['Campaign Proposal'],
         body: 'Đây là concept mới cho chiến dịch tháng 10. Mọi người xem và góp ý nhé!',
         ago: 6 * 60,
         reactions: [['👍', ['mika', 'minh', 'yuki', 'sora', 'claudia']], ['❤️', ['minh', 'mika']]],
@@ -129,9 +133,9 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
     ['claudia', 'minh', 'mika'],
     [
       { who: 'fujita', body: 'created the channel ITM Japan - Project', ago: 12 * day, system: true },
-      { who: 'fujita', body: 'おはようございます。\n来週のミーティングについて、下記の時間で調整可能でしょうか？', ago: 70 },
+      { who: 'fujita', body: 'おはようございます。\n来週のミーティングについて、下記の時間で調整可能でしょうか？', ago: 70, files: ['Project Plan Sep.pptx'] },
       { who: 'claudia', body: 'はい、大丈夫です。\nこちらでカレンダーを作成します。', ago: 64, reactions: [['🙏', ['fujita']]] },
-      { who: 'mika', body: 'Tôi sẽ chuẩn bị thêm báo cáo và gửi trước nhé.', ago: 60 },
+      { who: 'mika', body: 'Tôi sẽ chuẩn bị thêm báo cáo và gửi trước nhé.', ago: 60, files: ['Sales Report - September 2026'] },
       { who: 'fujita', body: 'ありがとうございます！資料は金曜日までにお願いします。', ago: 41 },
       { who: 'minh', body: 'The new booking screens are in the design file — @claudia can you take a look?', ago: 40 },
       { who: 'fujita', body: 'ありがとうございます！', ago: 39 },

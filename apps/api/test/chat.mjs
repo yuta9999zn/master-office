@@ -138,7 +138,7 @@ check('DMs have no member list to edit', (await call('POST', `/chat/conversation
 
 const g = await call('POST', '/chat/conversations', { user: ken, body: { kind: 'group', memberIds: [sora, mika] } });
 const gs = (await list(ken)).find((c) => c.id === g.data.id);
-check('a group without a name is titled with its members', g.status === 201 && gs.kind === 'group' && gs.title === 'Sora, Mika' && gs.memberCount === 3, gs);
+check('a group without a name is titled with its members', g.status === 201 && gs.kind === 'group' && gs.title.split(', ').sort().join() === 'Mika,Sora' && gs.memberCount === 3, gs);
 check('a group needs other people', (await call('POST', '/chat/conversations', { user: ken, body: { kind: 'group', memberIds: [ken] } })).status === 400);
 const conv1 = await sk.wait((e) => e.type === 'chat.conversation' && e.conversationId === g.data.id);
 check('members are told about a new conversation', !!conv1);
@@ -170,6 +170,70 @@ check('a promoted admin removes people', (await call('DELETE', `/chat/conversati
 check('removed people lose access', (await call('GET', `/chat/conversations/${ch.data.id}/messages`, { user: rina })).status === 404);
 check('the owner leaving hands over ownership', (await call('DELETE', `/chat/conversations/${ch.data.id}/members/${mika}`, { user: mika })).status === 204 && (await call('GET', `/chat/conversations/${ch.data.id}`, { user: hana })).data.members.find((m) => m.id === hana)?.role === 'owner');
 
+// ── Files, links and pins (§65) ─────────────────────────────────────────────
+const resByName = async (name, user = claudia) => (await call('GET', '/search?q=' + encodeURIComponent(name), { user })).data.find((h) => h.kind === 'resource' && h.title === name);
+const itmHist = (u) => call('GET', `/chat/conversations/${itm.id}/messages`, { user: u }).then((r) => r.data.messages);
+const plan = (await itmHist(claudia)).find((m) => m.attachments.length && m.sender.id === uid('fujita'));
+check('seeded attachments show live file metadata to people who can open them', plan?.attachments[0].accessible === true && plan.attachments[0].name === 'Project Plan Sep.pptx' && plan.attachments[0].type === 'presentation', plan?.attachments);
+check('the list preview counts files on the last message', (await list(claudia)).find((c) => c.id === itm.id).lastMessage.files === 0);
+
+const hrManual = await resByName('HR Manual');
+const dmHana = (await call('POST', '/chat/conversations', { user: claudia, body: { kind: 'dm', userId: hana } })).data.id;
+let fs1 = await call('POST', `/chat/conversations/${dmHana}/messages`, { user: claudia, body: { body: 'The new HR manual', resourceIds: [hrManual.id] } });
+check('sending a file someone cannot open asks first (409 with who is missing)', fs1.status === 409 && fs1.data.code === 'needs_access' && fs1.data.missing[0].resourceId === hrManual.id && fs1.data.missing[0].canShare === true && fs1.data.missing[0].users[0].id === hana, fs1.data);
+check('nothing was sent while asking', !(await call('GET', `/chat/conversations/${dmHana}/messages`, { user: claudia })).data.messages.some((m) => m.body === 'The new HR manual'));
+check('before sharing the recipient cannot open the file', (await call('GET', `/resources/${hrManual.id}`, { user: hana })).status === 404);
+fs1 = await call('POST', `/chat/conversations/${dmHana}/messages`, { user: claudia, body: { body: 'The new HR manual', resourceIds: [hrManual.id], grant: 'viewer' } });
+check('"share and send" grants access and sends', fs1.status === 201 && fs1.data.attachments[0].name === 'HR Manual', fs1.data);
+const hrForHana = await call('GET', `/resources/${hrManual.id}`, { user: hana });
+check('the recipient can now open the file as a viewer', hrForHana.status === 200 && hrForHana.data.myRole === 'viewer', hrForHana.data);
+check('sending it again needs no question', (await call('POST', `/chat/conversations/${dmHana}/messages`, { user: claudia, body: { body: '', resourceIds: [hrManual.id] } })).status === 201);
+check('a file-only message has an empty body and shows in the preview', (await list(hana)).find((c) => c.id === dmHana).lastMessage.files === 1);
+
+// Budget 2027 lives in the private Finance space: Claudia (admin) and Hana (viewer) can open it, the rest cannot.
+const budget = await resByName('Budget 2027');
+const r409 = await call('POST', `/chat/conversations/${marketing.id}/messages`, { user: claudia, body: { body: 'For reference', resourceIds: [budget.id] } });
+check('in a channel every member without access is listed', r409.status === 409 && r409.data.missing[0].users.length >= 3 && !r409.data.missing[0].users.some((u) => u.id === claudia || u.id === hana), r409.data);
+const sm = await socket(mika);
+const sentNone = await call('POST', `/chat/conversations/${marketing.id}/messages`, { user: claudia, body: { body: 'For reference', resourceIds: [budget.id], grant: 'none' } });
+check('"send without sharing" sends but grants nothing', sentNone.status === 201 && (await call('GET', `/resources/${budget.id}`, { user: mika })).status === 404);
+const pushedLocked = await sm.wait((e) => e.type === 'chat.message' && e.message.id === sentNone.data.id);
+const pushedOpen = await sh.wait((e) => e.type === 'chat.message' && e.message.id === sentNone.data.id);
+check('pushed messages carry each recipient\'s own view of the file', pushedLocked?.message.attachments[0].accessible === false && pushedLocked.message.attachments[0].name === null && pushedOpen?.message.attachments[0].name === 'Budget 2027', [pushedLocked?.message.attachments, pushedOpen?.message.attachments]);
+const lockedInHistory = (await call('GET', `/chat/conversations/${marketing.id}/messages`, { user: mika })).data.messages.find((m) => m.id === sentNone.data.id);
+check('people without access see a locked card with no name', lockedInHistory.attachments[0].accessible === false && lockedInHistory.attachments[0].name === null && lockedInHistory.attachments[0].owner === null, lockedInHistory.attachments);
+
+const branch625 = mine.find((c) => c.title === 'Branch 625');
+await call('POST', `/resources/${hrManual.id}/members`, { user: claudia, body: { userId: mika, role: 'viewer' } });
+const notMine = await call('POST', `/chat/conversations/${branch625.id}/messages`, { user: mika, body: { body: 'Manual', resourceIds: [hrManual.id] } });
+check('the question says when the sender cannot share the file', notMine.status === 409 && notMine.data.missing[0].canShare === false && notMine.data.missing[0].users.some((u) => u.id === sora), notMine.data);
+check('sharing a file you do not manage is refused', (await call('POST', `/chat/conversations/${branch625.id}/messages`, { user: mika, body: { body: 'Manual', resourceIds: [hrManual.id], grant: 'viewer' } })).status === 403);
+check('attaching a file you cannot open is refused', (await call('POST', `/chat/conversations/${itm.id}/messages`, { user: mika, body: { body: 'x', resourceIds: [budget.id] } })).status === 404);
+
+const general = mine.find((c) => c.title === 'General');
+const roadmap = await resByName('Product Roadmap');
+const linked = await call('POST', `/chat/conversations/${general.id}/messages`, { user: claudia, body: { body: `Roadmap is here: http://localhost:3000/docs/${roadmap.id} and a private one http://localhost:3000/docs/${hrManual.id}`, grant: 'none' } });
+check('links to files become cards (unfurl)', linked.status === 201 && linked.data.attachments.some((a) => a.id === roadmap.id && a.source === 'link'), linked.data);
+const hidden = await call('POST', `/chat/conversations/${branch625.id}/messages`, { user: mika, body: { body: `see http://localhost:3000/sheets/${budget.id}` } });
+check('links to files the sender cannot open stay plain text', hidden.status === 201 && hidden.data.attachments.length === 0, hidden.data);
+
+const files = (await call('GET', `/chat/conversations/${marketing.id}/files`, { user: claudia })).data;
+check('the Files tab lists shared files once, newest first', files[0].file.id === budget.id && files.some((f) => f.file.name === 'Campaign Proposal') === false && new Set(files.map((f) => f.file.id)).size === files.length, files.map((f) => f.file.name));
+await call('DELETE', `/chat/messages/${sentNone.data.id}`, { user: claudia });
+check('deleting a message drops its files from the Files tab (the file stays in Drive)', !(await call('GET', `/chat/conversations/${marketing.id}/files`, { user: claudia })).data.some((f) => f.file.id === budget.id) && (await call('GET', `/resources/${budget.id}`, { user: claudia })).status === 200);
+
+const f1 = await call('POST', '/chat/upload-folder', { user: ken });
+const f2 = await call('POST', '/chat/upload-folder', { user: ken });
+check('the "Chat files" upload folder is created once in My Files', f1.status === 201 && f1.data.id === f2.data.id && (await call('GET', `/resources/${f1.data.id}`, { user: ken })).data.name === 'Chat files');
+
+const target = (await call('GET', `/chat/conversations/${itm.id}/messages`, { user: claudia })).data.messages.find((m) => m.kind === 'text' && m.sender.id === uid('minh'));
+const pinned1 = await call('PUT', `/chat/messages/${target.id}/pin`, { user: claudia, body: { pinned: true } });
+check('pinning a message', pinned1.status === 200 && pinned1.data.pinnedAt && pinned1.data.pinnedBy.id === claudia, pinned1.data);
+check('pins are announced and listed', (await call('GET', `/chat/conversations/${itm.id}/messages`, { user: mika })).data.messages.some((m) => m.kind === 'system' && m.body === 'pinned a message') && (await call('GET', `/chat/conversations/${itm.id}/pins`, { user: mika })).data[0]?.id === target.id);
+check('non-members cannot pin', (await call('PUT', `/chat/messages/${target.id}/pin`, { user: ken, body: { pinned: false } })).status === 404);
+await call('PUT', `/chat/messages/${target.id}/pin`, { user: mika, body: { pinned: false } });
+check('any member can unpin', (await call('GET', `/chat/conversations/${itm.id}/pins`, { user: claudia })).data.length === 0);
+
 // ── Preferences ─────────────────────────────────────────────────────────────
 await call('PUT', `/chat/conversations/${itm.id}/prefs`, { user: claudia, body: { pinned: true, muted: true } });
 const pinned = (await list(claudia)).find((c) => c.id === itm.id);
@@ -177,7 +241,7 @@ check('pin and mute are per person', pinned.pinned && pinned.muted && !(await li
 await call('PUT', `/chat/conversations/${itm.id}/prefs`, { user: claudia, body: { pinned: false, muted: false } });
 check('empty messages are refused', (await call('POST', `/chat/conversations/${itm.id}/messages`, { user: claudia, body: { body: '   ' } })).status === 400);
 
-for (const s of [sc, sh, sk]) s.ws.close();
+for (const s of [sc, sh, sk, sm]) s.ws.close();
 bad.terminate();
 console.log(failures ? `\n${failures} check(s) failed` : '\nall chat checks passed');
 process.exit(failures ? 1 : 0);

@@ -380,7 +380,7 @@ async function main() {
   await db.insert(s.stars).values({ userId: u.claudia.id, resourceId: q4.id }).onConflictDoNothing();
   await db.insert(s.resourceAccess).values({ userId: u.claudia.id, resourceId: q4.id }).onConflictDoNothing();
 
-  await seedChat(db, ws.id, u, (name) => sp[name].id);
+  await seedChat(db, ws.id, u, (name) => sp[name].id, async (name) => (await ref(name)).id);
 
   await pool.end();
   console.log(`✓ seeded ${inserted.length} users, ${Object.keys(sp).length} spaces`);
