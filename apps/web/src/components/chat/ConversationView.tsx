@@ -2,6 +2,7 @@
 
 import type { ChatMessage, ConversationDetail, UserSummary } from '@workos/shared';
 import { ArrowDown, Bell, BellOff, FileText, Info, Loader2, LogOut, Pin, PinOff, Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useChatActions, useChatFiles, useChatPins, useConversation, useConversations, useMessages } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
@@ -48,10 +49,12 @@ export function ConversationView({ id }: { id: string }) {
   const { data: conv, error } = useConversation(id);
   const [panel, setPanel] = useState<Panel>(null);
   const [tab, setTab] = useState<'chat' | 'files' | 'pinned'>('chat');
+  // Links from the bell (?thread=…) open the thread beside the conversation.
+  const threadParam = useSearchParams().get('thread');
   useEffect(() => {
-    setPanel(null);
+    setPanel(threadParam ? { kind: 'thread', id: threadParam } : null);
     setTab('chat');
-  }, [id]);
+  }, [id, threadParam]);
 
   if (error) return <EmptyState title="Can’t open this conversation">{(error as Error).message}</EmptyState>;
   if (!conv)

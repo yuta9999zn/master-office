@@ -7,6 +7,7 @@ import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { aclEntries, conversationMembers, conversations, messageReactions, messageRefs, messages, resources, users, workspaceMembers } from '../db/schema';
 import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
@@ -42,6 +43,7 @@ export class ChatService implements OnModuleInit {
     private readonly realtime: RealtimeService,
     private readonly events: EventsService,
     private readonly perms: PermissionsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -422,6 +424,7 @@ export class ChatService implements OnModuleInit {
     if (root.threadRootId) throw new BadRequestException('Not a thread');
     await this.access(actor, root.conversationId);
     const replies = await this.db.select().from(messages).where(eq(messages.threadRootId, messageId)).orderBy(asc(messages.seq));
+    await this.notifications.readMessages(actor, sql`SELECT id FROM messages WHERE id = ${messageId} OR thread_root_id = ${messageId}`);
     const [r, ...rest] = await this.serialize(actor, [root, ...replies]);
     return { root: r, replies: rest };
   }
@@ -580,9 +583,27 @@ export class ChatService implements OnModuleInit {
     });
     const members = await this.memberIds(id);
     await this.publishRows(actor, members, 'chat.message', [row]);
+    await this.notifyMessage(actor, id, row, root, members).catch(() => undefined);
     if (root) await this.publishRows(actor, members, 'chat.message.updated', [root]);
     else this.realtime.publish([actor.id], { type: 'chat.read', conversationId: id, userId: actor.id, seq: row.seq });
     return (await this.serialize(actor, [row]))[0];
+  }
+
+  /** Bell entries for a new message: people mentioned, and people taking part in the thread it replies to. */
+  private async notifyMessage(actor: Actor, conversationId: string, row: MsgRow, root: MsgRow | null, members: string[]) {
+    const [conv] = await this.db.select().from(conversations).where(eq(conversations.id, conversationId));
+    const where = conv.kind === 'channel' ? `#${conv.name}` : conv.kind === 'group' ? conv.name ?? 'a group' : 'a direct message';
+    const people = await loadUsers(this.db, row.mentions);
+    const text = row.body.replace(MENTION, (_m, uid: string) => `@${people.get(uid.toLowerCase())?.name ?? 'someone'}`).replace(/\s+/g, ' ').trim();
+    const url = `/chat/${conversationId}${root ? `?thread=${root.id}` : ''}`;
+    const inConv = new Set(members);
+    const mentioned = row.mentions.filter((u) => inConv.has(u));
+    await this.notifications.notify(actor, mentioned, { kind: 'chat.mention', title: `${actor.name} mentioned you in ${where}`, body: text || null, url, conversationId, messageId: row.id });
+    if (root) {
+      const repliers = await this.db.selectDistinct({ id: messages.senderId }).from(messages).where(eq(messages.threadRootId, root.id));
+      const followers = [root.senderId, ...repliers.map((r) => r.id)].filter((u): u is string => !!u && inConv.has(u) && !mentioned.includes(u));
+      await this.notifications.notify(actor, followers, { kind: 'chat.reply', title: `${actor.name} replied to a thread in ${where}`, body: text || (row.mentions.length ? null : '📎 File'), url, conversationId, messageId: row.id });
+    }
   }
 
   async edit(actor: Actor, messageId: string, body: string) {
@@ -752,6 +773,8 @@ export class ChatService implements OnModuleInit {
       .set({ lastReadSeq: next })
       .where(and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, actor.id)));
     this.realtime.publish(await this.memberIds(id), { type: 'chat.read', conversationId: id, userId: actor.id, seq: next });
+    // Mentions you have now scrolled past are read in the bell too.
+    await this.notifications.readMessages(actor, sql`SELECT id FROM messages WHERE conversation_id = ${id} AND thread_root_id IS NULL AND seq <= ${next}`);
     return { lastReadSeq: next };
   }
 

@@ -12,6 +12,8 @@ import { PublishController } from './docs/publish.controller';
 import { DocsService } from './docs/docs.service';
 import { PdfRenderer } from './docs/pdf-renderer';
 import { EventsService } from './events/events.service';
+import { NotificationsController } from './notifications/notifications.controller';
+import { NotificationsService } from './notifications/notifications.service';
 import { PermissionsService } from './permissions/permissions.service';
 import { RealtimeService } from './realtime/realtime.service';
 import { ResourcesController } from './resources/resources.controller';
@@ -36,10 +38,11 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController],
   providers: [
     SpellingService,
     RealtimeService,
+    NotificationsService,
     ChatService,
     PermissionsService,
     EventsService,

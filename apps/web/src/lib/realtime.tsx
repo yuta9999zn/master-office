@@ -2,10 +2,13 @@
 
 import type { RealtimeEvent } from '@workos/shared';
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { api, API_ORIGIN } from './api';
 import { applyChatEvent } from './chat';
+import { applyNotificationEvent } from './notifications';
 import { useMe } from './queries';
 
 type Listener = (e: RealtimeEvent) => void;
@@ -54,8 +57,11 @@ export function useTyping(conversationId: string, threadRootId: string | null) {
  */
 export function RealtimeBridge() {
   const qc = useQueryClient();
+  const router = useRouter();
   const { data: me } = useMe();
   const meId = me?.user.id;
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
   useEffect(() => {
     if (!meId) return;
@@ -97,6 +103,13 @@ export function RealtimeBridge() {
               return { typing: { ...s.typing, [e.conversationId]: conv } };
             });
           applyChatEvent(qc, e, meId);
+          applyNotificationEvent(qc, e);
+          if (e.type === 'notification') {
+            const n = e.notification;
+            // A small heads-up, unless you are already looking at the place it points to.
+            if (!window.location.pathname.startsWith(n.url.split('?')[0]))
+              toast(n.title, { description: n.body ?? undefined, action: { label: 'Open', onClick: () => routerRef.current.push(n.url) } });
+          }
           for (const l of listeners) l(e);
         };
         ws.onclose = () => {

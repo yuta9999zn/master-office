@@ -542,3 +542,25 @@ export const messageRefs = pgTable(
   },
   (t) => [primaryKey({ columns: [t.messageId, t.resourceId] }), index('message_refs_resource_idx').on(t.resourceId)],
 );
+
+/** The bell (§66): one row per person per event — mentions, thread replies, shares, comments. */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    resourceId: uuid('resource_id').references(() => resources.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body'),
+    url: text('url').notNull(),
+    readAt: ts('read_at'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('notifications_user_idx').on(t.userId, t.createdAt)],
+);

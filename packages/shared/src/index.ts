@@ -391,4 +391,23 @@ export type RealtimeEvent =
   | { type: 'chat.read'; conversationId: string; userId: string; seq: number }
   | { type: 'chat.typing'; conversationId: string; user: Pick<UserSummary, 'id' | 'name'>; threadRootId: string | null }
   | { type: 'chat.conversation'; conversationId: string; removed?: boolean }
-  | { type: 'presence'; online: string[] };
+  | { type: 'presence'; online: string[] }
+  | { type: 'notification'; notification: AppNotification }
+  | { type: 'notification.read'; ids: string[] | 'all' };
+
+// ── Notifications (§66) ─────────────────────────────────────────────────────
+
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply';
+
+export interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  actor: UserSummary | null;
+  title: string;
+  body: string | null;
+  url: string;
+  resourceId: string | null;
+  conversationId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}

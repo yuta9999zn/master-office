@@ -1,13 +1,14 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, UserRound } from 'lucide-react';
+import { Check, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { setDevUser } from '@/lib/api';
 import { useMe, useUsers } from '@/lib/queries';
 import { useUi } from '@/lib/store';
 import { Avatar, Button, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Wordmark } from '../ui/primitives';
 import { NewMenu } from './NewMenu';
+import { NotificationBell } from './NotificationBell';
 
 export function TopBar() {
   const collapsed = useUi((s) => s.sidebarCollapsed);
@@ -45,9 +46,7 @@ export function TopBar() {
         <IconButton label="Settings">
           <Settings size={19} />
         </IconButton>
-        <IconButton label="Notifications — arrives with Chat (Phase 5)" className="relative">
-          <Bell size={19} />
-        </IconButton>
+        <NotificationBell />
         <UserMenu name={me?.user.name} org={me?.workspace?.name} user={me?.user} />
       </div>
     </header>

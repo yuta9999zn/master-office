@@ -5,10 +5,11 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { comments } from '../db/schema';
+import { comments, resources } from '../db/schema';
 import { CollabService } from '../collab/collab.service';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { NotificationsService, resourcePath } from '../notifications/notifications.service';
 
 type Row = typeof comments.$inferSelect;
 
@@ -20,6 +21,7 @@ export class CommentsService {
     private readonly perms: PermissionsService,
     private readonly events: EventsService,
     private readonly collab: CollabService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(actor: Actor, resourceId: string): Promise<CommentThread[]> {
@@ -58,7 +60,30 @@ export class CommentsService {
       .returning();
     await this.events.emit(this.db, actor, 'comment.created', { resourceId, spaceId: res.spaceId }, { name: res.name, type: res.type, snippet: input.body.slice(0, 140), reply: !!input.threadId });
     this.collab.notify(resourceId, { type: 'comments' });
+    await this.notifyComment(actor, res, input).catch(() => undefined);
     return { id: row.id };
+  }
+
+  private async notifyComment(actor: Actor, res: typeof resources.$inferSelect, input: { body: string; threadId?: string | null }) {
+    let to: string[];
+    if (input.threadId) {
+      const thread = await this.db.select({ authorId: comments.authorId }).from(comments).where(sql`${comments.id} = ${input.threadId} OR ${comments.threadId} = ${input.threadId}`);
+      to = thread.map((t) => t.authorId);
+    } else to = [res.ownerId];
+    // Only people who can still open the file hear about it.
+    const allowed: string[] = [];
+    for (const u of new Set(to)) {
+      if (u === actor.id) continue;
+      const role = await this.perms.roleFor({ id: u, name: '', workspaceId: actor.workspaceId }, res);
+      if (can(role, 'viewer')) allowed.push(u);
+    }
+    await this.notifications.notify(actor, allowed, {
+      kind: input.threadId ? 'comment.reply' : 'comment.created',
+      title: input.threadId ? `${actor.name} replied to a comment on "${res.name}"` : `${actor.name} commented on "${res.name}"`,
+      body: input.body,
+      url: resourcePath(res),
+      resourceId: res.id,
+    });
   }
 
   private async load(actor: Actor, id: string) {

@@ -24,6 +24,7 @@ import { InjectDb } from '../db/db.module';
 import { aclEntries, auditEvents, blobs, resourceAccess, resources, resourceVersions, spaceMembers, spaces, stars } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { NotificationsService, resourcePath } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 import { COLLAB_TYPES, DocsService } from '../docs/docs.service';
 import { SheetsService } from '../sheets/sheets.service';
@@ -51,6 +52,7 @@ export class ResourcesService {
     private readonly sheets: SheetsService,
     private readonly slides: SlidesService,
     private readonly forms: FormsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Serialization ──────────────────────────────────────────────────────────
@@ -542,7 +544,7 @@ export class ResourcesService {
   }
 
   async share(actor: Actor, id: string, userId: string, role: Role | null) {
-    await this.db.transaction(async (tx) => {
+    const shared = await this.db.transaction(async (tx) => {
       const { row } = await this.perms.require(actor, id, 'admin', tx);
       if (userId === row.ownerId) throw new BadRequestException('Owner access cannot be changed here');
       if (role === 'owner') throw new BadRequestException('Use ownership transfer');
@@ -556,7 +558,14 @@ export class ResourcesService {
       }
       const who = (await loadUsers(tx, [userId])).get(userId);
       await this.events.emit(tx, actor, 'acl.changed', { resourceId: id, spaceId: row.spaceId }, { name: row.name, userId, userName: who?.name, role });
+      return row;
     });
+    if (role) {
+      const verb = { viewer: 'view', commenter: 'comment on', editor: 'edit', admin: 'manage', owner: 'own' }[role];
+      await this.notifications
+        .notify(actor, [userId], { kind: 'resource.shared', title: `${actor.name} shared "${shared.name}" with you`, body: `You can ${verb} it.`, url: resourcePath(shared), resourceId: id })
+        .catch(() => undefined);
+    }
   }
 
   async versions(actor: Actor, id: string) {

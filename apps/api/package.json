@@ -15,7 +15,7 @@
     "test:sheets": "node test/sheets.mjs",
     "test:slides": "node test/slides.mjs",
     "test:forms": "node test/forms.mjs",
-    "test:chat": "node test/chat.mjs"
+    "test:chat": "node test/chat.mjs && node test/notifications.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",
