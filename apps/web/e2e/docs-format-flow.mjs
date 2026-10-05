@@ -214,6 +214,8 @@ await step('Insert → Drawing: shapes, a scribble and text on the canvas, saved
   for (let i = 1; i <= 15; i++) await page.mouse.move(b.x + b.width * (0.1 + i * 0.015), b.y + b.height * (0.8 - Math.sin(i / 3) * 0.1), { steps: 2 });
   await page.mouse.up();
   await page.getByRole('button', { name: 'Drawing text box' }).click();
+  // The text editor mounts asynchronously: type once it has the focus.
+  await page.waitForFunction(() => document.activeElement?.closest('[data-testid="drawing-canvas"]') && document.activeElement.isContentEditable, null, { timeout: 10000 });
   await page.keyboard.type('Hello drawing');
   // Leave the text box by clicking an empty spot of the canvas.
   await page.mouse.click(b.x + b.width * 0.9, b.y + b.height * 0.1);

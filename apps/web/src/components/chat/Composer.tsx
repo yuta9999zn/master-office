@@ -78,11 +78,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   useImperativeHandle(handle, () => ({ addFiles }));
 
+  // Where the caret goes after a programmatic edit — applied in the same commit as the new text, so keys typed
+  // right after picking a mention land after it (a frame later would be too late for fast typists).
+  const nextCaret = useRef<[number, number] | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    if (nextCaret.current) {
+      el.focus();
+      el.setSelectionRange(...nextCaret.current);
+      nextCaret.current = null;
+    }
   }, [text]);
   useEffect(() => {
     if (autoFocus) {
@@ -111,10 +119,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setText(next);
     setMention(null);
     const pos = mention.at + u.name.length + 2;
-    requestAnimationFrame(() => {
-      ref.current?.focus();
-      ref.current?.setSelectionRange(pos, pos);
-    });
+    nextCaret.current = [pos, pos];
   };
 
   const insertAtCaret = (s: string) => {
@@ -124,11 +129,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const b = el.selectionEnd;
     const next = text.slice(0, a) + s + text.slice(b);
     setText(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(a + s.length, a + s.length);
-      detect(next, a + s.length);
-    });
+    nextCaret.current = [a + s.length, a + s.length];
+    detect(next, a + s.length);
   };
 
   const wrap = (mark: string) => {
@@ -138,10 +140,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const b = el.selectionEnd;
     const next = text.slice(0, a) + mark + text.slice(a, b) + mark + text.slice(b);
     setText(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(a + mark.length, b + mark.length);
-    });
+    nextCaret.current = [a + mark.length, b + mark.length];
   };
 
   const uploading = items.some((i) => i.status === 'uploading');

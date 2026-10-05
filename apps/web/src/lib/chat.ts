@@ -89,7 +89,10 @@ export function applyChatEvent(qc: QueryClient, e: RealtimeEvent, me: string) {
     case 'chat.message': {
       const msg = forViewer(e.message, me);
       if (msg.threadRootId) qc.setQueryData<Thread>(chatKeys.thread(msg.threadRootId), (d) => upsertInThread(d, msg));
-      else qc.setQueryData<Pages>(chatKeys.messages(e.conversationId), (d) => upsertInPages(d, msg, true));
+      else {
+        qc.setQueryData<Pages>(chatKeys.messages(e.conversationId), (d) => upsertInPages(d, msg, true));
+        refetchIfInFlight(qc, chatKeys.messages(e.conversationId));
+      }
       if (!msg.threadRootId) void qc.invalidateQueries({ queryKey: chatKeys.list });
       if (msg.attachments.length) void qc.invalidateQueries({ queryKey: chatKeys.files(e.conversationId) });
       break;
@@ -118,6 +121,15 @@ export function applyChatEvent(qc: QueryClient, e: RealtimeEvent, me: string) {
       break;
     }
   }
+}
+
+/**
+ * A page load that started before this message existed would land afterwards and drop it (first open of a new
+ * DM): when the history is still loading — or not loaded at all — fetch it again instead of patching.
+ */
+function refetchIfInFlight(qc: QueryClient, key: readonly unknown[]) {
+  const state = qc.getQueryState(key);
+  if (state && (state.fetchStatus === 'fetching' || !state.data)) void qc.invalidateQueries({ queryKey: key, exact: true });
 }
 
 function markReadLocally(qc: QueryClient, id: string, seq: number) {
@@ -234,7 +246,10 @@ export function useSendMessage(conversationId: string, me: UserSummary | undefin
       const real = forViewer(msg, me?.id ?? '');
       const swap = (list: ChatMessage[]) => (list.some((m) => m.id === real.id) ? list.filter((m) => m.id !== ctx?.tmp) : list.map((m) => (m.id === ctx?.tmp ? real : m)).sort((a, b) => a.seq - b.seq));
       if (real.threadRootId) qc.setQueryData<Thread>(chatKeys.thread(real.threadRootId), (d) => (d ? { ...d, replies: swap(d.replies) } : d));
-      else qc.setQueryData<Pages>(chatKeys.messages(conversationId), (d) => (d && d.pages.length ? { ...d, pages: [{ ...d.pages[0], messages: swap(d.pages[0].messages) }, ...d.pages.slice(1)] } : d));
+      else {
+        qc.setQueryData<Pages>(chatKeys.messages(conversationId), (d) => (d && d.pages.length ? { ...d, pages: [{ ...d.pages[0], messages: swap(d.pages[0].messages) }, ...d.pages.slice(1)] } : d));
+        refetchIfInFlight(qc, chatKeys.messages(conversationId));
+      }
       void qc.invalidateQueries({ queryKey: chatKeys.list });
     },
     onError: (e: Error, input, ctx) => {

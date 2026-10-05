@@ -123,9 +123,13 @@ await step("another editor's edit runs the trigger once, in their browser, as th
 });
 
 await step('onOpen runs when the file is opened', claudia, async () => {
+  // Every editor who opens the file runs it (Mika's visit above may already have counted one).
+  const before = Number((await cell(claudia, 'D1')) ?? 0);
   await claudia.reload();
   await ready(claudia, book.id);
-  await cellIs(claudia, 'D1', 1, 20000);
+  await cellIs(claudia, 'D1', before + 1, 20000);
+  await claudia.waitForTimeout(1500);
+  if ((await cell(claudia, 'D1')) !== before + 1) throw new Error('onOpen ran more than once for one opening');
 });
 
 await step('a trigger switched off does not run', claudia, async () => {

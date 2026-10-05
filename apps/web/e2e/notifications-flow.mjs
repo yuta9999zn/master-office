@@ -36,9 +36,11 @@ const conversations = await asHana('GET', '/chat/conversations');
 const marketing = conversations.find((c) => c.title === 'Marketing Team');
 
 await step('a mention lights up the bell and shows a toast', claudia, async () => {
+  // Start from an empty bell whatever ran before (other suites mention Claudia too).
+  await claudia.request.post(`${BASE}/api/notifications/read`, { data: { ids: 'all' } });
   await claudia.goto(`${BASE}/home`);
   await claudia.getByTestId('bell').waitFor({ timeout: 60000 });
-  if (await claudia.getByTestId('bell-count').count()) throw new Error('bell not empty after seeding');
+  if (await claudia.getByTestId('bell-count').count()) throw new Error('bell not empty');
   await claudia.waitForTimeout(1500); // socket connected
   await asHana('POST', `/chat/conversations/${marketing.id}/messages`, { body: `<@${id('claudia')}> the banner is ready for sign-off` });
   await claudia.getByTestId('bell-count').getByText('1').waitFor();
