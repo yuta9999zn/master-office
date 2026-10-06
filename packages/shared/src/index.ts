@@ -423,11 +423,12 @@ export type RealtimeEvent =
   | { type: 'notification'; notification: AppNotification }
   | { type: 'notification.read'; ids: string[] | 'all' }
   | { type: 'mail.changed'; mailboxId: string }
-  | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string };
+  | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string }
+  | { type: 'calendar.changed' };
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response';
 
 export interface AppNotification {
   id: string;
@@ -574,4 +575,111 @@ export interface SendMailInput {
   /** The message this replies to / forwards (its id in our system). */
   replyTo?: string | null;
   draftId?: string | null;
+}
+
+// ── Calendar (§71) ──────────────────────────────────────────────────────────
+
+export type EventResponse = 'pending' | 'accepted' | 'tentative' | 'declined';
+export interface Recurrence {
+  freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  interval: number;
+  until?: string | null;
+  count?: number | null;
+  /** Weekly: days of the week (0 = Sunday). */
+  byDay?: number[];
+}
+
+export interface CalendarInfo {
+  id: string;
+  kind: 'user' | 'space';
+  name: string;
+  color: string;
+  timezone: string;
+  spaceId: string | null;
+  owner: UserSummary | null;
+  /** read = see details; write = add / change events; manage = settings. */
+  perms: { read: boolean; write: boolean; manage: boolean };
+}
+
+export interface EventAttendee {
+  id: string;
+  email: string;
+  name: string | null;
+  user: UserSummary | null;
+  response: EventResponse;
+  optional: boolean;
+}
+
+/** One occurrence of an event in a requested range (a series yields one per occurrence). */
+export interface CalendarEventView {
+  id: string;
+  /** Original start of this occurrence (identifies it inside a series). */
+  occurrence: string;
+  calendarId: string;
+  kind: 'event' | 'focus' | 'ooo';
+  title: string;
+  description: string | null;
+  location: string | null;
+  start: string;
+  end: string;
+  allDay: boolean;
+  timezone: string;
+  recurrence: Recurrence | null;
+  meetingUrl: string | null;
+  meetingProvider: 'kaori' | 'google' | 'zoom' | 'teams' | 'custom' | null;
+  color: string | null;
+  organizer: UserSummary | null;
+  attendees: EventAttendee[];
+  /** The viewer's answer when invited. */
+  myResponse: EventResponse | null;
+  attachments: { id: string; name: string | null; type: ResourceType | null; accessible: boolean }[];
+  canEdit: boolean;
+  /** Someone else's time seen as busy only (no title, place or guests). */
+  busyOnly: boolean;
+}
+
+export interface EventInput {
+  calendarId: string;
+  kind?: 'event' | 'focus' | 'ooo';
+  title: string;
+  description?: string | null;
+  location?: string | null;
+  start: string;
+  end: string;
+  allDay?: boolean;
+  timezone?: string;
+  recurrence?: Recurrence | null;
+  meeting?: { provider: 'kaori' | 'google' | 'zoom' | 'teams' | 'custom'; url?: string | null } | null;
+  color?: string | null;
+  guests?: { email: string; name?: string | null; optional?: boolean }[];
+  attachments?: string[];
+  /** Send invitations (bell + mail with an .ics); the note goes at the top of the mail. */
+  notify?: boolean;
+  message?: string | null;
+}
+
+// Time zones without a library: wall-clock time in an IANA zone ⇄ instants.
+export function tzOffsetMinutes(date: Date, tz: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      .formatToParts(date)
+      .map((x) => [x.type, x.value]),
+  );
+  return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - Math.floor(date.getTime() / 1000) * 1000) / 60000;
+}
+
+/** The instant of a wall-clock time (month 1–12) in a time zone. */
+export function zonedToUtc(y: number, m: number, d: number, h: number, mi: number, tz: string): Date {
+  const guess = Date.UTC(y, m - 1, d, h, mi);
+  const off = tzOffsetMinutes(new Date(guess), tz);
+  let t = guess - off * 60000;
+  const off2 = tzOffsetMinutes(new Date(t), tz);
+  if (off2 !== off) t = guess - off2 * 60000;
+  return new Date(t);
+}
+
+/** Wall-clock parts of an instant in a time zone (month 1–12, weekday 0 = Sunday). */
+export function zonedParts(date: Date, tz: string) {
+  const shifted = new Date(date.getTime() + tzOffsetMinutes(date, tz) * 60000);
+  return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate(), h: shifted.getUTCHours(), mi: shifted.getUTCMinutes(), weekday: shifted.getUTCDay() };
 }

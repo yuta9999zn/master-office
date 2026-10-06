@@ -3,10 +3,12 @@
 import { ArrowRight, ArrowUpRight, CalendarDays, FileText, HardDrive, Layers, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ConversationAvatar } from '@/components/chat/bits';
 import { ActivityList } from '@/components/drive/DetailsPanel';
-import { AppIcon, Button, CardHeader, EmptyState, FileIcon, LogoMark, Skeleton } from '@/components/ui/primitives';
+import { AppIcon, Button, CardHeader, cn, EmptyState, FileIcon, LogoMark, Skeleton } from '@/components/ui/primitives';
+import { useEvents } from '@/lib/calendar';
+import { useMounted } from '@/lib/use-mounted';
 import { APPS } from '@/lib/apps';
 import { lastMessageText, useConversations } from '@/lib/chat';
 import { firstName, formatBytes, formatShort } from '@/lib/format';
@@ -19,6 +21,8 @@ function greeting() {
 }
 
 function Hero({ name }: { name?: string }) {
+  // The hour is the viewer's, not the server's: greet once mounted so the server HTML always matches.
+  const mounted = useMounted();
   const router = useRouter();
   const { create } = useResourceActions();
   return (
@@ -26,7 +30,7 @@ function Hero({ name }: { name?: string }) {
       <div className="relative z-[1] max-w-[560px]">
         <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-brand-700/80">Welcome to Master Office</div>
         <h1 className="mt-2 text-[32px] font-bold leading-tight tracking-tight text-ink">
-          {greeting()}
+          {mounted ? greeting() : 'Welcome back'}
           {name ? `, ${firstName(name)}` : ''}. All your work, in one place.
         </h1>
         <p className="mt-2 text-[15px] leading-relaxed text-ink-2/80">Chat, collaborate, create and organize — a more connected way to get things done together.</p>
@@ -217,12 +221,50 @@ function TeamStats() {
 }
 
 function Upcoming() {
+  // Today's events from Calendar (§71): what is on now, and what comes next.
+  const [range] = useState(() => {
+    const d = new Date();
+    return [new Date(d.getFullYear(), d.getMonth(), d.getDate()), new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)] as const;
+  });
+  const { data, isLoading } = useEvents(range[0], range[1]);
+  const now = Date.now();
+  const list = (data ?? []).filter((e) => !e.allDay && new Date(e.end).getTime() > now && e.myResponse !== 'declined' && !e.busyOnly).slice(0, 4);
+  const t = (iso: string) => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
   return (
-    <section className="card">
+    <section className="card" data-testid="upcoming">
       <CardHeader title="Upcoming" action={<span className="text-[12px] text-muted">{new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())}</span>} />
-      <EmptyState icon={<CalendarDays size={30} />} title="Calendar is coming in Phase 7">
-        Meetings and events from Calendar will appear here.
-      </EmptyState>
+      {isLoading ? (
+        <div className="space-y-2 px-4 pb-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+      ) : !list.length ? (
+        <EmptyState icon={<CalendarDays size={30} />} title="Nothing else today">
+          <Link href="/calendar" className="text-brand-600 hover:underline">
+            Open Calendar
+          </Link>
+        </EmptyState>
+      ) : (
+        <ul className="px-4 pb-3">
+          {list.map((e) => {
+            const live = new Date(e.start).getTime() <= now;
+            return (
+              <li key={e.id + e.occurrence} className="flex items-center gap-3 border-t border-line py-2.5 first:border-0">
+                <span className={cn('w-16 shrink-0 text-[12px]', live ? 'font-semibold text-brand-600' : 'text-muted')}>{live ? 'Now' : t(e.start)}</span>
+                <span className="h-9 w-1 rounded-full" style={{ background: e.color ?? '#2563eb' }} />
+                <Link href={`/calendar?event=${e.id}`} className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-medium text-ink">{e.title}</span>
+                  <span className="block text-[12px] text-muted">
+                    {t(e.start)} – {t(e.end)}
+                  </span>
+                </Link>
+                {e.meetingUrl && (
+                  <a href={e.meetingUrl} target="_blank" rel="noreferrer" className={cn('rounded-lg px-3 py-1 text-[12.5px] font-medium', live ? 'bg-brand-600 text-white' : 'text-brand-600 ring-1 ring-brand-200')}>
+                    Join
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

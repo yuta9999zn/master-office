@@ -718,3 +718,76 @@ export const mailAttachments = pgTable(
   },
   (t) => [index('mail_attachments_message_idx').on(t.messageId)],
 );
+
+// ── Calendar (Phase 7, docs/ARCHITECTURE.md §71) ────────────────────────────
+
+/** A calendar: one per person ("My Calendar") and optionally one per space (team calendar). */
+export const calendars = pgTable(
+  'calendars',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'user' | 'space'>().notNull(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    spaceId: uuid('space_id').references(() => spaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('#2563eb'),
+    timezone: text('timezone').notNull().default('Asia/Tokyo'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('calendars_user_idx').on(t.userId), uniqueIndex('calendars_space_idx').on(t.spaceId)],
+);
+
+export const calendarEvents = pgTable(
+  'calendar_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    calendarId: uuid('calendar_id')
+      .notNull()
+      .references(() => calendars.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'event' | 'focus' | 'ooo'>().notNull().default('event'),
+    title: text('title').notNull(),
+    description: text('description'),
+    location: text('location'),
+    /** Start / end instants; all-day events run from local midnight to midnight in `timezone` (end exclusive). */
+    startAt: ts('start_at').notNull(),
+    endAt: ts('end_at').notNull(),
+    allDay: boolean('all_day').notNull().default(false),
+    timezone: text('timezone').notNull().default('Asia/Tokyo'),
+    /** Repeats: none, or {freq, interval, until?, count?, byDay?} in the event's time zone. */
+    recurrence: jsonb('recurrence').$type<{ freq: 'daily' | 'weekly' | 'monthly' | 'yearly'; interval: number; until?: string | null; count?: number | null; byDay?: number[] } | null>(),
+    /** Occurrences removed from a series (their original start instants). */
+    exdates: text('exdates').array().notNull().default(sql`'{}'::text[]`),
+    meetingUrl: text('meeting_url'),
+    meetingProvider: text('meeting_provider').$type<'kaori' | 'google' | 'zoom' | 'teams' | 'custom'>(),
+    color: text('color'),
+    visibility: text('visibility').$type<'default' | 'private'>().notNull().default('default'),
+    organizerId: uuid('organizer_id').references(() => users.id, { onDelete: 'set null' }),
+    attachments: uuid('attachments').array().notNull().default(sql`'{}'::uuid[]`),
+    /** Bumped on every change (iCalendar SEQUENCE for updates sent to outside guests). */
+    sequence: integer('sequence').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('calendar_events_range_idx').on(t.calendarId, t.startAt, t.endAt)],
+);
+
+/** Guests: people of the workspace (userId) or outside addresses (email). */
+export const eventAttendees = pgTable(
+  'event_attendees',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    name: text('name'),
+    response: text('response').$type<'pending' | 'accepted' | 'tentative' | 'declined'>().notNull().default('pending'),
+    optional: boolean('optional').notNull().default(false),
+    respondedAt: ts('responded_at'),
+  },
+  (t) => [uniqueIndex('event_attendees_unique_idx').on(t.eventId, t.email), index('event_attendees_user_idx').on(t.userId)],
+);
