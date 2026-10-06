@@ -523,6 +523,7 @@ export class CalendarService {
     const [cal] = await this.db.select().from(calendars).where(eq(calendars.id, ev.calendarId));
     const ids = new Set<string>([actor.id, ...atts.map((a) => a.userId).filter((x): x is string => !!x)]);
     if (cal?.userId) ids.add(cal.userId);
+    if (cal?.spaceId) for (const u of await this.perms.spaceReaders(cal.spaceId)) ids.add(u);
     this.realtime.publish(ids, { type: 'calendar.changed' });
   }
 

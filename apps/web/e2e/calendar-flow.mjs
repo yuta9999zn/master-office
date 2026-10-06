@@ -40,7 +40,8 @@ await step('the week shows events; opening one shows guests, answers and the mee
   const panel = claudia.getByTestId('event-panel');
   await panel.getByTestId('event-title').getByText('ITM Japan Meeting').waitFor();
   await panel.locator('[data-testid="guest"][data-email="mika@kaori.jp"]').getByText('Tentative').waitFor();
-  await panel.locator('[data-testid="guest"][data-email="yuki@kaori.jp"]').getByText('Pending').waitFor();
+  // test:calendar (which runs first in `pnpm test`) has Yuki answer "maybe".
+  await panel.locator('[data-testid="guest"][data-email="yuki@kaori.jp"]').getByText(/^(Pending|Tentative)$/).waitFor();
   if (!(await panel.getByTestId('join-meeting').getAttribute('href')).includes('/meetings?room=')) throw new Error('meeting link');
   await panel.getByText('Project Plan Sep.pptx').waitFor();
   await panel.getByRole('button', { name: 'Close' }).click();
@@ -126,6 +127,9 @@ await step('editing an event', claudia, async () => {
 });
 
 await step('removing one occurrence of a weekly event', claudia, async () => {
+  // test:calendar may already have removed this week's one.
+  await claudia.waitForTimeout(500);
+  if (!(await ev(claudia, 'Team Meeting').count())) await claudia.getByRole('button', { name: 'Next', exact: true }).click();
   await ev(claudia, 'Team Meeting').click();
   await claudia.getByTestId('event-panel').getByRole('button', { name: 'Delete' }).click();
   await claudia.getByRole('menuitem', { name: 'This event' }).click();

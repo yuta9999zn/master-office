@@ -12,6 +12,7 @@ import { q4StrategyNote, seedNoteState, simpleNote } from './seed-notes';
 import { seedChat } from './seed-chat';
 import { seedMail } from './seed-mail';
 import { seedCalendar } from './seed-calendar';
+import { seedTasks } from './seed-tasks';
 import { config } from '../config';
 
 /**
@@ -407,6 +408,7 @@ async function main() {
   await seedChat(db, ws.id, u, (name) => sp[name].id, async (name) => (await ref(name)).id);
   await seedMail(db, storage, ws.id, u, (name) => sp[name].id);
   await seedCalendar(db, ws.id, u, (name) => sp[name].id, async (name) => (await ref(name)).id, config.webOrigin);
+  await seedTasks(db, ws.id, u, (name) => sp[name].id);
 
   await pool.end();
   console.log(`✓ seeded ${inserted.length} users, ${Object.keys(sp).length} spaces`);

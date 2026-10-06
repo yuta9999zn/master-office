@@ -424,11 +424,12 @@ export type RealtimeEvent =
   | { type: 'notification.read'; ids: string[] | 'all' }
   | { type: 'mail.changed'; mailboxId: string }
   | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string }
-  | { type: 'calendar.changed' };
+  | { type: 'calendar.changed' }
+  | { type: 'tasks.changed'; projectId: string | null };
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment';
 
 export interface AppNotification {
   id: string;
@@ -682,4 +683,112 @@ export function zonedToUtc(y: number, m: number, d: number, h: number, mi: numbe
 export function zonedParts(date: Date, tz: string) {
   const shifted = new Date(date.getTime() + tzOffsetMinutes(date, tz) * 60000);
   return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate(), h: shifted.getUTCHours(), mi: shifted.getUTCMinutes(), weekday: shifted.getUTCDay() };
+}
+
+// ── Tasks (§72) ─────────────────────────────────────────────────────────────
+
+export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
+export interface TaskStatus {
+  id: string;
+  name: string;
+  color: string;
+  category: 'todo' | 'doing' | 'done';
+}
+
+export interface Project {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  color: string;
+  spaceId: string;
+  statuses: TaskStatus[];
+  /** read = see; write = create / change tasks; comment = discuss; manage = statuses, settings. */
+  perms: { read: boolean; comment: boolean; write: boolean; manage: boolean };
+  counts: { total: number; done: number; overdue: number };
+}
+
+export interface TaskView {
+  id: string;
+  projectId: string | null;
+  /** "WEB-12" (or null for personal tasks). */
+  ref: string | null;
+  parentId: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: TaskPriority;
+  assignee: UserSummary | null;
+  tags: string[];
+  startDate: string | null;
+  dueDate: string | null;
+  progress: number;
+  position: string;
+  completedAt: string | null;
+  createdBy: UserSummary | null;
+  createdAt: string;
+  updatedAt: string;
+  subtasks: { total: number; done: number };
+  comments: number;
+  canEdit: boolean;
+}
+
+export interface TaskEventView {
+  id: string;
+  kind: 'comment' | 'change';
+  actor: UserSummary | null;
+  body: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskInput {
+  projectId?: string | null;
+  parentId?: string | null;
+  title: string;
+  description?: string | null;
+  status?: string;
+  priority?: TaskPriority;
+  assigneeId?: string | null;
+  tags?: string[];
+  startDate?: string | null;
+  dueDate?: string | null;
+  progress?: number;
+  /** Place the card between these two neighbours of its column (board drag and drop). */
+  before?: string | null;
+  after?: string | null;
+}
+
+export interface ProjectStats {
+  total: number;
+  done: number;
+  completionRate: number;
+  onTimeRate: number;
+  avgCycleDays: number | null;
+  overdue: number;
+  byStatus: { status: string; name: string; color: string; count: number }[];
+  /** Created vs completed per day over the last 30 days. */
+  trend: { day: string; created: number; completed: number }[];
+  people: { user: UserSummary; assigned: number; done: number; onTime: number }[];
+}
+
+// Tasks board order (§72). Fractional positions: a key strictly between two others, so a moved card is the only row that changes.
+const DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+export function between(a: string | null, b: string | null): string {
+  let lo = a ?? '';
+  let hi = b ?? '';
+  let out = '';
+  for (let i = 0; i < 64; i++) {
+    const ca = i < lo.length ? DIGITS.indexOf(lo[i]) : 0;
+    const cb = i < hi.length ? DIGITS.indexOf(hi[i]) : DIGITS.length;
+    if (ca === cb) {
+      out += DIGITS[ca];
+      continue;
+    }
+    const mid = Math.floor((ca + cb) / 2);
+    if (mid > ca) return out + DIGITS[mid];
+    out += DIGITS[ca];
+    hi = '';
+  }
+  return out + 'V';
 }

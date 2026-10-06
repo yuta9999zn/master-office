@@ -38,6 +38,16 @@ export class PermissionsService {
     );
   }
 
+  /** Everyone who can read a space (for live updates): the workspace if it is public, else its members and the owners. */
+  async spaceReaders(spaceId: string): Promise<string[]> {
+    const [s] = await this.db.select({ workspaceId: spaces.workspaceId, visibility: spaces.visibility }).from(spaces).where(eq(spaces.id, spaceId));
+    if (!s) return [];
+    const ws = await this.db.select({ id: workspaceMembers.userId, role: workspaceMembers.role }).from(workspaceMembers).where(eq(workspaceMembers.workspaceId, s.workspaceId));
+    if (s.visibility === 'public') return ws.map((m) => m.id);
+    const members = await this.db.select({ id: spaceMembers.userId }).from(spaceMembers).where(eq(spaceMembers.spaceId, spaceId));
+    return [...new Set([...members.map((m) => m.id), ...ws.filter((m) => m.role === 'owner').map((m) => m.id)])];
+  }
+
   async rolesFor(actor: Actor, items: Pick_[], tx: Tx = this.db): Promise<Map<string, Role | null>> {
     const out = new Map<string, Role | null>();
     if (!items.length) return out;

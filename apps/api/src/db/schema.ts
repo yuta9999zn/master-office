@@ -791,3 +791,80 @@ export const eventAttendees = pgTable(
   },
   (t) => [uniqueIndex('event_attendees_unique_idx').on(t.eventId, t.email), index('event_attendees_user_idx').on(t.userId)],
 );
+
+// ── Tasks (Phase 7, docs/ARCHITECTURE.md §72) ───────────────────────────────
+
+export type TaskStatusDef = { id: string; name: string; color: string; category: 'todo' | 'doing' | 'done' };
+
+/** A project of a space: its board columns (statuses) and the key of its task numbers (WEB-12). */
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    color: text('color').notNull().default('#2563eb'),
+    statuses: jsonb('statuses').$type<TaskStatusDef[]>().notNull(),
+    /** Next task number. */
+    counter: integer('counter').notNull().default(0),
+    archivedAt: ts('archived_at'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('projects_key_idx').on(t.workspaceId, t.key), index('projects_space_idx').on(t.spaceId)],
+);
+
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** Null for personal tasks (My tasks). */
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    number: integer('number'),
+    parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: text('status').notNull(),
+    priority: text('priority').$type<'none' | 'low' | 'medium' | 'high' | 'urgent'>().notNull().default('none'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    startDate: date('start_date'),
+    dueDate: date('due_date'),
+    /** 0–100, set by hand (Gantt); a task with subtasks shows its subtasks' share done instead. */
+    progress: integer('progress').notNull().default(0),
+    /** Order inside its column (fractional, so moving a card touches one row). */
+    position: text('position').notNull().default('m'),
+    completedAt: ts('completed_at'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('tasks_project_idx').on(t.projectId, t.status), index('tasks_assignee_idx').on(t.assigneeId), index('tasks_parent_idx').on(t.parentId)],
+);
+
+/** Comments and the activity trail of a task (kind 'comment' or 'change'). */
+export const taskEvents = pgTable(
+  'task_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: text('kind').$type<'comment' | 'change'>().notNull(),
+    body: text('body'),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('task_events_task_idx').on(t.taskId, t.createdAt)],
+);
