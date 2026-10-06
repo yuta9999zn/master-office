@@ -52,6 +52,8 @@ export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  /** Domain of the workspace's mail addresses (§69), e.g. kaori.jp. */
+  mailDomain: text('mail_domain'),
   createdAt: ts('created_at').notNull().default(sql`now()`),
 });
 
@@ -592,4 +594,127 @@ export const notifications = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [index('notifications_user_idx').on(t.userId, t.createdAt)],
+);
+
+// ── Mail (Phase 7 module, docs/ARCHITECTURE.md §69) ─────────────────────────
+
+/** A mailbox: one per person (their address on the workspace domain) and optionally one per space (shared). */
+export const mailboxes = pgTable(
+  'mailboxes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'user' | 'space'>().notNull(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    spaceId: uuid('space_id').references(() => spaces.id, { onDelete: 'cascade' }),
+    /** Lower-case address, unique across the system. */
+    address: text('address').notNull().unique(),
+    name: text('name').notNull(),
+    signature: text('signature'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('mailboxes_user_idx').on(t.userId), uniqueIndex('mailboxes_space_idx').on(t.spaceId)],
+);
+
+export type MailAddress = { address: string; name: string | null };
+
+/** A message, stored once whatever the number of mailboxes it sits in. Drafts are messages with status 'draft'. */
+export const mailMessages = pgTable(
+  'mail_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    status: text('status').$type<'draft' | 'sent'>().notNull().default('sent'),
+    /** RFC 5322 Message-ID (without angle brackets); threading uses it with In-Reply-To / References. */
+    messageId: text('message_id').notNull().unique(),
+    inReplyTo: text('in_reply_to'),
+    references: text('references').array().notNull().default(sql`'{}'::text[]`),
+    fromAddress: text('from_address').notNull(),
+    fromName: text('from_name'),
+    to: jsonb('to').$type<MailAddress[]>().notNull().default([]),
+    cc: jsonb('cc').$type<MailAddress[]>().notNull().default([]),
+    /** Only ever shown to the sender's mailbox. */
+    bcc: jsonb('bcc').$type<MailAddress[]>().notNull().default([]),
+    subject: text('subject').notNull().default(''),
+    text: text('text').notNull().default(''),
+    html: text('html'),
+    /** The person who wrote it (null for mail from outside). */
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    external: boolean('external').notNull().default(false),
+    sentAt: ts('sent_at'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('mail_messages_ws_idx').on(t.workspaceId)],
+);
+
+/** A conversation inside one mailbox (each mailbox threads its own copy). */
+export const mailThreads = pgTable(
+  'mail_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull().default(''),
+    lastAt: ts('last_at').notNull().default(sql`now()`),
+    /** Shared mailboxes: who is handling it (§69). */
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [index('mail_threads_mailbox_idx').on(t.mailboxId, t.lastAt)],
+);
+
+/** A message in a mailbox: where it is filed and its read / starred state there. */
+export const mailItems = pgTable(
+  'mail_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: 'cascade' }),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => mailThreads.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => mailMessages.id, { onDelete: 'cascade' }),
+    /** 'in' = received, 'out' = sent or draft from this mailbox. */
+    direction: text('direction').$type<'in' | 'out'>().notNull(),
+    folder: text('folder').$type<'inbox' | 'sent' | 'drafts' | 'archive' | 'trash'>().notNull(),
+    readAt: ts('read_at'),
+    starred: boolean('starred').notNull().default(false),
+    labels: text('labels').array().notNull().default(sql`'{}'::text[]`),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex('mail_items_unique_idx').on(t.mailboxId, t.messageId, t.direction),
+    index('mail_items_folder_idx').on(t.mailboxId, t.folder),
+    index('mail_items_thread_idx').on(t.threadId),
+  ],
+);
+
+/** Attachments are copies, as in any e-mail: a blob with its name, kept with the message. */
+export const mailAttachments = pgTable(
+  'mail_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** Null while attached to a message being written (uploaded, not sent yet). */
+    messageId: uuid('message_id').references(() => mailMessages.id, { onDelete: 'cascade' }),
+    blobId: uuid('blob_id')
+      .notNull()
+      .references(() => blobs.id),
+    name: text('name').notNull(),
+    mimeType: text('mime_type'),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('mail_attachments_message_idx').on(t.messageId)],
 );

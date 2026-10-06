@@ -27,6 +27,8 @@ import { SlidesService } from './slides/slides.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { MailService } from './mail/mail.service';
+import { MailController } from './mail/mail.controller';
+import { MailboxService } from './mail/mailbox.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
@@ -40,7 +42,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -59,6 +61,7 @@ import { WorkspaceController } from './users/workspace.controller';
     SlidesService,
     FormsService,
     MailService,
+    MailboxService,
     DocsService,
     CommentsService,
     ResourcesService,

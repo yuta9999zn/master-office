@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { APPS, MORE_APP } from '@/lib/apps';
 import { useUnreadTotal } from '@/lib/chat';
+import { useMailUnread } from '@/lib/mail';
 import { useResources, useSpaces } from '@/lib/queries';
 import { hrefFor } from '@/lib/resources';
 import { useUi } from '@/lib/store';
@@ -70,6 +71,7 @@ export function Sidebar() {
   const { data: starred } = useResources({ view: 'starred' });
   const [creating, setCreating] = useState(false);
   const unread = useUnreadTotal();
+  const mailUnread = useMailUnread();
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const topSpaces = spaces?.filter((s) => !s.parentId) ?? [];
@@ -86,7 +88,7 @@ export function Sidebar() {
               active={isActive(app.href)}
               collapsed={collapsed}
               icon={<AppIcon app={app} size={22} />}
-              trailing={app.id === 'chat' && unread > 0 ? <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white" data-testid="chat-unread">{unread > 99 ? '99+' : unread}</span> : undefined}
+              trailing={app.id === 'mail' && mailUnread > 0 ? <span className="text-[12px] font-semibold text-brand-600" data-testid="mail-unread">{mailUnread}</span> : app.id === 'chat' && unread > 0 ? <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white" data-testid="chat-unread">{unread > 99 ? '99+' : unread}</span> : undefined}
             />
           ))}
           <NavLink href={MORE_APP.href} label="More" active={isActive(MORE_APP.href)} collapsed={collapsed} icon={<AppIcon app={MORE_APP} size={22} />} />

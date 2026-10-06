@@ -10,6 +10,7 @@ import { blankForm } from '@workos/form-model';
 import { SEED_FORMS, seedFormState, surveyResponses } from './seed-forms';
 import { q4StrategyNote, seedNoteState, simpleNote } from './seed-notes';
 import { seedChat } from './seed-chat';
+import { seedMail } from './seed-mail';
 
 /**
  * Demo data mirroring the UI reference screens: the KAORI organisation with the
@@ -402,6 +403,7 @@ async function main() {
   await db.insert(s.resourceAccess).values({ userId: u.claudia.id, resourceId: q4.id }).onConflictDoNothing();
 
   await seedChat(db, ws.id, u, (name) => sp[name].id, async (name) => (await ref(name)).id);
+  await seedMail(db, storage, ws.id, u, (name) => sp[name].id);
 
   await pool.end();
   console.log(`✓ seeded ${inserted.length} users, ${Object.keys(sp).length} spaces`);

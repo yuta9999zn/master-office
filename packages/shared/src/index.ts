@@ -421,7 +421,9 @@ export type RealtimeEvent =
   | { type: 'chat.categories'; spaceId: string }
   | { type: 'presence'; online: string[] }
   | { type: 'notification'; notification: AppNotification }
-  | { type: 'notification.read'; ids: string[] | 'all' };
+  | { type: 'notification.read'; ids: string[] | 'all' }
+  | { type: 'mail.changed'; mailboxId: string }
+  | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string };
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
@@ -477,4 +479,99 @@ export interface UpdateProfileInput {
   title?: string | null;
   department?: string | null;
   managerId?: string | null;
+}
+
+// ── Mail (§69) ──────────────────────────────────────────────────────────────
+
+export type MailFolder = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'trash' | 'all';
+
+export interface MailAddr {
+  address: string;
+  name: string | null;
+}
+
+/** What the viewer may do with a mailbox: a person's own one fully; a space one by their role in the space. */
+export interface MailboxPerms {
+  read: boolean;
+  /** Send, reply, file and mark messages. */
+  write: boolean;
+  /** Settings of a shared mailbox (space admins). */
+  manage: boolean;
+}
+
+export interface Mailbox {
+  id: string;
+  kind: 'user' | 'space';
+  address: string;
+  name: string;
+  spaceId: string | null;
+  signature: string | null;
+  perms: MailboxPerms;
+  unread: number;
+  drafts: number;
+}
+
+export interface MailAttachmentInfo {
+  id: string;
+  name: string;
+  mimeType: string | null;
+  sizeBytes: number;
+}
+
+export interface MailThreadSummary {
+  id: string;
+  mailboxId: string;
+  subject: string;
+  /** Senders of the thread (names), newest last. */
+  participants: string[];
+  snippet: string;
+  lastAt: string;
+  count: number;
+  unread: boolean;
+  starred: boolean;
+  hasAttachments: boolean;
+  hasDraft: boolean;
+  folders: string[];
+  assignee: UserSummary | null;
+}
+
+export interface MailMessageView {
+  id: string;
+  status: 'draft' | 'sent';
+  direction: 'in' | 'out';
+  from: MailAddr;
+  to: MailAddr[];
+  cc: MailAddr[];
+  /** Only for the sender's own copy. */
+  bcc: MailAddr[];
+  subject: string;
+  text: string;
+  html: string | null;
+  sentAt: string | null;
+  read: boolean;
+  starred: boolean;
+  external: boolean;
+  author: UserSummary | null;
+  attachments: MailAttachmentInfo[];
+  messageId: string;
+}
+
+export interface MailThreadView extends MailThreadSummary {
+  messages: MailMessageView[];
+  mailbox: Mailbox;
+}
+
+export interface SendMailInput {
+  mailboxId: string;
+  to: MailAddr[];
+  cc?: MailAddr[];
+  bcc?: MailAddr[];
+  subject: string;
+  text: string;
+  /** Uploaded attachments (POST /mail/attachments) and Drive files to attach. */
+  attachmentIds?: string[];
+  resourceIds?: string[];
+  /** The message this replies to / forwards (its id in our system). */
+  replyTo?: string | null;
+  draftId?: string | null;
 }

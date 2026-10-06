@@ -13,6 +13,17 @@ export interface MailMessage {
   text: string;
   html?: string;
   resourceId?: string | null;
+  /** Mail module (§69): the sender's own address instead of the system one, copies, threading headers, files. */
+  from?: string;
+  cc?: string;
+  bcc?: string;
+  replyTo?: string;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
+  /** SMTP recipients when they differ from the headers (internal addresses are delivered by the Mail module). */
+  envelopeTo?: string[];
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -66,7 +77,21 @@ export class MailService {
         .returning({ id: mailOutbox.id });
       if (this.transport) {
         try {
-          await this.transport.sendMail({ from: config.mail.from, to: m.to, subject: m.subject, text: m.text, html: m.html });
+          await this.transport.sendMail({
+            from: m.from ?? config.mail.from,
+            to: m.to,
+            cc: m.cc,
+            bcc: m.bcc,
+            replyTo: m.replyTo,
+            subject: m.subject,
+            text: m.text,
+            html: m.html,
+            messageId: m.messageId ? `<${m.messageId}>` : undefined,
+            inReplyTo: m.inReplyTo ? `<${m.inReplyTo}>` : undefined,
+            references: m.references?.length ? m.references.map((r) => `<${r}>`) : undefined,
+            attachments: m.attachments,
+            envelope: m.envelopeTo ? { from: (m.from ?? config.mail.from).replace(/^.*<([^>]+)>.*$/, '$1'), to: m.envelopeTo } : undefined,
+          });
           await this.db.update(mailOutbox).set({ status: 'sent', sentAt: sql`now()` }).where(eq(mailOutbox.id, row.id));
         } catch (e) {
           this.log.warn(`delivery to ${m.to} failed: ${(e as Error).message}`);
