@@ -616,5 +616,69 @@ export class MailboxService {
     for (const r of recent.rows) if (!out.has(r.address)) out.set(r.address, { address: r.address, name: r.name, kind: 'external' });
     return [...out.values()].slice(0, 12);
   }
-}
+  // ── Mail from outside (§70) ───────────────────────────────────────────────
 
+  /** Files a message that came from outside in the mailboxes it is addressed to (by address). */
+  async receiveExternal(m: {
+    messageId: string;
+    inReplyTo: string | null;
+    references: string[];
+    from: MailAddr;
+    to: MailAddr[];
+    cc: MailAddr[];
+    subject: string;
+    text: string;
+    html: string | null;
+    sentAt: string;
+    attachments: { name: string; mimeType: string; content: Buffer }[];
+    targets: string[];
+  }) {
+    const boxes = m.targets.length ? await this.db.select().from(mailboxes).where(inArray(mailboxes.address, [...new Set(m.targets)])) : [];
+    if (!boxes.length) return 0;
+    const refs = [...new Set([m.inReplyTo, ...m.references].filter((x): x is string => !!x))];
+    const received: { box: Box; threadId: string; subject: string; from: string }[] = [];
+    await this.db.transaction(async (tx) => {
+      let [msg] = await tx.select().from(mailMessages).where(eq(mailMessages.messageId, m.messageId));
+      if (!msg) {
+        [msg] = await tx
+          .insert(mailMessages)
+          .values({
+            workspaceId: boxes[0].workspaceId,
+            messageId: m.messageId,
+            inReplyTo: m.inReplyTo,
+            references: m.references.slice(-20),
+            fromAddress: m.from.address,
+            fromName: m.from.name,
+            to: m.to,
+            cc: m.cc,
+            subject: m.subject,
+            text: m.text,
+            html: m.html,
+            external: true,
+            sentAt: m.sentAt,
+            updatedAt: m.sentAt,
+          })
+          .returning();
+        for (const a of m.attachments) {
+          const sha = StorageService.sha256(a.content);
+          const key = await this.storage.putBlob(a.content, sha, a.mimeType);
+          const [b] = await tx
+            .insert(blobs)
+            .values({ sha256: sha, sizeBytes: a.content.length, mimeType: a.mimeType, storageKey: key })
+            .onConflictDoUpdate({ target: blobs.sha256, set: { sha256: sha } })
+            .returning();
+          await tx.insert(mailAttachments).values({ workspaceId: msg.workspaceId, messageId: msg.id, blobId: b.id, name: a.name, mimeType: a.mimeType, sizeBytes: a.content.length });
+        }
+      }
+      for (const box of boxes) {
+        const [has] = await tx.select({ id: mailItems.id }).from(mailItems).where(and(eq(mailItems.mailboxId, box.id), eq(mailItems.messageId, msg.id), eq(mailItems.direction, 'in')));
+        if (has) continue;
+        const threadId = await this.threadFor(tx, box.id, refs, m.subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || m.subject, m.sentAt);
+        await tx.insert(mailItems).values({ mailboxId: box.id, threadId, messageId: msg.id, direction: 'in', folder: 'inbox' });
+        received.push({ box, threadId, subject: m.subject, from: m.from.name ?? m.from.address });
+      }
+    });
+    await this.touched(boxes.map((b) => b.id), received);
+    return received.length;
+  }
+}

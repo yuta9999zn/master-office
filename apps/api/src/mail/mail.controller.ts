@@ -1,12 +1,14 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
 import { contentDisposition } from '../common/http';
 import { parse } from '../common/validation';
 import { config } from '../config';
 import { ResourcesService } from '../resources/resources.service';
+import { InboundMailService } from './inbound.service';
 import { MailboxService } from './mailbox.service';
 
 const addr = z.object({ address: z.string().max(320), name: z.string().max(200).nullish().transform((v) => v ?? null) });
@@ -50,7 +52,24 @@ export class MailController {
   constructor(
     private readonly mail: MailboxService,
     private readonly resources: ResourcesService,
+    private readonly inbound: InboundMailService,
   ) {}
+
+  /**
+   * Raw MIME from a mail provider (§70): the x-inbound-secret header must match MAIL_INBOUND_SECRET; x-envelope-to
+   * (comma separated) names the recipients when the provider knows them. Off when no secret is configured.
+   */
+  @Post('inbound')
+  @HttpCode(202)
+  async receive(@Headers('x-inbound-secret') secret: string | undefined, @Headers('x-envelope-to') envelope: string | undefined, @Req() req: Request) {
+    const want = config.mail.inboundSecret;
+    const ok = !!want && !!secret && secret.length === want.length && timingSafeEqual(Buffer.from(secret), Buffer.from(want));
+    if (!ok) throw new NotFoundException();
+    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === 'string' ? req.body : '');
+    if (!raw.length) throw new BadRequestException('Send the raw message as the request body');
+    const delivered = await this.inbound.receive(raw, envelope ? envelope.split(',').map((x) => x.trim()).filter(Boolean) : undefined);
+    return { delivered };
+  }
 
   @Get('mailboxes')
   mailboxes(@CurrentUser() a: Actor) {

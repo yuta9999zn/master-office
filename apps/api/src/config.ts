@@ -19,6 +19,9 @@ export const config = {
   mail: {
     smtpUrl: process.env.SMTP_URL || null,
     from: process.env.MAIL_FROM ?? 'Master Office <no-reply@master-office.local>',
+    // Mail from outside (§70): SMTP listener port (0 = off) and the secret of the raw-MIME webhook (unset = off).
+    inboundPort: Number(process.env.MAIL_INBOUND_PORT ?? 2525),
+    inboundSecret: process.env.MAIL_INBOUND_SECRET ?? (process.env.NODE_ENV === 'production' ? null : 'dev-inbound-secret-change-me'),
   },
   maxUploadBytes: 200 * 1024 * 1024,
   collab: {

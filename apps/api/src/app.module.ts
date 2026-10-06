@@ -29,6 +29,7 @@ import { FormsService } from './forms/forms.service';
 import { MailService } from './mail/mail.service';
 import { MailController } from './mail/mail.controller';
 import { MailboxService } from './mail/mailbox.service';
+import { InboundMailService } from './mail/inbound.service';
 import { SearchController } from './search/search.controller';
 import { SpacesController } from './spaces/spaces.controller';
 import { SpacesService } from './spaces/spaces.service';
@@ -62,6 +63,7 @@ import { WorkspaceController } from './users/workspace.controller';
     FormsService,
     MailService,
     MailboxService,
+    InboundMailService,
     DocsService,
     CommentsService,
     ResourcesService,
