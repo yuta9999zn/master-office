@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { between } from '@workos/shared';
 import { DEFAULT_STATUSES } from '../tasks/tasks.service';
 import type { Db } from './client';
@@ -80,6 +80,36 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   await task(web, { title: 'Initial wireframe', type: 'story', points: 3, parent: brand.id, status: 'done', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-09-18', doneOn: '2026-09-21', by: 'fujita' });
   await task(web, { title: 'Log in and book with LINE', type: 'story', triage: true, reporter: 'hana', status: 'todo', by: 'hana', desc: 'Customers ask to log in and book with their LINE account.' });
   await task(web, { title: 'Booking page is slow on mobile', type: 'bug', triage: true, reporter: 'yuki', status: 'todo', priority: 'high', by: 'yuki', desc: 'Takes about 8 s to load on 4G at Branch 575.' });
+
+  // Sprints (§76): Sprint 1 closed with its retrospective, Sprint 2 running now, Sprint 3 planned, one item in the backlog.
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const s2Start = new Date(Date.now() - 9 * 86400_000);
+  const shift = (d: Date, n: number) => new Date(d.getTime() + n * 86400_000);
+  const [s1] = await db
+    .insert(s.sprints)
+    .values({ projectId: web.id, name: 'WEB Sprint 1', goal: 'Foundations: server, requirements, wireframes', startDate: ymd(shift(s2Start, -14)), endDate: ymd(shift(s2Start, -1)), state: 'closed', committedPoints: 10, committedCount: 4, completedPoints: 7, completedCount: 3, startedAt: shift(s2Start, -14).toISOString(), completedAt: shift(s2Start, -1).toISOString(), createdBy: u.fujita.id })
+    .returning();
+  const [s2] = await db
+    .insert(s.sprints)
+    .values({ projectId: web.id, name: 'WEB Sprint 2', goal: 'Customers can book a visit online', startDate: ymd(s2Start), endDate: ymd(shift(s2Start, 13)), state: 'active', committedPoints: 37, committedCount: 6, startedAt: s2Start.toISOString(), createdBy: u.fujita.id })
+    .returning();
+  const [s3] = await db
+    .insert(s.sprints)
+    .values({ projectId: web.id, name: 'WEB Sprint 3', goal: 'Sign-in and payments', startDate: ymd(shift(s2Start, 14)), endDate: ymd(shift(s2Start, 27)), createdBy: u.fujita.id })
+    .returning();
+  const plan = async (sprintId: string, titles: string[]) => {
+    for (const title of titles) await db.update(s.tasks).set({ sprintId }).where(and(eq(s.tasks.projectId, web.id), eq(s.tasks.title, title)));
+  };
+  await plan(s1.id, ['Setup server environment', 'Requirements document', 'Initial wireframe']);
+  await plan(s2.id, ['Design new homepage', 'Implement booking system', 'API integration (payment)', 'Testing & QA', 'Create content for branch 625', 'Design logo variations']);
+  await plan(s3.id, ['Build user authentication']);
+  // Backlog order = board order.
+  await db.execute(sql`UPDATE tasks SET rank = position WHERE project_id = ${web.id}`);
+  await db.insert(s.retroItems).values([
+    { sprintId: s1.id, kind: 'good', body: 'Wireframes reviewed early with the branches', authorId: u.minh.id, votes: [u.fujita.id, u.ken.id, u.mika.id] },
+    { sprintId: s1.id, kind: 'improve', body: 'Requirements changed in the middle of the sprint', authorId: u.ken.id, votes: [u.fujita.id] },
+    { sprintId: s1.id, kind: 'action', body: 'Freeze the sprint scope after planning', authorId: u.fujita.id, votes: [u.ken.id, u.minh.id] },
+  ]);
 
   // Gantt: Branch 625 System.
   const sys = await project('Branch 625', 'Branch 625 System', 'B625', '#ef4444', 'sora', 'waterfall');

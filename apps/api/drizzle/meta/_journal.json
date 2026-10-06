@@ -141,6 +141,13 @@
       "when": 1791313213909,
       "tag": "0019_tasks_issues",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791315019780,
+      "tag": "0020_sprints",
+      "breakpoints": true
     }
   ]
 }

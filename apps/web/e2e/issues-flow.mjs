@@ -30,6 +30,8 @@ const step = async (name, page, fn) => {
   }
 };
 const card = (page, title) => page.locator(`[data-testid="task-card"][data-title="${title}"]`);
+// Issues outside the active sprint wait in the backlog (Scrum project).
+const inBacklog = (page, title) => page.locator('[data-testid="backlog-section"][data-name="Backlog"]').locator(`[data-testid="backlog-row"][data-title="${title}"]`);
 
 const fujita = await session('fujita@kaori.jp');
 const hana = await session('hana@kaori.jp');
@@ -65,8 +67,8 @@ await step('a viewer files a request; the lead accepts it onto the board', hana,
   await item.getByText('Hana Lee').waitFor();
   await item.getByTestId('accept-request').click();
   await item.waitFor({ state: 'detached' });
-  await fujita.getByRole('tab', { name: 'board', exact: true }).click();
-  await card(fujita, 'Map pin shows the wrong branch').locator('[data-testid="issue-icon"][data-type="bug"]').waitFor();
+  await fujita.getByRole('tab', { name: 'backlog' }).click();
+  await inBacklog(fujita, 'Map pin shows the wrong branch').locator('[data-testid="issue-icon"][data-type="bug"]').waitFor();
 });
 
 await step('declining a request with a reason', fujita, async () => {
@@ -92,11 +94,13 @@ await step('a new epic, broken down into stories', fujita, async () => {
   await fujita.getByTestId('confirm-breakdown').click();
   await drawer(fujita).getByTestId('subtasks').getByText('Moderate reviews').waitFor();
   if ((await drawer(fujita).getByTestId('subtasks').locator('[data-testid="issue-icon"][data-type="story"]').count()) !== 2) throw new Error('two stories');
-  await card(fujita, 'Write review form').getByTestId('card-epic').getByText('Customer reviews').waitFor();
+  await fujita.getByRole('button', { name: 'Close', exact: true }).click();
+  await fujita.getByRole('tab', { name: 'backlog' }).click();
+  await inBacklog(fujita, 'Write review form').getByText('Customer reviews').waitFor();
 });
 
 await step('linking: one story blocks another', fujita, async () => {
-  await card(fujita, 'Write review form').click();
+  await inBacklog(fujita, 'Write review form').click();
   await drawer(fujita).getByLabel('Task title').and(fujita.locator('textarea')).waitFor();
   await drawer(fujita).getByTestId('ancestors').getByText('Customer reviews').waitFor();
   await drawer(fujita).getByTestId('add-link').click();
@@ -104,7 +108,6 @@ await step('linking: one story blocks another', fujita, async () => {
   await fujita.getByLabel('Search issues').fill('Moderate');
   await fujita.locator('[data-testid="link-candidate"][data-title="Moderate reviews"]').click();
   await drawer(fujita).locator('[data-testid="link-row"][data-kind="blocks"][data-direction="out"]').getByText('Moderate reviews').waitFor();
-  await card(fujita, 'Moderate reviews').getByTestId('card-blocked').waitFor();
   await drawer(fujita).locator('[data-testid="link-row"]').getByText('Moderate reviews').click();
   await drawer(fujita).locator('[data-testid="link-row"][data-direction="in"]').getByText('is blocked by').waitFor();
 });

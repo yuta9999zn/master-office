@@ -1,6 +1,6 @@
 'use client';
 
-import { between, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView } from '@workos/shared';
+import { between, type CeremonyPlan, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type RetroItemView, type SprintReport, type SprintView, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView, type VelocityRow } from '@workos/shared';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from './api';
@@ -12,6 +12,50 @@ export const useTasks = (projectId: string | null) =>
   useQuery({ queryKey: ['tasks', 'list', projectId ?? 'mine'], queryFn: () => api<TaskView[]>(projectId ? `/tasks?project=${projectId}` : '/tasks?mine=1') });
 export const useTask = (id?: string | null) => useQuery({ queryKey: ['tasks', 'one', id], queryFn: () => api<TaskDetail>(`/tasks/${id}`), enabled: !!id, retry: false });
 export const useProjectStats = (id?: string | null) => useQuery({ queryKey: ['tasks', 'stats', id], queryFn: () => api<ProjectStats>(`/tasks/projects/${id}/stats`), enabled: !!id });
+
+export const useSprints = (projectId?: string | null) =>
+  useQuery({ queryKey: ['tasks', 'sprints', projectId], queryFn: () => api<SprintView[]>(`/tasks/projects/${projectId}/sprints`), enabled: !!projectId });
+export const useSprintReport = (id?: string | null) => useQuery({ queryKey: ['tasks', 'report', id], queryFn: () => api<SprintReport>(`/tasks/sprints/${id}/report`), enabled: !!id });
+export const useVelocity = (projectId?: string | null) => useQuery({ queryKey: ['tasks', 'velocity', projectId], queryFn: () => api<VelocityRow[]>(`/tasks/projects/${projectId}/velocity`), enabled: !!projectId });
+export const useRetro = (sprintId?: string | null) => useQuery({ queryKey: ['tasks', 'retro', sprintId], queryFn: () => api<RetroItemView[]>(`/tasks/sprints/${sprintId}/retro`), enabled: !!sprintId });
+
+/** Sprints, planning and the retrospective (§76). */
+export function useSprintActions() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['tasks'] });
+  const m = <I,>(fn: (input: I) => Promise<unknown>) => useMutation({ mutationFn: fn, onSuccess: refresh, onError });
+  return {
+    create: m((input: { projectId: string; name?: string; goal?: string | null; startDate?: string; days?: number }) => {
+      const { projectId, ...body } = input;
+      return api<SprintView>(`/tasks/projects/${projectId}/sprints`, { method: 'POST', json: body });
+    }),
+    update: m(({ id, ...body }: { id: string; name?: string; goal?: string | null; startDate?: string; days?: number }) => api<SprintView>(`/tasks/sprints/${id}`, { method: 'PATCH', json: body })),
+    remove: m((id: string) => api(`/tasks/sprints/${id}`, { method: 'DELETE' })),
+    start: m(({ id, ...body }: { id: string; startDate?: string; days?: number; goal?: string | null; ceremonies?: CeremonyPlan }) => api<SprintView>(`/tasks/sprints/${id}/start`, { method: 'POST', json: body })),
+    complete: m(({ id, moveTo }: { id: string; moveTo: string | null }) => api<{ sprint: SprintView; moved: number }>(`/tasks/sprints/${id}/complete`, { method: 'POST', json: { moveTo } })),
+    addRetro: m(({ sprintId, kind, body }: { sprintId: string; kind: RetroItemView['kind']; body: string }) => api<RetroItemView>(`/tasks/sprints/${sprintId}/retro`, { method: 'POST', json: { kind, body } })),
+    vote: m((id: string) => api<RetroItemView>(`/tasks/retro/${id}/vote`, { method: 'POST' })),
+    removeRetro: m((id: string) => api(`/tasks/retro/${id}`, { method: 'DELETE' })),
+    retroToTask: m(({ id, assigneeId }: { id: string; assigneeId?: string | null }) => api<TaskView>(`/tasks/retro/${id}/task`, { method: 'POST', json: { assigneeId } })),
+    /** Drag & drop in the backlog: the cache moves at once (same rank the server will compute), then the server answers. */
+    plan: useMutation({
+      mutationFn: ({ id, sprintId, rankAfter, rankBefore }: { id: string; sprintId: string | null; rankAfter: string | null; rankBefore: string | null }) =>
+        api<TaskView>(`/tasks/${id}`, { method: 'PATCH', json: { sprintId, rankAfter, rankBefore } }),
+      onMutate: ({ id, sprintId, rankAfter, rankBefore }) => {
+        for (const [key, list] of qc.getQueriesData<TaskView[]>({ queryKey: ['tasks', 'list'] })) {
+          if (!list?.some((t) => t.id === id)) continue;
+          const r = (x: string | null) => (x ? list.find((t) => t.id === x)?.rank ?? null : null);
+          const a = r(rankAfter);
+          const b = r(rankBefore);
+          const rank = a !== null && b !== null && a >= b ? between(a, null) : between(a, b);
+          qc.setQueryData(key, list.map((t) => (t.id === id ? { ...t, sprintId, rank } : t)));
+        }
+      },
+      onSettled: refresh,
+      onError,
+    }),
+  };
+}
 
 export function applyTasksEvent(qc: QueryClient, e: RealtimeEvent) {
   if (e.type === 'tasks.changed') void qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -73,7 +117,7 @@ export function useTaskActions() {
       onError,
     }),
     updateProject: useMutation({
-      mutationFn: ({ id, ...input }: { id: string; name?: string; statuses?: TaskStatus[]; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean; description?: string | null }) =>
+      mutationFn: ({ id, ...input }: { id: string; name?: string; statuses?: TaskStatus[]; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean; description?: string | null; sprintDays?: number; dailyTime?: string; wipLimits?: Record<string, number> }) =>
         api(`/tasks/projects/${id}`, { method: 'PATCH', json: input }),
       onSuccess: refresh,
       onError,

@@ -820,6 +820,11 @@ export const projects = pgTable(
     leadId: uuid('lead_id').references(() => users.id, { onDelete: 'set null' }),
     /** Anyone who can see the project may file requests (they wait in Triage). */
     intakeOpen: boolean('intake_open').notNull().default(true),
+    /** Scrum (§76): default sprint length in days, and when the 15-minute daily takes place (local time). */
+    sprintDays: integer('sprint_days').notNull().default(14),
+    dailyTime: text('daily_time').notNull().default('09:30'),
+    /** Work-in-progress limit per status column (status id → max cards). */
+    wipLimits: jsonb('wip_limits').$type<Record<string, number>>().notNull().default({}),
     archivedAt: ts('archived_at'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(sql`now()`),
@@ -853,6 +858,10 @@ export const tasks = pgTable(
     triage: boolean('triage').notNull().default(false),
     /** Why it is closed: done, declined, duplicate, won't do. */
     resolution: text('resolution'),
+    /** The sprint it is planned in (Scrum, §76). */
+    sprintId: uuid('sprint_id').references((): AnyPgColumn => sprints.id, { onDelete: 'set null' }),
+    /** Order in the backlog and inside a sprint (fractional, like `position` on the board). */
+    rank: text('rank').notNull().default('m'),
     /** Where it came from, e.g. { kind: 'chat', conversationId, messageId }. */
     source: jsonb('source').$type<Record<string, unknown> | null>(),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
@@ -1109,4 +1118,50 @@ export const taskWatchers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.taskId, t.userId] }), index('task_watchers_user_idx').on(t.userId)],
+);
+
+/** A sprint (§76): a timebox of a project with a goal; one active at a time. */
+export const sprints = pgTable(
+  'sprints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    goal: text('goal'),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date').notNull(),
+    state: text('state').$type<'planned' | 'active' | 'closed'>().notNull().default('planned'),
+    /** Calendar events of the ceremonies: { planning, daily, review, retro } → event id. */
+    ceremonies: jsonb('ceremonies').$type<Record<string, string>>().notNull().default({}),
+    /** At start: what the team took on. At the end: what got done. */
+    committedPoints: integer('committed_points'),
+    committedCount: integer('committed_count'),
+    completedPoints: integer('completed_points'),
+    completedCount: integer('completed_count'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    startedAt: ts('started_at'),
+    completedAt: ts('completed_at'),
+  },
+  (t) => [index('sprints_project_idx').on(t.projectId, t.startDate)],
+);
+
+/** Retrospective board cards: what went well, what to improve, action items (which can become issues). */
+export const retroItems = pgTable(
+  'retro_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sprintId: uuid('sprint_id')
+      .notNull()
+      .references(() => sprints.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'good' | 'improve' | 'action'>().notNull(),
+    body: text('body').notNull(),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    votes: uuid('votes').array().notNull().default(sql`'{}'::uuid[]`),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('retro_items_sprint_idx').on(t.sprintId)],
 );

@@ -15,6 +15,9 @@ const taskBody = z.object({
   estimateMinutes: z.number().int().min(0).max(100_000).nullish(),
   triage: z.literal(false).optional(),
   source: z.object({ kind: z.literal('chat'), conversationId: z.string().uuid(), messageId: z.string().uuid() }).nullish(),
+  sprintId: z.string().uuid().nullish(),
+  rankAfter: z.string().uuid().nullish(),
+  rankBefore: z.string().uuid().nullish(),
   title: z.string().max(500),
   description: z.string().max(50_000).nullish(),
   status: z.string().max(40).optional(),
@@ -39,6 +42,9 @@ const projectUpdate = z.object({
   methodology: methodology.optional(),
   leadId: z.string().uuid().nullish(),
   intakeOpen: z.boolean().optional(),
+  sprintDays: z.number().int().min(1).max(60).optional(),
+  dailyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  wipLimits: z.record(z.string(), z.number().int().min(0).max(999)).optional(),
 });
 const requestBody = z.object({ title: z.string().max(500), description: z.string().max(50_000).nullish(), type: z.enum(['story', 'task', 'bug']).optional(), priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']).optional() });
 

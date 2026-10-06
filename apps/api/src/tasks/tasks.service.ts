@@ -24,7 +24,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { messages, projects, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
+import { messages, projects, sprints, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -113,6 +113,9 @@ export class TasksService {
       methodology: p.methodology,
       lead: lead ? people.get(lead) ?? null : null,
       intakeOpen: p.intakeOpen,
+      sprintDays: p.sprintDays,
+      dailyTime: p.dailyTime,
+      wipLimits: p.wipLimits,
       perms: this.projectPerms(p, actor, role),
       counts: { total: Number(c?.total ?? 0), done: Number(c?.done ?? 0), overdue: Number(c?.overdue ?? 0), triage: Number(c?.triage ?? 0) },
     };
@@ -148,7 +151,19 @@ export class TasksService {
   async updateProject(
     actor: Actor,
     id: string,
-    input: { name?: string; color?: string; description?: string | null; statuses?: TaskStatus[]; archived?: boolean; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean },
+    input: {
+      name?: string;
+      color?: string;
+      description?: string | null;
+      statuses?: TaskStatus[];
+      archived?: boolean;
+      methodology?: Methodology;
+      leadId?: string | null;
+      intakeOpen?: boolean;
+      sprintDays?: number;
+      dailyTime?: string;
+      wipLimits?: Record<string, number>;
+    },
   ) {
     const { p } = await this.project(actor, id, 'manage');
     const set: Partial<Proj> = {};
@@ -158,6 +173,9 @@ export class TasksService {
     if (input.archived !== undefined) set.archivedAt = input.archived ? new Date().toISOString() : null;
     if (input.methodology) set.methodology = input.methodology;
     if (input.intakeOpen !== undefined) set.intakeOpen = input.intakeOpen;
+    if (input.sprintDays !== undefined) set.sprintDays = input.sprintDays;
+    if (input.dailyTime !== undefined) set.dailyTime = input.dailyTime;
+    if (input.wipLimits !== undefined) set.wipLimits = Object.fromEntries(Object.entries(input.wipLimits).filter(([k, v]) => (input.statuses ?? p.statuses).some((x) => x.id === k) && v > 0));
     if (input.leadId !== undefined) set.leadId = input.leadId ? await this.checkAssignee(actor, p, input.leadId, this.db) : null;
     await this.db.transaction(async (tx) => {
       if (input.statuses) {
@@ -250,6 +268,8 @@ export class TasksService {
         resolution: t.resolution,
         source: (t.source as TaskView['source']) ?? null,
         blockedBy: Number(blockers.rows.find((x) => x.to_id === t.id)?.n ?? 0),
+        sprintId: t.sprintId,
+        rank: t.rank,
         tags: t.tags,
         startDate: t.startDate,
         dueDate: t.dueDate,
@@ -396,6 +416,8 @@ export class TasksService {
           dueDate: type === 'milestone' ? input.dueDate ?? input.startDate ?? null : input.dueDate ?? null,
           progress: Math.min(100, Math.max(0, input.progress ?? 0)),
           position: await this.positionFor(tx, p?.id ?? null, status, input.before, input.after, actor.id),
+          sprintId: p && input.sprintId && WORK_TYPES.includes(type) ? await this.checkSprint(tx, p.id, input.sprintId) : null,
+          rank: p ? await this.rankFor(tx, p.id, input.rankAfter, input.rankBefore) : 'm',
           completedAt: done ? new Date().toISOString() : null,
           resolution: done ? 'done' : null,
           createdBy: actor.id,
@@ -477,6 +499,15 @@ export class TasksService {
       if (input.storyPoints !== undefined) put('storyPoints', this.estimate(input.storyPoints, 1000, 'Story points') ?? null);
       if (input.estimateMinutes !== undefined) put('estimateMinutes', this.estimate(input.estimateMinutes, 100_000, 'The estimate') ?? null);
       if (input.triage === false && before.triage) put('triage', false);
+      // Planning: into a sprint (or back to the backlog), and the order there.
+      if (input.sprintId !== undefined && before.projectId) {
+        const type = input.type ?? before.type;
+        if (input.sprintId && !WORK_TYPES.includes(type)) throw new BadRequestException('Only stories, tasks and bugs go into sprints');
+        put('sprintId', input.sprintId ? await this.checkSprint(tx, before.projectId, input.sprintId) : null);
+      }
+      if (before.projectId && (input.rankAfter !== undefined || input.rankBefore !== undefined || set.sprintId !== undefined)) {
+        set.rank = await this.rankFor(tx, before.projectId, input.rankAfter, input.rankBefore);
+      }
       // Moving in the hierarchy (into an epic, under another phase…) or changing the type.
       if (input.parentId !== undefined || input.type !== undefined) {
         const parentId = input.parentId !== undefined ? input.parentId : before.parentId;
@@ -519,7 +550,7 @@ export class TasksService {
       if (start && due && due < start) throw new BadRequestException('The due date is before the start');
       const [row] = await tx.update(tasks).set(set).where(eq(tasks.id, id)).returning();
       // Moving a card is not news; other changes go to the activity trail.
-      const logged = Object.fromEntries(Object.entries(changes).filter(([k]) => k !== 'position'));
+      const logged = Object.fromEntries(Object.entries(changes).filter(([k]) => k !== 'position' && k !== 'rank'));
       if (before.triage && row.triage === false) logged.accepted = [true, true];
       if (Object.keys(logged).length) await tx.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', data: logged });
       if (row.assigneeId && row.assigneeId !== before.assigneeId) await tx.insert(taskWatchers).values({ taskId: id, userId: row.assigneeId }).onConflictDoNothing();
@@ -532,6 +563,43 @@ export class TasksService {
         .catch(() => undefined);
     await this.changed(next.projectId, next);
     return (await this.views(actor, [next]))[0];
+  }
+
+  /** A sprint of this project that is not closed. */
+  private async checkSprint(tx: Tx, projectId: string, sprintId: string) {
+    const [sp] = await tx.select().from(sprints).where(eq(sprints.id, sprintId));
+    if (!sp || sp.projectId !== projectId) throw new BadRequestException('Unknown sprint');
+    if (sp.state === 'closed') throw new BadRequestException('That sprint is closed');
+    return sp.id;
+  }
+
+  /** Backlog / sprint order: between two issues, or after the last one. */
+  private async rankFor(tx: Tx, projectId: string, after?: string | null, before?: string | null) {
+    if (after || before) {
+      const ids = [after, before].filter((x): x is string => !!x);
+      const rows = await tx.select({ id: tasks.id, rank: tasks.rank }).from(tasks).where(inArray(tasks.id, ids));
+      const r = (id?: string | null) => (id ? rows.find((x) => x.id === id)?.rank ?? null : null);
+      const a = r(after);
+      const b = r(before);
+      // Equal neighbours (old data) would leave no room: fall back to just after the upper one.
+      return a !== null && b !== null && a >= b ? between(a, null) : between(a, b);
+    }
+    const [last] = await tx.select({ rank: tasks.rank }).from(tasks).where(eq(tasks.projectId, projectId)).orderBy(desc(tasks.rank)).limit(1);
+    return between(last?.rank ?? null, null);
+  }
+
+  // ── For the sprint service ────────────────────────────────────────────────
+
+  projectAccess(actor: Actor, id: string, need: 'read' | 'comment' | 'write' | 'manage' = 'read') {
+    return this.project(actor, id, need);
+  }
+
+  viewsOf(actor: Actor, rows: Task[]) {
+    return this.views(actor, rows);
+  }
+
+  notifyProject(projectId: string) {
+    return this.changed(projectId);
   }
 
   /** Breaks an issue down: one child per line (epic → stories, story / task / bug → subtasks, phase → tasks). */

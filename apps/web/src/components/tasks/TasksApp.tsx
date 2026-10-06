@@ -6,14 +6,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
 import { useSpaces, useUsers } from '@/lib/queries';
-import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useTaskActions, useTasks } from '@/lib/tasks';
+import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, useTaskActions, useTasks } from '@/lib/tasks';
 import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
+import { BacklogView } from './BacklogView';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
+import { SprintsView } from './SprintsView';
 import { TaskDashboard } from './TaskDashboard';
 import { TaskDrawer } from './TaskDrawer';
 
-type View = 'board' | 'list' | 'gantt' | 'calendar' | 'dashboard' | 'intake';
+type View = 'backlog' | 'board' | 'list' | 'sprints' | 'gantt' | 'calendar' | 'dashboard' | 'intake';
 const PERSONAL: TaskStatus[] = [
   { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo' },
   { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing' },
@@ -57,7 +59,13 @@ export function TasksApp() {
     return (tasks ?? []).filter((t) => (!needle || t.title.toLowerCase().includes(needle) || t.ref?.toLowerCase().includes(needle) || t.tags.some((x) => x.toLowerCase().includes(needle))) && (!who || t.assignee?.id === who));
   }, [tasks, q, who]);
   const triage = (tasks ?? []).filter((t) => t.triage);
-  const views: View[] = project ? ['board', 'list', 'gantt', 'calendar', 'dashboard', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])] : ['board', 'list', 'calendar'];
+  // Scrum and Hybrid plan in sprints: Backlog and Sprints tabs, and the board shows the active sprint.
+  const agile = project?.methodology === 'scrum' || project?.methodology === 'hybrid';
+  const { data: sprints } = useSprints(agile ? project?.id : null);
+  const activeSprint = agile ? sprints?.find((x) => x.state === 'active') ?? null : null;
+  const views: View[] = project
+    ? [...(agile ? (['backlog'] as View[]) : []), 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
+    : ['board', 'list', 'calendar'];
 
   if (!mounted) return <div className="h-full bg-canvas" />;
   return (
@@ -65,7 +73,7 @@ export function TasksApp() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5">
         <SquareCheckBig size={20} className="text-brand-600" />
         <h1 className="text-[17px] font-semibold text-ink">Tasks</h1>
-        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? view : view === 'gantt' || view === 'dashboard' || view === 'intake' ? 'board' : view })} onNew={() => setNewProject(true)} />
+        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (['backlog', 'sprints'].includes(view) ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' ? 'board' : view })} onNew={() => setNewProject(true)} />
         {project && (
           <span className="rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
             {METHODOLOGY[project.methodology].label}
@@ -108,6 +116,10 @@ export function TasksApp() {
             <Skeleton className="m-6 h-80" />
           ) : view === 'dashboard' && project ? (
             <TaskDashboard projectId={project.id} />
+          ) : view === 'backlog' && project && agile ? (
+            <BacklogView project={project} tasks={shown} open={(id) => go({ task: id })} />
+          ) : view === 'sprints' && project && agile ? (
+            <SprintsView project={project} open={(id) => go({ task: id })} />
           ) : view === 'intake' && project ? (
             <IntakeView tasks={triage} canEdit={canEdit} open={(id) => go({ task: id })} />
           ) : view === 'list' ? (
@@ -117,12 +129,33 @@ export function TasksApp() {
           ) : view === 'calendar' ? (
             <DueCalendar tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} />
           ) : (
-            <BoardView tasks={shown} all={tasks ?? []} statuses={statuses} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+            <div className="flex h-full flex-col">
+              {agile && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-line bg-surface px-5 py-2 text-[12.5px]" data-testid="sprint-bar">
+                  {activeSprint ? (
+                    <>
+                      <b className="text-ink">{activeSprint.name}</b>
+                      <span className="text-muted">{shortDate(activeSprint.startDate)} – {shortDate(activeSprint.endDate)} · {Math.max(0, Math.round((Date.parse(activeSprint.endDate) - Date.parse(todayStr())) / 86_400_000))} days left · {activeSprint.counts.donePoints}/{activeSprint.counts.points} pts</span>
+                      {activeSprint.goal && <span className="truncate italic text-ink-2">“{activeSprint.goal}”</span>}
+                      <button onClick={() => go({ view: 'sprints' })} className="ml-auto text-brand-700 hover:underline">Sprint report</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted">No active sprint — showing every issue.</span>
+                      <button onClick={() => go({ view: 'backlog' })} className="text-brand-700 hover:underline">Plan a sprint in the Backlog</button>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <BoardView tasks={activeSprint ? shown.filter((t) => t.sprintId === activeSprint.id) : shown} all={tasks ?? []} statuses={statuses} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+              </div>
+            </div>
           )}
         </main>
         {taskId && <TaskDrawer key={taskId} id={taskId} onClose={() => go({ task: null })} onOpen={(id) => go({ task: id })} />}
       </div>
-      <NewTaskDialog open={!!creating} onClose={() => setCreating(null)} project={project} tasks={tasks ?? []} status={creating?.status} onCreated={(id) => go({ task: id })} />
+      <NewTaskDialog open={!!creating} onClose={() => setCreating(null)} project={project} tasks={tasks ?? []} status={creating?.status} sprintId={view === 'board' ? activeSprint?.id ?? null : null} onCreated={(id) => go({ task: id })} />
       {project && <RequestDialog open={requesting} onClose={() => setRequesting(false)} project={project} />}
       {project && <ProjectSettingsDialog key={project.id + String(settings)} open={settings} onClose={() => setSettings(false)} project={project} />}
       <NewProjectDialog open={newProject} onClose={() => setNewProject(false)} onCreated={(id) => go({ project: id, view: 'board', task: null })} />
@@ -223,7 +256,7 @@ function epicOf(t: TaskView, all: TaskView[]) {
 
 // ── Board ───────────────────────────────────────────────────────────────────
 
-function BoardView({ tasks, all, statuses, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
+function BoardView({ tasks, all, statuses, wip, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
   const { update } = useTaskActions();
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ status: string; index: number } | null>(null);
@@ -265,7 +298,13 @@ function BoardView({ tasks, all, statuses, canEdit, projectId, open, onAdd }: { 
             <div className="flex items-center gap-2 px-1.5 pb-2 pt-1">
               <span className="size-2.5 rounded-full" style={{ background: s.color }} />
               <span className="text-[13px] font-semibold text-ink">{s.name}</span>
-              <span className="text-[12px] text-muted">{list.length}</span>
+              {wip[s.id] ? (
+                <span className={cn('rounded px-1 text-[12px]', list.length > wip[s.id] ? 'bg-red-100 font-semibold text-red-700' : 'text-muted')} title={`Work-in-progress limit ${wip[s.id]}`} data-testid="wip" data-over={list.length > wip[s.id] ? '1' : undefined}>
+                  {list.length}/{wip[s.id]}
+                </span>
+              ) : (
+                <span className="text-[12px] text-muted">{list.length}</span>
+              )}
               {points > 0 && <span className="ml-auto text-[11px] text-muted" title="Story points">{points} pts</span>}
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
@@ -694,7 +733,7 @@ function DueCalendar({ tasks, statuses, open }: { tasks: TaskView[]; statuses: T
 
 const CREATE_TYPES: IssueType[] = ['story', 'task', 'bug', 'epic', 'phase', 'milestone'];
 
-function NewTaskDialog({ open, onClose, project, tasks, status, onCreated }: { open: boolean; onClose: () => void; project: Project | null; tasks: TaskView[]; status?: string; onCreated: (id: string) => void }) {
+function NewTaskDialog({ open, onClose, project, tasks, status, sprintId, onCreated }: { open: boolean; onClose: () => void; project: Project | null; tasks: TaskView[]; status?: string; sprintId?: string | null; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState('');
   const [due, setDue] = useState('');
@@ -715,7 +754,7 @@ function NewTaskDialog({ open, onClose, project, tasks, status, onCreated }: { o
       assigneeId: assignee || null,
       dueDate: due || null,
       priority: priority as never,
-      ...(project ? { type, parentId: parent || null, storyPoints: points ? Number(points) : null } : {}),
+      ...(project ? { type, parentId: parent || null, storyPoints: points ? Number(points) : null, sprintId: WORK_TYPES.includes(type) ? sprintId ?? null : null } : {}),
     });
     close();
     onCreated(t.id);
@@ -819,6 +858,9 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
   const [methodology, setMethodology] = useState<Methodology>(project.methodology);
   const [lead, setLead] = useState(project.lead?.id ?? '');
   const [intake, setIntake] = useState(project.intakeOpen);
+  const [sprintDays, setSprintDays] = useState(project.sprintDays);
+  const [dailyTime, setDailyTime] = useState(project.dailyTime);
+  const [wip, setWip] = useState<Record<string, number>>(project.wipLimits);
   return (
     <Dialog
       open={open}
@@ -826,7 +868,7 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
       title={`${project.name} settings`}
       width={520}
       footer={
-        <Button variant="primary" loading={updateProject.isPending} onClick={() => updateProject.mutate({ id: project.id, methodology, leadId: lead || null, intakeOpen: intake }, { onSuccess: onClose })} data-testid="settings-save">
+        <Button variant="primary" loading={updateProject.isPending} onClick={() => updateProject.mutate({ id: project.id, methodology, leadId: lead || null, intakeOpen: intake, sprintDays, dailyTime, wipLimits: wip }, { onSuccess: onClose })} data-testid="settings-save">
           Save
         </Button>
       }
@@ -858,6 +900,35 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
           <input type="checkbox" checked={intake} onChange={(e) => setIntake(e.target.checked)} className="accent-brand-600" data-testid="intake-open" />
           People who can see the project may file requests
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label>
+            <span className="mb-1.5 block font-medium text-ink-2">Sprint length</span>
+            <select value={sprintDays} onChange={(e) => setSprintDays(Number(e.target.value))} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Sprint length">
+              {[7, 14, 21, 28].map((d) => (
+                <option key={d} value={d}>
+                  {d / 7} week{d === 7 ? '' : 's'}
+                </option>
+              ))}
+              {![7, 14, 21, 28].includes(sprintDays) && <option value={sprintDays}>{sprintDays} days</option>}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1.5 block font-medium text-ink-2">Daily Scrum at</span>
+            <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Daily Scrum time" />
+          </label>
+        </div>
+        <div>
+          <p className="mb-1.5 font-medium text-ink-2">Work-in-progress limits (empty = none)</p>
+          <div className="grid grid-cols-2 gap-2">
+            {project.statuses.map((st) => (
+              <label key={st.id} className="flex items-center gap-2">
+                <span className="size-2.5 rounded-full" style={{ background: st.color }} />
+                <span className="flex-1">{st.name}</span>
+                <input type="number" min={0} value={wip[st.id] ?? ''} onChange={(e) => setWip((w) => ({ ...w, [st.id]: Number(e.target.value) || 0 }))} className="h-8 w-20 rounded-lg border border-line-strong px-2" aria-label={`WIP limit ${st.name}`} />
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
     </Dialog>
   );

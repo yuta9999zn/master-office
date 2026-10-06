@@ -723,6 +723,11 @@ export interface Project {
   methodology: Methodology;
   lead: UserSummary | null;
   intakeOpen: boolean;
+  /** Default sprint length (days) and the daily standup time (HH:MM). */
+  sprintDays: number;
+  dailyTime: string;
+  /** Status id → most cards allowed in that column. */
+  wipLimits: Record<string, number>;
   /** read = see; write = create / change tasks; comment = discuss; manage = statuses, settings. */
   perms: { read: boolean; comment: boolean; write: boolean; manage: boolean };
   /** Work items (stories, tasks, bugs) — not containers, subtasks or requests in triage. */
@@ -750,6 +755,9 @@ export interface TaskView {
   source: { kind: 'chat'; conversationId: string; messageId: string } | null;
   /** Unfinished issues that block this one. */
   blockedBy: number;
+  sprintId: string | null;
+  /** Order in the backlog / inside a sprint. */
+  rank: string;
   tags: string[];
   startDate: string | null;
   dueDate: string | null;
@@ -784,6 +792,11 @@ export interface TaskInput {
   triage?: boolean;
   /** Made from a chat message. */
   source?: { kind: 'chat'; conversationId: string; messageId: string } | null;
+  /** Plan into a sprint (null = backlog). */
+  sprintId?: string | null;
+  /** Backlog / sprint order: drop between these two issues. */
+  rankAfter?: string | null;
+  rankBefore?: string | null;
   title: string;
   description?: string | null;
   status?: string;
@@ -796,6 +809,65 @@ export interface TaskInput {
   /** Place the card between these two neighbours of its column (board drag and drop). */
   before?: string | null;
   after?: string | null;
+}
+
+export type SprintState = 'planned' | 'active' | 'closed';
+export type CeremonyKind = 'planning' | 'daily' | 'review' | 'retro';
+
+export interface SprintView {
+  id: string;
+  projectId: string;
+  name: string;
+  goal: string | null;
+  startDate: string;
+  endDate: string;
+  state: SprintState;
+  /** Ceremony → calendar event id. */
+  ceremonies: Partial<Record<CeremonyKind, string>>;
+  /** Issues in the sprint now. */
+  counts: { total: number; done: number; points: number; donePoints: number };
+  committedPoints: number | null;
+  completedPoints: number | null;
+  committedCount: number | null;
+  completedCount: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface SprintReport {
+  sprint: SprintView;
+  /** Story points when issues have them, else issue counts. */
+  unit: 'points' | 'issues';
+  burndown: { day: string; remaining: number | null; ideal: number }[];
+  done: TaskView[];
+  notDone: TaskView[];
+}
+
+export interface VelocityRow {
+  sprintId: string;
+  name: string;
+  committed: number;
+  completed: number;
+}
+
+export interface RetroItemView {
+  id: string;
+  kind: 'good' | 'improve' | 'action';
+  body: string;
+  author: UserSummary | null;
+  votes: number;
+  voted: boolean;
+  task: { id: string; ref: string | null; done: boolean } | null;
+  createdAt: string;
+}
+
+/** Ceremony invitations when a sprint starts (times are local to the calendar's zone). */
+export interface CeremonyPlan {
+  schedule: boolean;
+  /** HH:MM of the daily standup (15 minutes, Monday–Friday). */
+  dailyTime?: string;
+  /** People invited besides the organizer (default: the lead and everyone with an issue in the sprint). */
+  guests?: string[];
 }
 
 export interface TaskLinkView {
