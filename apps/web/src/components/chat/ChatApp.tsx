@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useConversation, useConversations } from '@/lib/chat';
 import { useSpaces } from '@/lib/queries';
+import { useMounted } from '@/lib/use-mounted';
 import { Button, EmptyState } from '../ui/primitives';
 import { ChatSidebar, type NewKind, type Place, SpaceRail } from './ConversationList';
 import { ConversationView } from './ConversationView';
@@ -33,6 +34,8 @@ export function ChatApp({ id }: { id?: string }) {
     if (first) router.replace(`/chat/${first.id}`);
   }, [id, place, list, router]);
 
+  const mounted = useMounted();
+  if (!mounted) return <div className="h-full bg-canvas" />;
   return (
     <div className="flex h-full">
       <SpaceRail place={place} />

@@ -29,6 +29,7 @@ import { API_ORIGIN } from '@/lib/api';
 import { formatBytes, formatDateTime, formatShort } from '@/lib/format';
 import { addrFull, addrLabel, useMailActions, useMailboxes, useMailThread, useMailThreads } from '@/lib/mail';
 import { useMe, useSpaces, useUsers } from '@/lib/queries';
+import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuTrigger, Skeleton } from '../ui/primitives';
 import { MailCompose, useCompose } from './MailCompose';
 
@@ -61,6 +62,8 @@ export function MailApp() {
     router.push(`/mail?${n.toString()}`);
   };
 
+  const mounted = useMounted();
+  if (!mounted) return <div className="h-full bg-canvas" />;
   return (
     <div className="flex h-full">
       <MailNav boxes={boxes} boxId={boxId} folder={folder} go={go} />
