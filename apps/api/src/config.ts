@@ -23,6 +23,12 @@ export const config = {
     inboundPort: Number(process.env.MAIL_INBOUND_PORT ?? 2525),
     inboundSecret: process.env.MAIL_INBOUND_SECRET ?? (process.env.NODE_ENV === 'production' ? null : 'dev-inbound-secret-change-me'),
   },
+  // Video meetings (§73): STUN / TURN servers handed to browsers, as JSON, e.g.
+  // [{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:turn.example.com:3478","username":"u","credential":"p"}].
+  // Empty = direct connections only (same machine / LAN); calls across the internet need a TURN server.
+  meetings: {
+    iceServers: JSON.parse(process.env.MEETING_ICE_SERVERS || '[]') as { urls: string | string[]; username?: string; credential?: string }[],
+  },
   maxUploadBytes: 200 * 1024 * 1024,
   collab: {
     port: Number(process.env.COLLAB_PORT ?? 4001),

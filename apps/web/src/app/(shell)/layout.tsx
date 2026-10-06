@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { CommandPalette } from '@/components/shell/CommandPalette';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
+import { IncomingCall } from '@/components/meetings/IncomingCall';
 import { RealtimeBridge } from '@/lib/realtime';
 
 /** Rendered once — the sidebar and top bar persist while switching apps (docs/ARCHITECTURE.md §3.1). */
@@ -15,6 +16,7 @@ export default function ShellLayout({ children }: { children: ReactNode }) {
       </div>
       <CommandPalette />
       <RealtimeBridge />
+      <IncomingCall />
     </div>
   );
 }

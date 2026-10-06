@@ -1,5 +1,7 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { CalendarController } from './calendar/calendar.controller';
+import { MeetingsController } from './meetings/meetings.controller';
+import { MeetingsService } from './meetings/meetings.service';
 import { TasksController } from './tasks/tasks.controller';
 import { TasksService } from './tasks/tasks.service';
 import { CalendarService } from './calendar/calendar.service';
@@ -47,7 +49,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, MeetingsController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -70,6 +72,7 @@ import { WorkspaceController } from './users/workspace.controller';
     InboundMailService,
     CalendarService,
     TasksService,
+    MeetingsService,
     DocsService,
     CommentsService,
     ResourcesService,

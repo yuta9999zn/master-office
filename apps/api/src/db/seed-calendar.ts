@@ -1,4 +1,5 @@
-import { zonedParts, zonedToUtc } from '@workos/shared';
+import { randomBytes } from 'node:crypto';
+import { meetingCode, zonedParts, zonedToUtc } from '@workos/shared';
 import type { Db } from './client';
 import * as s from './schema';
 
@@ -50,7 +51,7 @@ export async function seedCalendar(db: Db, workspaceId: string, u: Record<string
     allDay?: boolean;
     files?: string[];
   }) {
-    const code = Math.random().toString(36).slice(2, 12).replace(/(.{3})(.{4})(.{3})/, '$1-$2-$3');
+    const code = meetingCode(randomBytes(10));
     const [ev] = await db
       .insert(s.calendarEvents)
       .values({

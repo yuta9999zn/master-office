@@ -868,3 +868,89 @@ export const taskEvents = pgTable(
   },
   (t) => [index('task_events_task_idx').on(t.taskId, t.createdAt)],
 );
+
+// ── Meetings (Phase 7, §73) ────────────────────────────────────────────────
+
+/**
+ * A video room (WebRTC mesh). Opened on its own (instant / for later), from a conversation (call button) or from a
+ * calendar event's Kaori Meet link. Who is in the room right now lives in memory (MeetingsService); this row keeps
+ * the room's settings and history.
+ */
+export const meetings = pgTable(
+  'meetings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** abc-defg-hij — the part after /meetings?room= */
+    code: text('code').notNull().unique(),
+    title: text('title').notNull(),
+    hostId: uuid('host_id').references(() => users.id, { onDelete: 'set null' }),
+    conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
+    eventId: uuid('event_id').references(() => calendarEvents.id, { onDelete: 'set null' }),
+    /** 'open': anyone in the workspace joins directly; 'trusted': invited people join, others ask to join. */
+    access: text('access').$type<'open' | 'trusted'>().notNull().default('open'),
+    notesId: uuid('notes_id').references(() => resources.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    /** The current (or last) session: first join → last leave. */
+    startedAt: ts('started_at'),
+    endedAt: ts('ended_at'),
+  },
+  (t) => [index('meetings_ws_idx').on(t.workspaceId, t.createdAt), index('meetings_conversation_idx').on(t.conversationId)],
+);
+
+/** Everyone who took part (or was let in / removed): history, the "admitted" list and who gets recordings. */
+export const meetingParticipants = pgTable(
+  'meeting_participants',
+  {
+    meetingId: uuid('meeting_id')
+      .notNull()
+      .references(() => meetings.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'host' | 'cohost' | 'guest'>().notNull().default('guest'),
+    /** admitted: let in from the lobby (joins directly from now on); removed: must ask again. */
+    status: text('status').$type<'joined' | 'admitted' | 'removed'>().notNull().default('joined'),
+    firstJoinedAt: ts('first_joined_at'),
+    lastJoinedAt: ts('last_joined_at'),
+    lastLeftAt: ts('last_left_at'),
+    /** Seconds spent in the room over all visits. */
+    seconds: integer('seconds').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.userId] }), index('meeting_participants_user_idx').on(t.userId)],
+);
+
+/** In-call chat. */
+export const meetingMessages = pgTable(
+  'meeting_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    meetingId: uuid('meeting_id')
+      .notNull()
+      .references(() => meetings.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('meeting_messages_meeting_idx').on(t.meetingId, t.createdAt)],
+);
+
+/** Recordings are ordinary Drive videos; this links them to the meeting. */
+export const meetingRecordings = pgTable(
+  'meeting_recordings',
+  {
+    meetingId: uuid('meeting_id')
+      .notNull()
+      .references(() => meetings.id, { onDelete: 'cascade' }),
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    durationMs: integer('duration_ms').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.resourceId] })],
+);

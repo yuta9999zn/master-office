@@ -125,6 +125,14 @@ export class ChatService implements OnModuleInit {
     return a;
   }
 
+  /** For Meetings (§73): what a conversation is to this person, or null when they cannot read it. */
+  async peek(actor: Actor, id: string): Promise<{ kind: ConversationKind; title: string; canPost: boolean; memberIds: string[] } | null> {
+    const a = await this.access(actor, id).catch(() => null);
+    if (!a) return null;
+    const title = a.conv.kind === 'channel' ? `#${a.conv.name}` : (await this.summaries(actor, id))[0]?.title ?? 'Conversation';
+    return { kind: a.conv.kind, title, canPost: a.perms.post, memberIds: await this.memberIds(id) };
+  }
+
   private async workspaceUsers(actor: Actor, ids: string[], tx: Tx = this.db) {
     const uniq = [...new Set(ids)];
     if (!uniq.length) return [];

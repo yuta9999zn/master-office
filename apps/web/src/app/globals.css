@@ -75,6 +75,34 @@ body {
   animation: pop-in 120ms ease-out;
 }
 
+/* Meeting reactions drift up and fade (§73). */
+@keyframes float {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  10%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-140px);
+  }
+}
+/* Incoming call: the avatar's ring pulses. */
+@keyframes ring-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(37 99 235 / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgb(37 99 235 / 0);
+  }
+}
+.animate-ring {
+  animation: ring-pulse 1.4s ease-out infinite;
+}
+
 /* ── Document editor (Phase 2) ─────────────────────────────────────────────── */
 .mo-editor {
   counter-reset: mo-fn;

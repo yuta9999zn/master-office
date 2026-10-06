@@ -9,6 +9,8 @@ import { ActivityList } from '@/components/drive/DetailsPanel';
 import { AppIcon, Button, CardHeader, cn, EmptyState, FileIcon, LogoMark, Skeleton } from '@/components/ui/primitives';
 import { useEvents } from '@/lib/calendar';
 import { useMounted } from '@/lib/use-mounted';
+import { meetingPath } from '@/lib/meetings';
+import { meetingCodeFromUrl } from '@workos/shared';
 import { APPS } from '@/lib/apps';
 import { lastMessageText, useConversations } from '@/lib/chat';
 import { firstName, formatBytes, formatShort } from '@/lib/format';
@@ -227,12 +229,14 @@ function Upcoming() {
     return [new Date(d.getFullYear(), d.getMonth(), d.getDate()), new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)] as const;
   });
   const { data, isLoading } = useEvents(range[0], range[1]);
+  // The date follows the browser's time zone, which the server does not know: shown once mounted.
+  const mounted = useMounted();
   const now = Date.now();
   const list = (data ?? []).filter((e) => !e.allDay && new Date(e.end).getTime() > now && e.myResponse !== 'declined' && !e.busyOnly).slice(0, 4);
   const t = (iso: string) => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
   return (
     <section className="card" data-testid="upcoming">
-      <CardHeader title="Upcoming" action={<span className="text-[12px] text-muted">{new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())}</span>} />
+      <CardHeader title="Upcoming" action={<span className="text-[12px] text-muted">{mounted ? new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date()) : ''}</span>} />
       {isLoading ? (
         <div className="space-y-2 px-4 pb-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : !list.length ? (
@@ -255,7 +259,11 @@ function Upcoming() {
                     {t(e.start)} – {t(e.end)}
                   </span>
                 </Link>
-                {e.meetingUrl && (
+                {e.meetingUrl && e.meetingProvider === 'kaori' && meetingCodeFromUrl(e.meetingUrl) ? (
+                  <Link href={meetingPath(meetingCodeFromUrl(e.meetingUrl)!)} className={cn('rounded-lg px-3 py-1 text-[12.5px] font-medium', live ? 'bg-brand-600 text-white' : 'text-brand-600 ring-1 ring-brand-200')}>
+                    Join
+                  </Link>
+                ) : e.meetingUrl && (
                   <a href={e.meetingUrl} target="_blank" rel="noreferrer" className={cn('rounded-lg px-3 py-1 text-[12.5px] font-medium', live ? 'bg-brand-600 text-white' : 'text-brand-600 ring-1 ring-brand-200')}>
                     Join
                   </a>

@@ -1,7 +1,8 @@
 'use client';
 
 import type { ChatMessage, ConversationDetail, UserSummary } from '@workos/shared';
-import { ArrowDown, Bell, BellOff, FileText, Info, Loader2, LogOut, Pin, PinOff, Search } from 'lucide-react';
+import { ArrowDown, Bell, BellOff, FileText, Info, Loader2, LogOut, Pin, PinOff, Search, Video } from 'lucide-react';
+import { useStartMeeting } from '@/lib/meetings';
 import { useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useChatActions, useChatFiles, useChatPins, useConversation, useConversations, useMessages } from '@/lib/chat';
@@ -95,6 +96,7 @@ export function ConversationView({ id }: { id: string }) {
 
 function Header({ conv, panel, setPanel }: { conv: ConversationDetail; panel: Panel; setPanel: (p: Panel) => void }) {
   const { prefs, removeMember } = useChatActions();
+  const startMeeting = useStartMeeting();
   const { data: me } = useMe();
   const online = useIsOnline(conv.peer?.id);
   const { data: spaces } = useSpaces();
@@ -130,6 +132,11 @@ function Header({ conv, panel, setPanel }: { conv: ConversationDetail; panel: Pa
         <button onClick={() => toggle('details')} className="rounded-lg p-1 hover:bg-hover" aria-label="Members">
           <AvatarStack users={others.length ? others : conv.members} max={4} size={28} total={others.length || conv.members.length} />
         </button>
+      )}
+      {conv.perms.post && (
+        <IconButton label={conv.kind === 'channel' ? 'Start a meeting' : 'Video call'} disabled={startMeeting.isPending} onClick={() => startMeeting.mutate({ conversationId: conv.id })} data-testid="start-call">
+          <Video size={18} />
+        </IconButton>
       )}
       <IconButton label="Search in conversation" active={panel?.kind === 'search'} onClick={() => toggle('search')}>
         <Search size={18} />

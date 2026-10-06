@@ -8,6 +8,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useChatActions } from '@/lib/chat';
 import { useContacts, useProfile, useUpdateProfile } from '@/lib/contacts';
+import { useCallPerson } from '@/lib/meetings';
 import { formatDate, timeAgo } from '@/lib/format';
 import { useMe, useUsers } from '@/lib/queries';
 import { useIsOnline } from '@/lib/realtime';
@@ -169,6 +170,7 @@ function ProfileView({ id }: { id: string }) {
   const { data: p, error } = useProfile(id);
   const online = useIsOnline(id);
   const startChat = useStartChat();
+  const callPerson = useCallPerson();
   const [tab, setTab] = useState<ProfileTab>('overview');
   const [editing, setEditing] = useState(false);
 
@@ -198,13 +200,9 @@ function ProfileView({ id }: { id: string }) {
                 </Button>
               )}
               {!p.isMe && (
-                <Tip label="Video meetings arrive with Meetings (Phase 7)">
-                  <span>
-                    <Button icon={<Video size={16} />} disabled>
-                      Video call
-                    </Button>
-                  </span>
-                </Tip>
+                <Button icon={<Video size={16} />} loading={callPerson.isPending} onClick={() => callPerson.mutate(p.id)} data-testid="profile-call">
+                  Video call
+                </Button>
               )}
               <a href={`mailto:${p.email}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3.5 text-[13px] font-medium text-ink-2 hover:bg-hover">
                 <Mail size={16} /> E-mail

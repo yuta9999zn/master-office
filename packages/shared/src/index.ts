@@ -425,11 +425,12 @@ export type RealtimeEvent =
   | { type: 'mail.changed'; mailboxId: string }
   | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string }
   | { type: 'calendar.changed' }
-  | { type: 'tasks.changed'; projectId: string | null };
+  | { type: 'tasks.changed'; projectId: string | null }
+  | MeetingEvent;
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'meeting.call';
 
 export interface AppNotification {
   id: string;
@@ -792,3 +793,116 @@ export function between(a: string | null, b: string | null): string {
   }
   return out + 'V';
 }
+
+// ── Meetings (§73) ──────────────────────────────────────────────────────────
+
+export const MEETING_CODE = /^[a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}$/;
+/** At most this many people in one room: every browser sends its video to every other (mesh). */
+export const MEETING_MAX_PEERS = 8;
+export const MEETING_REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'] as const;
+
+/** abc-defg-hij from 10 random bytes (letters only, like Google Meet). */
+export function meetingCode(bytes: ArrayLike<number>): string {
+  const a = 'abcdefghijkmnopqrstuvwxyz';
+  const c = Array.from({ length: 10 }, (_, i) => a[(bytes[i] ?? 0) % a.length]).join('');
+  return `${c.slice(0, 3)}-${c.slice(3, 7)}-${c.slice(7)}`;
+}
+
+/** The room code in a Kaori Meet link (…/meetings?room=abc-defg-hij), or null. */
+export function meetingCodeFromUrl(url: string | null | undefined): string | null {
+  const m = url?.match(/\/meetings\?(?:[^#\s]*&)?room=([a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3})\b/);
+  return m ? m[1] : null;
+}
+
+export type MeetingRole = 'host' | 'cohost' | 'guest';
+
+/** One browser tab in a room. A person joining from two tabs is two peers. */
+export interface MeetingPeer {
+  peerId: string;
+  user: UserSummary;
+  role: MeetingRole;
+  mic: boolean;
+  cam: boolean;
+  /** Id of the MediaStream carrying the shared screen, or null. */
+  screen: string | null;
+  hand: boolean;
+  joinedAt: string;
+}
+
+export interface MeetingRecordingInfo {
+  by: UserSummary;
+  since: string;
+}
+
+export interface MeetingSummary {
+  id: string;
+  code: string;
+  title: string;
+  host: UserSummary | null;
+  conversationId: string | null;
+  eventId: string | null;
+  access: 'open' | 'trusted';
+  /** Someone is in the room now. */
+  live: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt: string;
+  /** People in the room now (one entry per person). */
+  inRoom: UserSummary[];
+  /** Everyone who has joined at some point. */
+  participants: UserSummary[];
+  recordings: { id: string; name: string; durationMs: number }[];
+  notesId: string | null;
+}
+
+export interface MeetingDetail extends MeetingSummary {
+  me: {
+    role: MeetingRole;
+    /** 'join': straight in; 'knock': must be let in from the lobby. */
+    entry: 'join' | 'knock';
+    /** Host or co-host: admit, mute, remove, settings, record, end for everyone. */
+    manage: boolean;
+  };
+  peers: MeetingPeer[];
+  /** People waiting to be let in (only shown to those who may admit). */
+  lobby: UserSummary[];
+  recording: MeetingRecordingInfo | null;
+  event: { id: string; title: string; startAt: string; endAt: string } | null;
+  conversationTitle: string | null;
+}
+
+export interface MeetingMessage {
+  id: string;
+  user: UserSummary | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface IceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+export type MeetingJoinResult = { state: 'joined'; peers: MeetingPeer[]; iceServers: IceServer[]; recording: MeetingRecordingInfo | null } | { state: 'waiting' };
+
+export type MeetingEvent =
+  | { type: 'meeting.peer.joined'; meetingId: string; peer: MeetingPeer }
+  | { type: 'meeting.peer.updated'; meetingId: string; peer: MeetingPeer }
+  | { type: 'meeting.peer.left'; meetingId: string; peerId: string }
+  /** WebRTC offer / answer / ICE candidate from one peer to another. */
+  | { type: 'meeting.signal'; meetingId: string; from: string; to: string; data: unknown }
+  | { type: 'meeting.lobby'; meetingId: string; lobby: UserSummary[] }
+  | { type: 'meeting.admitted'; meetingId: string }
+  | { type: 'meeting.denied'; meetingId: string }
+  | { type: 'meeting.removed'; meetingId: string }
+  | { type: 'meeting.mute'; meetingId: string; peerId: string; by: string }
+  | { type: 'meeting.ended'; meetingId: string }
+  | { type: 'meeting.message'; meetingId: string; message: MeetingMessage }
+  | { type: 'meeting.reaction'; meetingId: string; peerId: string; emoji: string }
+  | { type: 'meeting.recording'; meetingId: string; recording: MeetingRecordingInfo | null }
+  /** Incoming call (a call started in a DM or group you are in). */
+  | { type: 'meeting.ring'; meetingId: string; code: string; title: string; from: UserSummary; conversationId: string | null }
+  | { type: 'meeting.ring.stop'; meetingId: string }
+  /** Settings, start / end or who is in the room changed — refetch cards and lists. */
+  | { type: 'meeting.changed'; meetingId: string; code: string };

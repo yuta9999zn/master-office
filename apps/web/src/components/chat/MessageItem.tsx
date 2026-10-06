@@ -1,12 +1,13 @@
 'use client';
 
-import type { ChatMessage, UserSummary } from '@workos/shared';
+import { meetingCodeFromUrl, type ChatMessage, type UserSummary } from '@workos/shared';
 import { Copy, Ellipsis, MessageSquareText, Pencil, Pin, PinOff, SmilePlus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useChatActions } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
 import { Avatar, AvatarStack, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Tip } from '../ui/primitives';
+import { MeetingCard } from '../meetings/MeetingCard';
 import { FileCard } from './attachments';
 import { Composer } from './Composer';
 import { EmojiPicker, MessageText, QUICK_REACTIONS } from './bits';
@@ -69,7 +70,9 @@ export function MessageItem({
   const deleted = !!m.deletedAt;
   const toggle = (emoji: string) => !pending && canReact && react.mutate({ id: m.id, emoji });
 
-  const textless = !deleted && !m.body && m.attachments.length > 0;
+  // A meeting link becomes a live card; the "Started a video meeting" line is only the card.
+  const meeting = deleted ? null : meetingCodeFromUrl(m.body);
+  const textless = !deleted && ((!m.body && m.attachments.length > 0) || (!!meeting && m.body.startsWith('📹 Started a video meeting')));
   const bubble = textless ? null : (
     <div
       className={cn(
@@ -124,6 +127,7 @@ export function MessageItem({
         ) : (
           bubble
         )}
+        {meeting && !editing && <MeetingCard code={meeting} />}
         {!!m.attachments.length && !deleted && (
           <div className={cn('mt-1 flex flex-col gap-1.5', mine && 'items-end', pending && 'opacity-60')}>
             {m.attachments.map((a) => (

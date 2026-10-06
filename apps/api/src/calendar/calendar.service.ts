@@ -1,5 +1,7 @@
+import { randomBytes } from 'node:crypto';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  meetingCode,
   can,
   type CalendarEventView,
   type CalendarInfo,
@@ -393,7 +395,7 @@ export class CalendarService {
     if (!m) return { meetingUrl: null, meetingProvider: null };
     if (m.provider === 'kaori') {
       // Video rooms open with the Meetings module; the link is stable from now on.
-      const code = `${Math.random().toString(36).slice(2, 5)}-${Math.random().toString(36).slice(2, 6)}-${Math.random().toString(36).slice(2, 5)}`;
+      const code = meetingCode(randomBytes(10));
       return { meetingUrl: `${config.webOrigin}/meetings?room=${code}`, meetingProvider: 'kaori' as const };
     }
     if (!m.url || !/^https?:\/\/\S+$/.test(m.url)) throw new BadRequestException('Give the meeting link');

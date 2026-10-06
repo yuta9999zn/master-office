@@ -1,6 +1,6 @@
 'use client';
 
-import type { CalendarEventView, CalendarInfo, EventResponse } from '@workos/shared';
+import { meetingCodeFromUrl, type CalendarEventView, type CalendarInfo, type EventResponse } from '@workos/shared';
 import { CalendarDays, ChevronLeft, ChevronRight, Copy, Globe, MapPin, Paperclip, Pencil, Plus, Repeat, Search, Trash2, Users, Video, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -13,6 +13,7 @@ import { useIsOnline } from '@/lib/realtime';
 import { hrefFor } from '@/lib/resources';
 import { Avatar, Button, cn, EmptyState, FileIcon, IconButton, Menu, MenuContent, MenuItem, MenuTrigger, Skeleton } from '../ui/primitives';
 import { EventDialog, type EventDraft } from './EventDialog';
+import { meetingPath } from '@/lib/meetings';
 
 type View = 'day' | 'week' | 'month' | 'agenda';
 const HOUR = 56; // px per hour in the time grid
@@ -39,8 +40,15 @@ export function CalendarApp() {
   const [dialog, setDialog] = useState<{ draft?: EventDraft; edit?: CalendarEventView } | null>(null);
   const [selected, setSelected] = useState<{ id: string; occurrence: string } | null>(null);
   const { data: calendars } = useCalendars();
+  // /calendar?create=1 (Meetings → "Schedule in Calendar") opens a new event with a video link.
+  const createParam = params.get('create');
+  useEffect(() => {
+    if (!createParam) return;
+    setDialog({});
+    router.replace('/calendar');
+  }, [createParam, router]);
 
-  const go = (p: { view?: View; date?: Date; event?: string | null }) => {
+  const go =(p: { view?: View; date?: Date; event?: string | null }) => {
     const cur = new URLSearchParams(window.location.search);
     const n = new URLSearchParams();
     n.set('view', p.view ?? (cur.get('view') as View | null) ?? view);
@@ -504,7 +512,7 @@ function EventPanel({ e, cal, onClose, onEdit }: { e: CalendarEventView; cal?: C
         </div>
         {e.meetingUrl && (
           <div className="mt-4">
-            <a href={e.meetingUrl} target="_blank" rel="noreferrer" className="flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-600 text-[14px] font-medium text-white hover:bg-brand-700" data-testid="join-meeting">
+            <a href={e.meetingProvider === 'kaori' && meetingCodeFromUrl(e.meetingUrl) ? meetingPath(meetingCodeFromUrl(e.meetingUrl)!) : e.meetingUrl} {...(e.meetingProvider === 'kaori' ? {} : { target: '_blank', rel: 'noreferrer' })} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-600 text-[14px] font-medium text-white hover:bg-brand-700" data-testid="join-meeting">
               <Video size={17} /> Join meeting
             </a>
             <div className="mt-2 flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[12px] text-ink-2">
