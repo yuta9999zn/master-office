@@ -8,11 +8,11 @@ import { useMe, useUsers } from '@/lib/queries';
 import { Avatar, Button, Chip, cn, Dialog } from '../ui/primitives';
 
 /** Search-and-tick list of workspace people (yourself and `exclude` left out). */
-export function PeoplePicker({ selected, onChange, exclude = [], single, max }: { selected: string[]; onChange: (ids: string[]) => void; exclude?: string[]; single?: boolean; max?: number }) {
+export function PeoplePicker({ selected, onChange, exclude = [], single, max, includeMe }: { selected: string[]; onChange: (ids: string[]) => void; exclude?: string[]; single?: boolean; max?: number; includeMe?: boolean }) {
   const { data: users } = useUsers();
   const { data: me } = useMe();
   const [q, setQ] = useState('');
-  const skip = new Set([...exclude, me?.user.id]);
+  const skip = new Set([...exclude, includeMe ? undefined : me?.user.id]);
   const needle = q.trim().toLowerCase();
   const list = (users ?? []).filter((u) => !skip.has(u.id) && (!needle || u.name.toLowerCase().includes(needle) || u.email.includes(needle) || (u.department ?? '').toLowerCase().includes(needle)));
   const byId = new Map((users ?? []).map((u) => [u.id, u]));

@@ -954,3 +954,109 @@ export const meetingRecordings = pgTable(
   },
   (t) => [primaryKey({ columns: [t.meetingId, t.resourceId] })],
 );
+
+// ── Approvals (Phase 7, §74) ───────────────────────────────────────────────
+
+/** An approval form + process (Leave request, Expense reimbursement…). Fields and steps are JSON (shared types). */
+export const approvalTemplates = pgTable(
+  'approval_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    category: text('category').notNull().default('General'),
+    icon: text('icon').notNull().default('file-check'),
+    color: text('color').notNull().default('#2563eb'),
+    fields: jsonb('fields').$type<unknown[]>().notNull().default([]),
+    steps: jsonb('steps').$type<unknown[]>().notNull().default([]),
+    /** Extra template managers (besides workspace owners / admins): edit it, see all its requests. */
+    admins: uuid('admins').array().notNull().default(sql`'{}'::uuid[]`),
+    /** What happens once approved, e.g. { calendarOoo: { fieldId } } puts the dates in the submitter's calendar. */
+    onApproved: jsonb('on_approved').$type<Record<string, unknown> | null>(),
+    enabled: boolean('enabled').notNull().default(true),
+    position: integer('position').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('approval_templates_ws_idx').on(t.workspaceId)],
+);
+
+/** One submitted request. The template's fields and the resolved route are copied in at submit time. */
+export const approvalRequests = pgTable(
+  'approval_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => approvalTemplates.id, { onDelete: 'cascade' }),
+    /** Number inside the workspace (AP-00012). */
+    serial: integer('serial').notNull(),
+    title: text('title').notNull(),
+    fields: jsonb('fields').$type<unknown[]>().notNull(),
+    values: jsonb('values').$type<Record<string, unknown>>().notNull(),
+    /** Steps as resolved for this request: who, mode, skipped (and why). */
+    route: jsonb('route').$type<unknown[]>().notNull(),
+    status: text('status').$type<'pending' | 'approved' | 'rejected' | 'withdrawn'>().notNull().default('pending'),
+    currentStep: integer('current_step').notNull().default(0),
+    submittedBy: uuid('submitted_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    submittedAt: ts('submitted_at').notNull().default(sql`now()`),
+    finishedAt: ts('finished_at'),
+    remindedAt: ts('reminded_at'),
+  },
+  (t) => [
+    uniqueIndex('approval_requests_serial_idx').on(t.workspaceId, t.serial),
+    index('approval_requests_submitter_idx').on(t.submittedBy, t.submittedAt),
+    index('approval_requests_template_idx').on(t.templateId),
+  ],
+);
+
+/** A person's part in one step: approve (waiting → pending → approved / rejected / transferred / skipped) or CC. */
+export const approvalTasks = pgTable(
+  'approval_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => approvalRequests.id, { onDelete: 'cascade' }),
+    stepIndex: integer('step_index').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'approve' | 'cc'>().notNull(),
+    status: text('status').$type<'waiting' | 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cc'>().notNull().default('waiting'),
+    comment: text('comment'),
+    transferredTo: uuid('transferred_to').references(() => users.id, { onDelete: 'set null' }),
+    /** Approved automatically (the submitter was an approver). */
+    auto: boolean('auto').notNull().default(false),
+    activatedAt: ts('activated_at'),
+    actedAt: ts('acted_at'),
+  },
+  (t) => [index('approval_tasks_request_idx').on(t.requestId, t.stepIndex), index('approval_tasks_user_idx').on(t.userId, t.status)],
+);
+
+/** The timeline of a request: submitted, approved, rejected, transferred, comments, withdrawn, reminders. */
+export const approvalEvents = pgTable(
+  'approval_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => approvalRequests.id, { onDelete: 'cascade' }),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: text('kind').notNull(),
+    stepIndex: integer('step_index'),
+    body: text('body'),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('approval_events_request_idx').on(t.requestId, t.createdAt)],
+);

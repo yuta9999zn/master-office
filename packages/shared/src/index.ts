@@ -426,11 +426,12 @@ export type RealtimeEvent =
   | { type: 'mail.received'; mailboxId: string; threadId: string; subject: string; from: string }
   | { type: 'calendar.changed' }
   | { type: 'tasks.changed'; projectId: string | null }
+  | { type: 'approvals.changed'; requestId: string | null }
   | MeetingEvent;
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'meeting.call';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
 
 export interface AppNotification {
   id: string;
@@ -906,3 +907,201 @@ export type MeetingEvent =
   | { type: 'meeting.ring.stop'; meetingId: string }
   /** Settings, start / end or who is in the room changed — refetch cards and lists. */
   | { type: 'meeting.changed'; meetingId: string; code: string };
+
+// ── Approvals (§74) ─────────────────────────────────────────────────────────
+
+export const APPROVAL_FIELD_TYPES = ['text', 'textarea', 'number', 'money', 'date', 'daterange', 'select', 'multiselect', 'person', 'files'] as const;
+export type ApprovalFieldType = (typeof APPROVAL_FIELD_TYPES)[number];
+
+export interface ApprovalField {
+  id: string;
+  type: ApprovalFieldType;
+  label: string;
+  required: boolean;
+  placeholder?: string | null;
+  /** select / multiselect */
+  options?: string[];
+  /** money: ISO currency (JPY by default) */
+  currency?: string;
+  /** number: unit shown after the value ("days", "pcs") */
+  unit?: string | null;
+}
+
+/** Who approves a step. */
+export type ApproverSource =
+  | { kind: 'users'; userIds: string[] }
+  /** The submitter's manager (level 1) or their manager's manager (level 2), from the reporting line (§67). */
+  | { kind: 'manager'; level: 1 | 2 }
+  /** The submitter chooses when submitting. */
+  | { kind: 'pick' }
+  /** The person in a "person" field of the form. */
+  | { kind: 'field'; fieldId: string };
+
+export type ApprovalConditionOp = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq' | 'in';
+/** A step only applies when this holds. On a date range the value is compared with its number of days. */
+export interface ApprovalCondition {
+  fieldId: string;
+  op: ApprovalConditionOp;
+  value: number | string | string[];
+}
+
+export interface ApprovalStep {
+  id: string;
+  name: string;
+  type: 'approve' | 'cc';
+  approvers: ApproverSource;
+  /** and: everyone approves; or: the first approval is enough. */
+  mode: 'and' | 'or';
+  condition: ApprovalCondition | null;
+}
+
+export interface ApprovalTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  icon: string;
+  color: string;
+  fields: ApprovalField[];
+  steps: ApprovalStep[];
+  admins: UserSummary[];
+  onApproved: { calendarOoo?: { fieldId: string } } | null;
+  enabled: boolean;
+  canManage: boolean;
+  updatedAt: string;
+}
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+export type ApprovalTaskStatus = 'waiting' | 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cc';
+
+/** A step as resolved for one request (also the live preview while filling the form). */
+export interface ApprovalRouteStep {
+  stepId: string;
+  name: string;
+  type: 'approve' | 'cc';
+  mode: 'and' | 'or';
+  userIds: string[];
+  /** Why the step does not apply: condition not met, nobody to ask. */
+  skipped: string | null;
+  /** The submitter must choose the approvers of this step. */
+  needsPick?: boolean;
+}
+
+export interface ApprovalStepView {
+  index: number;
+  name: string;
+  type: 'approve' | 'cc';
+  mode: 'and' | 'or';
+  state: 'done' | 'active' | 'upcoming' | 'skipped' | 'rejected';
+  note: string | null;
+  people: { user: UserSummary; status: ApprovalTaskStatus; comment: string | null; actedAt: string | null; auto: boolean; transferredTo: UserSummary | null }[];
+}
+
+export interface ApprovalEventView {
+  id: string;
+  actor: UserSummary | null;
+  kind: 'submitted' | 'approved' | 'rejected' | 'transferred' | 'comment' | 'withdrawn' | 'cc' | 'reminded' | 'finished';
+  stepIndex: number | null;
+  body: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ApprovalRequestSummary {
+  id: string;
+  serial: string;
+  title: string;
+  template: { id: string; name: string; icon: string; color: string };
+  submitter: UserSummary;
+  status: ApprovalStatus;
+  submittedAt: string;
+  finishedAt: string | null;
+  /** The first few answers, as text. */
+  summary: { label: string; value: string }[];
+  /** Who is being asked now. */
+  waitingOn: UserSummary[];
+  /** The viewer has to act on it. */
+  mine: boolean;
+}
+
+export interface ApprovalRequestDetail extends ApprovalRequestSummary {
+  fields: ApprovalField[];
+  values: Record<string, unknown>;
+  people: UserSummary[];
+  files: { id: string; name: string; type: ResourceType; accessible: boolean }[];
+  steps: ApprovalStepView[];
+  events: ApprovalEventView[];
+  perms: { approve: boolean; withdraw: boolean; remind: boolean; comment: boolean };
+}
+
+export type ApprovalBox = 'pending' | 'processed' | 'submitted' | 'cc' | 'all';
+
+export interface ApprovalCounts {
+  pending: number;
+  cc: number;
+  /** Workspace owner / admin: creates templates, sees every request. */
+  admin: boolean;
+  /** Manages at least one template (sees "All requests"). */
+  manages: boolean;
+}
+
+/** Number of calendar days in a date range (both ends included). */
+export function rangeDays(v: unknown): number | null {
+  const r = v as { start?: string; end?: string } | null;
+  if (!r?.start || !r.end) return null;
+  return Math.round((Date.parse(r.end + 'T00:00:00Z') - Date.parse(r.start + 'T00:00:00Z')) / 86400_000) + 1;
+}
+
+/** Does a step's condition hold for these answers? (No condition = always.) */
+export function approvalConditionHolds(c: ApprovalCondition | null, fields: ApprovalField[], values: Record<string, unknown>): boolean {
+  if (!c) return true;
+  const f = fields.find((x) => x.id === c.fieldId);
+  if (!f) return true;
+  const raw = values[c.fieldId];
+  const actual: unknown = f.type === 'daterange' ? rangeDays(raw) : raw;
+  if (actual === null || actual === undefined || actual === '') return false;
+  if (c.op === 'in') {
+    const set = Array.isArray(c.value) ? c.value.map(String) : [String(c.value)];
+    return Array.isArray(actual) ? actual.some((a) => set.includes(String(a))) : set.includes(String(actual));
+  }
+  if (c.op === 'eq' || c.op === 'neq') {
+    const eq = Array.isArray(actual) ? actual.map(String).includes(String(c.value)) : String(actual) === String(c.value);
+    return c.op === 'eq' ? eq : !eq;
+  }
+  const a = typeof actual === 'number' ? actual : Number(actual);
+  const b = Number(c.value);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return c.op === 'gt' ? a > b : c.op === 'gte' ? a >= b : c.op === 'lt' ? a < b : a <= b;
+}
+
+const shortDate = (d: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(d + 'T00:00:00Z'));
+
+/** An answer as text (lists, summaries, notifications). People are looked up in `people`. */
+export function approvalValueText(f: ApprovalField, v: unknown, people?: Map<string, Pick<UserSummary, 'name'>>): string {
+  if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return '—';
+  switch (f.type) {
+    case 'money':
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: f.currency || 'JPY' }).format(Number(v));
+    case 'number':
+      return new Intl.NumberFormat('en-US').format(Number(v)) + (f.unit ? ' ' + f.unit : '');
+    case 'date':
+      return shortDate(String(v));
+    case 'daterange': {
+      const r = v as { start: string; end: string };
+      const n = rangeDays(r) ?? 0;
+      return shortDate(r.start) + ' – ' + shortDate(r.end) + ' (' + n + (n === 1 ? ' day)' : ' days)');
+    }
+    case 'multiselect':
+      return (v as string[]).join(', ');
+    case 'person':
+      return people?.get(String(v))?.name ?? 'Someone';
+    case 'files': {
+      const n = (v as string[]).length;
+      return n + (n === 1 ? ' file' : ' files');
+    }
+    default:
+      return String(v);
+  }
+}
+
+export const approvalSerial = (n: number) => 'AP-' + String(n).padStart(5, '0');

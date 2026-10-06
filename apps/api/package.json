@@ -19,7 +19,8 @@
     "test:mail": "node test/mail.mjs && node test/mail-inbound.mjs",
     "test:calendar": "node test/calendar.mjs",
     "test:tasks": "node test/tasks.mjs",
-    "test:meetings": "node test/meetings.mjs"
+    "test:meetings": "node test/meetings.mjs",
+    "test:approvals": "node test/approvals.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",

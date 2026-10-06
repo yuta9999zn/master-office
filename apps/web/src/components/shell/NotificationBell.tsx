@@ -1,7 +1,7 @@
 'use client';
 
 import type { AppNotification } from '@workos/shared';
-import { AtSign, Bell, CheckCheck, FileText, MessageSquareText, Share2 } from 'lucide-react';
+import { AtSign, Bell, CalendarDays, CheckCheck, CircleCheck, FileText, ListChecks, MessageSquareText, PhoneMissed, Share2, SquareCheckBig } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Popover } from 'radix-ui';
 import { useState } from 'react';
@@ -15,6 +15,15 @@ const KIND_ICON: Record<string, { icon: typeof Bell; color: string }> = {
   'resource.shared': { icon: Share2, color: '#10b981' },
   'comment.created': { icon: FileText, color: '#8b5cf6' },
   'comment.reply': { icon: FileText, color: '#8b5cf6' },
+  'calendar.invite': { icon: CalendarDays, color: '#ef4444' },
+  'calendar.response': { icon: CalendarDays, color: '#ef4444' },
+  'task.assigned': { icon: SquareCheckBig, color: '#2563eb' },
+  'task.comment': { icon: SquareCheckBig, color: '#2563eb' },
+  'meeting.call': { icon: PhoneMissed, color: '#ef4444' },
+  'approval.pending': { icon: ListChecks, color: '#f59e0b' },
+  'approval.result': { icon: CircleCheck, color: '#10b981' },
+  'approval.cc': { icon: ListChecks, color: '#0ea5e9' },
+  'approval.comment': { icon: MessageSquareText, color: '#f59e0b' },
 };
 
 type Tab = 'all' | 'unread' | 'mentions';

@@ -13,6 +13,7 @@ import { applyMailEvent } from './mail';
 import { applyCalendarEvent } from './calendar';
 import { applyTasksEvent } from './tasks';
 import { applyMeetingsEvent } from './meetings';
+import { applyApprovalsEvent } from './approvals';
 import { useMe } from './queries';
 
 type Listener = (e: RealtimeEvent) => void;
@@ -112,6 +113,7 @@ export function RealtimeBridge() {
           applyCalendarEvent(qc, e);
           applyTasksEvent(qc, e);
           applyMeetingsEvent(qc, e);
+          applyApprovalsEvent(qc, e);
           if (e.type === 'mail.received' && !window.location.pathname.startsWith('/mail'))
             toast(`New mail from ${e.from}`, { description: e.subject, action: { label: 'Open', onClick: () => routerRef.current.push(`/mail?box=${e.mailboxId}&folder=inbox&t=${e.threadId}`) } });
           if (e.type === 'notification') {
