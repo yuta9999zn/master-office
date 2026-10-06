@@ -695,6 +695,96 @@ export interface TaskStatus {
   name: string;
   color: string;
   category: 'todo' | 'doing' | 'done';
+  /** Statuses an issue may move to from here (workflow transitions); none listed = anywhere. */
+  next?: string[];
+  /** Done statuses only: the resolution it records (cancelled, wontfix…); default "done". */
+  resolution?: string;
+}
+
+export type WorkflowId = 'software' | 'scrum' | 'basic' | 'bug' | 'waterfall' | 'custom';
+
+/**
+ * Professional workflows (§76): the status sets and transitions of common systems (Jira Software's development
+ * workflow with QA, the classic bug lifecycle, a stage-gate waterfall). Ids are shared where the meaning is the same
+ * (todo, doing, review, done…) so switching workflows keeps issues where they are.
+ */
+export const WORKFLOWS: { id: Exclude<WorkflowId, 'custom'>; name: string; note: string; statuses: TaskStatus[] }[] = [
+  {
+    id: 'software',
+    name: 'Software development',
+    note: 'Jira-style SDLC: code review, QA testing, fixing and retest, UAT, release',
+    statuses: [
+      { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo', next: ['doing', 'cancelled'] },
+      { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing', next: ['review', 'todo', 'cancelled'] },
+      { id: 'review', name: 'Code Review', color: '#8b5cf6', category: 'doing', next: ['ready_qa', 'doing'] },
+      { id: 'ready_qa', name: 'Ready for QA', color: '#0ea5e9', category: 'doing', next: ['testing', 'doing'] },
+      { id: 'testing', name: 'In Testing', color: '#0891b2', category: 'doing', next: ['fixing', 'uat', 'ready_release'] },
+      { id: 'fixing', name: 'Fixing', color: '#ef4444', category: 'doing', next: ['retest'] },
+      { id: 'retest', name: 'Retest', color: '#f97316', category: 'doing', next: ['fixing', 'uat', 'ready_release'] },
+      { id: 'uat', name: 'UAT', color: '#a855f7', category: 'doing', next: ['fixing', 'ready_release'] },
+      { id: 'ready_release', name: 'Ready for Release', color: '#14b8a6', category: 'doing', next: ['done', 'fixing'] },
+      { id: 'done', name: 'Done', color: '#10b981', category: 'done', next: ['fixing', 'todo'] },
+      { id: 'cancelled', name: 'Cancelled', color: '#94a3b8', category: 'done', resolution: 'cancelled', next: ['todo'] },
+    ],
+  },
+  {
+    id: 'scrum',
+    name: 'Scrum (simple)',
+    note: 'To Do, In Progress, Review, Done — any move allowed',
+    statuses: [
+      { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo' },
+      { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing' },
+      { id: 'review', name: 'Review', color: '#8b5cf6', category: 'doing' },
+      { id: 'done', name: 'Done', color: '#10b981', category: 'done' },
+    ],
+  },
+  {
+    id: 'basic',
+    name: 'Basic',
+    note: 'To Do, In Progress, Done',
+    statuses: [
+      { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo' },
+      { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing' },
+      { id: 'done', name: 'Done', color: '#10b981', category: 'done' },
+    ],
+  },
+  {
+    id: 'bug',
+    name: 'Bug tracking',
+    note: 'Classic defect lifecycle: confirm, fix, retest, verify, close or reopen',
+    statuses: [
+      { id: 'todo', name: 'New', color: '#64748b', category: 'todo', next: ['confirmed', 'wontfix'] },
+      { id: 'confirmed', name: 'Confirmed', color: '#6366f1', category: 'todo', next: ['doing', 'wontfix'] },
+      { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing', next: ['fixed'] },
+      { id: 'fixed', name: 'Fixed', color: '#0ea5e9', category: 'doing', next: ['retest'] },
+      { id: 'retest', name: 'Retest', color: '#f97316', category: 'doing', next: ['verified', 'reopened'] },
+      { id: 'reopened', name: 'Reopened', color: '#ef4444', category: 'doing', next: ['doing'] },
+      { id: 'verified', name: 'Verified', color: '#14b8a6', category: 'doing', next: ['done', 'reopened'] },
+      { id: 'done', name: 'Closed', color: '#10b981', category: 'done', next: ['reopened'] },
+      { id: 'wontfix', name: "Won't Fix", color: '#94a3b8', category: 'done', resolution: 'wontfix', next: ['reopened'] },
+    ],
+  },
+  {
+    id: 'waterfall',
+    name: 'Waterfall (stage gate)',
+    note: 'Not started, in progress, review, approval at the gate, completed; on hold and cancelled',
+    statuses: [
+      { id: 'todo', name: 'Not Started', color: '#64748b', category: 'todo', next: ['doing', 'hold', 'cancelled'] },
+      { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing', next: ['review', 'hold', 'cancelled'] },
+      { id: 'review', name: 'In Review', color: '#8b5cf6', category: 'doing', next: ['approved', 'doing'] },
+      { id: 'approved', name: 'Approved', color: '#14b8a6', category: 'doing', next: ['done', 'doing'] },
+      { id: 'hold', name: 'On Hold', color: '#f59e0b', category: 'doing', next: ['doing', 'cancelled'] },
+      { id: 'done', name: 'Completed', color: '#10b981', category: 'done', next: ['doing'] },
+      { id: 'cancelled', name: 'Cancelled', color: '#94a3b8', category: 'done', resolution: 'cancelled', next: ['todo'] },
+    ],
+  },
+];
+
+/** May an issue go from one status to another under this workflow? */
+export function canTransition(statuses: TaskStatus[], from: string, to: string) {
+  if (from === to) return true;
+  const f = statuses.find((s) => s.id === from);
+  return !f?.next?.length || f.next.includes(to);
 }
 
 /** Issue types (§76), from the top of the hierarchy down: phase › epic › story / task / bug / milestone › subtask. */
@@ -728,6 +818,9 @@ export interface Project {
   dailyTime: string;
   /** Status id → most cards allowed in that column. */
   wipLimits: Record<string, number>;
+  /** The workflow the statuses came from, and whether its transitions are enforced. */
+  workflow: WorkflowId;
+  strictWorkflow: boolean;
   /** read = see; write = create / change tasks; comment = discuss; manage = statuses, settings. */
   perms: { read: boolean; comment: boolean; write: boolean; manage: boolean };
   /** Work items (stories, tasks, bugs) — not containers, subtasks or requests in triage. */

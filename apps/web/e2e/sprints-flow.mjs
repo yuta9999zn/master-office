@@ -155,11 +155,14 @@ await step('the retrospective: past cards, a new action item turned into a task'
 
 await step('a work-in-progress limit marks an overfull column', fujita, async () => {
   await fujita.getByTestId('project-settings').click();
+  await fujita.getByTestId('settings-tab-board').click();
   await fujita.getByLabel('WIP limit To Do').fill('1');
   await fujita.getByTestId('settings-save').click();
+  await fujita.getByRole('dialog').waitFor({ state: 'detached' });
   await fujita.getByRole('tab', { name: 'board', exact: true }).click();
   await fujita.locator('[data-testid="board-column"][data-status="todo"] [data-testid="wip"][data-over="1"]').waitFor();
   await fujita.getByTestId('project-settings').click();
+  await fujita.getByTestId('settings-tab-board').click();
   await fujita.getByLabel('WIP limit To Do').fill('');
   await fujita.getByTestId('settings-save').click();
 });

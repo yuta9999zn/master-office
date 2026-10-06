@@ -1,6 +1,6 @@
 'use client';
 
-import { can, ISSUE_RANK, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView } from '@workos/shared';
+import { can, canTransition, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
 import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
@@ -12,6 +12,7 @@ import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, Me
 import { BacklogView } from './BacklogView';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 import { SprintsView } from './SprintsView';
+import { WorkflowSettings } from './WorkflowSettings';
 import { TaskDashboard } from './TaskDashboard';
 import { TaskDrawer } from './TaskDrawer';
 
@@ -148,7 +149,7 @@ export function TasksApp() {
                 </div>
               )}
               <div className="min-h-0 flex-1">
-                <BoardView tasks={activeSprint ? shown.filter((t) => t.sprintId === activeSprint.id) : shown} all={tasks ?? []} statuses={statuses} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+                <BoardView tasks={activeSprint ? shown.filter((t) => t.sprintId === activeSprint.id) : shown} all={tasks ?? []} statuses={statuses} strict={!!project?.strictWorkflow} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
               </div>
             </div>
           )}
@@ -231,7 +232,7 @@ const columnOf = (t: TaskView, statuses: TaskStatus[]) =>
 function Due({ t }: { t: TaskView }) {
   if (!t.dueDate) return null;
   const late = !t.completedAt && t.dueDate < todayStr();
-  return <span className={cn('text-[11.5px]', late ? 'font-medium text-red-600' : 'text-muted')}>{late ? '⚠ ' : ''}{shortDate(t.dueDate)}</span>;
+  return <span className={cn('whitespace-nowrap text-[11.5px]', late ? 'font-medium text-red-600' : 'text-muted')}>{late ? '⚠ ' : ''}{shortDate(t.dueDate)}</span>;
 }
 
 function PriorityChip({ p }: { p: string }) {
@@ -256,15 +257,18 @@ function epicOf(t: TaskView, all: TaskView[]) {
 
 // ── Board ───────────────────────────────────────────────────────────────────
 
-function BoardView({ tasks, all, statuses, wip, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
+function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; strict?: boolean; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
   const { update } = useTaskActions();
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ status: string; index: number } | null>(null);
   // A project board shows the work items (stories, tasks, bugs); My tasks shows top-level tasks.
   const top = tasks.filter((t) => (projectId ? isWork(t) : !t.parentId || !projectId));
   const column = (s: string) => top.filter((t) => columnOf(t, statuses) === s).sort((a, b) => (a.position < b.position ? -1 : 1));
+  // A strict workflow: only columns the dragged card may move to take it.
+  const dragFrom = drag ? tasks.find((t) => t.id === drag)?.status ?? null : null;
+  const allowed = (status: string) => !strict || !dragFrom || canTransition(statuses, dragFrom, status);
   const drop = (status: string, index: number) => {
-    if (!drag) return;
+    if (!drag || !allowed(status)) return;
     const list = column(status).filter((t) => t.id !== drag);
     const after = list[index - 1]?.id ?? null;
     const before = list[index]?.id ?? null;
@@ -285,15 +289,16 @@ function BoardView({ tasks, all, statuses, wip, canEdit, projectId, open, onAdd 
         return (
           <section
             key={s.id}
-            className={cn('flex w-[290px] shrink-0 flex-col rounded-xl bg-[#eef1f6] p-2', over?.status === s.id && 'ring-2 ring-brand-200')}
+            className={cn('flex shrink-0 flex-col rounded-xl bg-[#eef1f6] p-2 transition-opacity', statuses.length > 6 ? 'w-[250px]' : 'w-[290px]', over?.status === s.id && 'ring-2 ring-brand-200', drag && !allowed(s.id) && 'opacity-40')}
             onDragOver={(e) => {
-              if (!drag) return;
+              if (!drag || !allowed(s.id)) return;
               e.preventDefault();
               setOver(indexAt(e, s.id));
             }}
             onDrop={(e) => (e.preventDefault(), drop(s.id, indexAt(e, s.id).index))}
             data-testid="board-column"
             data-status={s.id}
+            data-allowed={drag ? (allowed(s.id) ? '1' : '0') : undefined}
           >
             <div className="flex items-center gap-2 px-1.5 pb-2 pt-1">
               <span className="size-2.5 rounded-full" style={{ background: s.color }} />
@@ -855,81 +860,114 @@ function RequestDialog({ open, onClose, project }: { open: boolean; onClose: () 
 function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
   const { data: users } = useUsers();
   const { updateProject } = useTaskActions();
+  const [tab, setTab] = useState<'general' | 'workflow' | 'board'>('general');
   const [methodology, setMethodology] = useState<Methodology>(project.methodology);
   const [lead, setLead] = useState(project.lead?.id ?? '');
   const [intake, setIntake] = useState(project.intakeOpen);
   const [sprintDays, setSprintDays] = useState(project.sprintDays);
   const [dailyTime, setDailyTime] = useState(project.dailyTime);
   const [wip, setWip] = useState<Record<string, number>>(project.wipLimits);
+  const [workflow, setWorkflow] = useState<WorkflowId>(project.workflow);
+  const [statuses, setStatuses] = useState<TaskStatus[]>(project.statuses);
+  const [strict, setStrict] = useState(project.strictWorkflow);
+  const save = () => {
+    const changedStatuses = JSON.stringify(statuses) !== JSON.stringify(project.statuses);
+    updateProject.mutate(
+      {
+        id: project.id,
+        methodology,
+        leadId: lead || null,
+        intakeOpen: intake,
+        sprintDays,
+        dailyTime,
+        wipLimits: Object.fromEntries(Object.entries(wip).filter(([k, v]) => v > 0 && statuses.some((x) => x.id === k))),
+        strictWorkflow: strict,
+        ...(workflow === 'custom' ? (changedStatuses ? { statuses } : {}) : workflow !== project.workflow ? { workflow } : {}),
+      },
+      { onSuccess: onClose },
+    );
+  };
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={`${project.name} settings`}
-      width={520}
+      width={640}
       footer={
-        <Button variant="primary" loading={updateProject.isPending} onClick={() => updateProject.mutate({ id: project.id, methodology, leadId: lead || null, intakeOpen: intake, sprintDays, dailyTime, wipLimits: wip }, { onSuccess: onClose })} data-testid="settings-save">
+        <Button variant="primary" loading={updateProject.isPending} onClick={save} data-testid="settings-save">
           Save
         </Button>
       }
     >
-      <div className="space-y-4 text-[13px]">
-        <div>
-          <p className="mb-1.5 font-medium text-ink-2">How the project is run</p>
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Methodology">
-            {(Object.keys(METHODOLOGY) as Methodology[]).map((m) => (
-              <button key={m} role="radio" aria-checked={methodology === m} onClick={() => setMethodology(m)} className={cn('rounded-lg p-2.5 text-left ring-1', methodology === m ? 'bg-selected ring-brand-300' : 'ring-line hover:bg-hover')} data-testid={`methodology-${m}`}>
-                <span className="block font-semibold text-ink">{METHODOLOGY[m].label}</span>
-                <span className="text-[12px] text-muted">{METHODOLOGY[m].note}</span>
-              </button>
-            ))}
+      <nav className="mb-4 flex gap-1 border-b border-line" role="tablist">
+        {(['general', 'workflow', 'board'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('-mb-px border-b-2 px-3 py-1.5 text-[13px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-muted hover:text-ink')} data-testid={`settings-tab-${t}`}>
+            {t}
+          </button>
+        ))}
+      </nav>
+      {tab === 'general' && (
+        <div className="space-y-4 text-[13px]">
+          <div>
+            <p className="mb-1.5 font-medium text-ink-2">How the project is run</p>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Methodology">
+              {(Object.keys(METHODOLOGY) as Methodology[]).map((m) => (
+                <button key={m} role="radio" aria-checked={methodology === m} onClick={() => setMethodology(m)} className={cn('rounded-lg p-2.5 text-left ring-1', methodology === m ? 'bg-selected ring-brand-300' : 'ring-line hover:bg-hover')} data-testid={`methodology-${m}`}>
+                  <span className="block font-semibold text-ink">{METHODOLOGY[m].label}</span>
+                  <span className="text-[12px] text-muted">{METHODOLOGY[m].note}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <label className="block">
-          <span className="mb-1.5 block font-medium text-ink-2">Project lead (receives requests)</span>
-          <select value={lead} onChange={(e) => setLead(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Project lead">
-            <option value="">No lead</option>
-            {(users ?? []).map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={intake} onChange={(e) => setIntake(e.target.checked)} className="accent-brand-600" data-testid="intake-open" />
-          People who can see the project may file requests
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label>
-            <span className="mb-1.5 block font-medium text-ink-2">Sprint length</span>
-            <select value={sprintDays} onChange={(e) => setSprintDays(Number(e.target.value))} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Sprint length">
-              {[7, 14, 21, 28].map((d) => (
-                <option key={d} value={d}>
-                  {d / 7} week{d === 7 ? '' : 's'}
+          <label className="block">
+            <span className="mb-1.5 block font-medium text-ink-2">Project lead (receives requests)</span>
+            <select value={lead} onChange={(e) => setLead(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Project lead">
+              <option value="">No lead</option>
+              {(users ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
                 </option>
               ))}
-              {![7, 14, 21, 28].includes(sprintDays) && <option value={sprintDays}>{sprintDays} days</option>}
             </select>
           </label>
-          <label>
-            <span className="mb-1.5 block font-medium text-ink-2">Daily Scrum at</span>
-            <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Daily Scrum time" />
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={intake} onChange={(e) => setIntake(e.target.checked)} className="accent-brand-600" data-testid="intake-open" />
+            People who can see the project may file requests
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label>
+              <span className="mb-1.5 block font-medium text-ink-2">Sprint length</span>
+              <select value={sprintDays} onChange={(e) => setSprintDays(Number(e.target.value))} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Sprint length">
+                {[7, 14, 21, 28].map((d) => (
+                  <option key={d} value={d}>
+                    {d / 7} week{d === 7 ? '' : 's'}
+                  </option>
+                ))}
+                {![7, 14, 21, 28].includes(sprintDays) && <option value={sprintDays}>{sprintDays} days</option>}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1.5 block font-medium text-ink-2">Daily Scrum at</span>
+              <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Daily Scrum time" />
+            </label>
+          </div>
         </div>
-        <div>
+      )}
+      {tab === 'workflow' && <WorkflowSettings workflow={workflow} setWorkflow={setWorkflow} statuses={statuses} setStatuses={setStatuses} strict={strict} setStrict={setStrict} />}
+      {tab === 'board' && (
+        <div className="text-[13px]">
           <p className="mb-1.5 font-medium text-ink-2">Work-in-progress limits (empty = none)</p>
           <div className="grid grid-cols-2 gap-2">
-            {project.statuses.map((st) => (
+            {statuses.map((st) => (
               <label key={st.id} className="flex items-center gap-2">
                 <span className="size-2.5 rounded-full" style={{ background: st.color }} />
                 <span className="flex-1">{st.name}</span>
-                <input type="number" min={0} value={wip[st.id] ?? ''} onChange={(e) => setWip((w) => ({ ...w, [st.id]: Number(e.target.value) || 0 }))} className="h-8 w-20 rounded-lg border border-line-strong px-2" aria-label={`WIP limit ${st.name}`} />
+                <input type="number" min={0} value={wip[st.id] || ''} onChange={(e) => setWip((w) => ({ ...w, [st.id]: Number(e.target.value) || 0 }))} className="h-8 w-20 rounded-lg border border-line-strong px-2" aria-label={`WIP limit ${st.name}`} />
               </label>
             ))}
           </div>
         </div>
-      </div>
+      )}
     </Dialog>
   );
 }
@@ -941,8 +979,9 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [methodology, setMethodology] = useState<Methodology>('kanban');
+  const [workflow, setWorkflow] = useState<Exclude<WorkflowId, 'custom'> | ''>('');
   const { createProject } = useTaskActions();
-  const close = () => (onClose(), setName(''), setKey(''), setMethodology('kanban'));
+  const close = () => (onClose(), setName(''), setKey(''), setMethodology('kanban'), setWorkflow(''));
   return (
     <Dialog
       open={open}
@@ -955,7 +994,7 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
           disabled={!name.trim() || !(spaceId || editable[0])}
           loading={createProject.isPending}
           onClick={async () => {
-            const p = await createProject.mutateAsync({ spaceId: spaceId || editable[0].id, name, key: key || undefined, methodology });
+            const p = await createProject.mutateAsync({ spaceId: spaceId || editable[0].id, name, key: key || undefined, methodology, ...(workflow ? { workflow } : {}) });
             close();
             onCreated(p.id);
           }}
@@ -979,6 +1018,14 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
           {(Object.keys(METHODOLOGY) as Methodology[]).map((m) => (
             <option key={m} value={m}>
               {METHODOLOGY[m].label} — {METHODOLOGY[m].note}
+            </option>
+          ))}
+        </select>
+        <select value={workflow} onChange={(e) => setWorkflow(e.target.value as typeof workflow)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2 text-[13px]" aria-label="Workflow">
+          <option value="">Workflow: {methodology === 'waterfall' ? 'Waterfall (stage gate)' : 'Software development'} (recommended)</option>
+          {WORKFLOWS.map((w) => (
+            <option key={w.id} value={w.id}>
+              Workflow: {w.name}
             </option>
           ))}
         </select>

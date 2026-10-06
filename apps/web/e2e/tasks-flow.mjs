@@ -161,7 +161,7 @@ await step('a new project in a space starts with an empty board', claudia, async
   await dialog.getByLabel('Project key').fill('MOVE');
   await dialog.getByTestId('project-save').click();
   await claudia.getByTestId('project-picker').getByText('Office move').waitFor();
-  await claudia.waitForFunction(() => document.querySelectorAll('[data-testid="board-column"]').length === 4 && !document.querySelector('[data-testid="task-card"]'));
+  await claudia.waitForFunction(() => document.querySelectorAll('[data-testid="board-column"]').length === 11 /* software development workflow */ && !document.querySelector('[data-testid="task-card"]'));
 });
 
 await browser.close();

@@ -1,6 +1,6 @@
 'use client';
 
-import { between, type CeremonyPlan, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type RetroItemView, type SprintReport, type SprintView, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView, type VelocityRow } from '@workos/shared';
+import { between, type CeremonyPlan, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type RetroItemView, type SprintReport, type SprintView, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView, type VelocityRow, type WorkflowId } from '@workos/shared';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from './api';
@@ -110,14 +110,19 @@ export function useTaskActions() {
       onError,
     }),
     unlink: useMutation({ mutationFn: ({ id, linkId }: { id: string; linkId: string }) => api<TaskLinkView[]>(`/tasks/${id}/links/${linkId}`, { method: 'DELETE' }), onSuccess: refresh, onError }),
+    logBug: useMutation({
+      mutationFn: ({ id, ...input }: { id: string; title: string; description?: string | null; priority?: TaskInput['priority']; assigneeId?: string | null }) => api<TaskView>(`/tasks/${id}/bugs`, { method: 'POST', json: input }),
+      onSuccess: refresh,
+      onError,
+    }),
     watch: useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => api(`/tasks/${id}/watch`, { method: 'POST', json: { on } }), onSuccess: refresh, onError }),
     createProject: useMutation({
-      mutationFn: (input: { spaceId: string; name: string; key?: string; color?: string; methodology?: Methodology }) => api<Project>('/tasks/projects', { method: 'POST', json: input }),
+      mutationFn: (input: { spaceId: string; name: string; key?: string; color?: string; methodology?: Methodology; workflow?: Exclude<WorkflowId, 'custom'> }) => api<Project>('/tasks/projects', { method: 'POST', json: input }),
       onSuccess: refresh,
       onError,
     }),
     updateProject: useMutation({
-      mutationFn: ({ id, ...input }: { id: string; name?: string; statuses?: TaskStatus[]; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean; description?: string | null; sprintDays?: number; dailyTime?: string; wipLimits?: Record<string, number> }) =>
+      mutationFn: ({ id, ...input }: { id: string; name?: string; statuses?: TaskStatus[]; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean; description?: string | null; sprintDays?: number; dailyTime?: string; wipLimits?: Record<string, number>; workflow?: WorkflowId; strictWorkflow?: boolean }) =>
         api(`/tasks/projects/${id}`, { method: 'PATCH', json: input }),
       onSuccess: refresh,
       onError,

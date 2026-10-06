@@ -2,7 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import {
   between,
   can,
+  canTransition,
   childTypeOf,
+  WORKFLOWS,
+  type WorkflowId,
   ISSUE_RANK,
   WORK_TYPES,
   type IssueLinkKind,
@@ -116,12 +119,17 @@ export class TasksService {
       sprintDays: p.sprintDays,
       dailyTime: p.dailyTime,
       wipLimits: p.wipLimits,
+      workflow: p.workflow,
+      strictWorkflow: p.strictWorkflow,
       perms: this.projectPerms(p, actor, role),
       counts: { total: Number(c?.total ?? 0), done: Number(c?.done ?? 0), overdue: Number(c?.overdue ?? 0), triage: Number(c?.triage ?? 0) },
     };
   }
 
-  async createProject(actor: Actor, input: { spaceId: string; name: string; key?: string; color?: string; description?: string | null; methodology?: Methodology }) {
+  async createProject(
+    actor: Actor,
+    input: { spaceId: string; name: string; key?: string; color?: string; description?: string | null; methodology?: Methodology; workflow?: Exclude<WorkflowId, 'custom'>; strictWorkflow?: boolean },
+  ) {
     const role = await this.perms.requireSpace(actor, input.spaceId, 'viewer');
     if (!can(role, 'editor')) throw new ForbiddenException('Editors of the space create projects');
     const name = input.name.trim();
@@ -139,7 +147,7 @@ export class TasksService {
         key,
         color: input.color ?? '#2563eb',
         description: input.description?.trim() || null,
-        statuses: DEFAULT_STATUSES,
+        ...this.workflowFor(input.workflow ?? (input.methodology === 'waterfall' ? 'waterfall' : 'software'), input.strictWorkflow),
         methodology: input.methodology ?? 'kanban',
         leadId: actor.id,
         createdBy: actor.id,
@@ -163,6 +171,8 @@ export class TasksService {
       sprintDays?: number;
       dailyTime?: string;
       wipLimits?: Record<string, number>;
+      workflow?: WorkflowId;
+      strictWorkflow?: boolean;
     },
   ) {
     const { p } = await this.project(actor, id, 'manage');
@@ -174,18 +184,33 @@ export class TasksService {
     if (input.methodology) set.methodology = input.methodology;
     if (input.intakeOpen !== undefined) set.intakeOpen = input.intakeOpen;
     if (input.sprintDays !== undefined) set.sprintDays = input.sprintDays;
+    if (input.strictWorkflow !== undefined) set.strictWorkflow = input.strictWorkflow;
+    // A professional workflow replaces the statuses (unless they come customised along with it).
+    if (input.workflow && input.workflow !== 'custom' && !input.statuses) input.statuses = this.workflowFor(input.workflow).statuses;
+    if (input.workflow) set.workflow = input.workflow;
+    else if (input.statuses) set.workflow = 'custom';
     if (input.dailyTime !== undefined) set.dailyTime = input.dailyTime;
     if (input.wipLimits !== undefined) set.wipLimits = Object.fromEntries(Object.entries(input.wipLimits).filter(([k, v]) => (input.statuses ?? p.statuses).some((x) => x.id === k) && v > 0));
     if (input.leadId !== undefined) set.leadId = input.leadId ? await this.checkAssignee(actor, p, input.leadId, this.db) : null;
     await this.db.transaction(async (tx) => {
       if (input.statuses) {
-        const list = input.statuses.map((s) => ({ id: s.id.trim(), name: s.name.trim() || s.id, color: s.color, category: s.category }));
+        const list = input.statuses.map((s) => ({
+          id: s.id.trim(),
+          name: s.name.trim() || s.id,
+          color: s.color,
+          category: s.category,
+          ...(s.next?.length ? { next: [...new Set(s.next)] } : {}),
+          ...(s.category === 'done' && s.resolution ? { resolution: s.resolution } : {}),
+        }));
         if (!list.length || new Set(list.map((s) => s.id)).size !== list.length) throw new BadRequestException('Statuses need distinct ids');
         if (!list.some((s) => s.category === 'done')) throw new BadRequestException('Keep at least one "done" status');
+        for (const st of list) if (st.next?.some((n) => !list.some((x) => x.id === n))) throw new BadRequestException(`"${st.name}" moves to a status that does not exist`);
         set.statuses = list;
-        // Tasks in a removed column go to the first one.
-        const gone = p.statuses.filter((s) => !list.some((x) => x.id === s.id)).map((s) => s.id);
-        if (gone.length) await tx.update(tasks).set({ status: list[0].id }).where(and(eq(tasks.projectId, id), inArray(tasks.status, gone)));
+        // Issues in a removed status go to the first status of the same kind (to do / in progress / done).
+        for (const gone of p.statuses.filter((s) => !list.some((x) => x.id === s.id))) {
+          const to = list.find((x) => x.category === gone.category) ?? list[0];
+          await tx.update(tasks).set({ status: to.id }).where(and(eq(tasks.projectId, id), eq(tasks.status, gone.id)));
+        }
       }
       if (Object.keys(set).length) await tx.update(projects).set(set).where(eq(projects.id, id));
     });
@@ -392,7 +417,8 @@ export class TasksService {
         const [c] = await tx.update(projects).set({ counter: sql`${projects.counter} + 1` }).where(eq(projects.id, p.id)).returning({ n: projects.counter });
         number = c.n;
       }
-      const done = statuses.find((s) => s.id === status)?.category === 'done';
+      const target = statuses.find((s) => s.id === status);
+      const done = target?.category === 'done';
       const [t] = await tx
         .insert(tasks)
         .values({
@@ -419,7 +445,7 @@ export class TasksService {
           sprintId: p && input.sprintId && WORK_TYPES.includes(type) ? await this.checkSprint(tx, p.id, input.sprintId) : null,
           rank: p ? await this.rankFor(tx, p.id, input.rankAfter, input.rankBefore) : 'm',
           completedAt: done ? new Date().toISOString() : null,
-          resolution: done ? 'done' : null,
+          resolution: done ? target?.resolution ?? 'done' : null,
           createdBy: actor.id,
         })
         .returning();
@@ -530,12 +556,16 @@ export class TasksService {
       }
       if (input.status !== undefined) {
         if (!statuses.some((s) => s.id === input.status)) throw new BadRequestException('Unknown status');
-        put('status', input.status);
-        const done = statuses.find((s) => s.id === input.status)!.category === 'done';
-        if (done && !before.completedAt) {
-          set.completedAt = new Date().toISOString();
-          set.resolution = 'done';
+        // A strict workflow only allows its transitions (Code Review → Ready for QA, In Testing → Fixing…).
+        if (p?.strictWorkflow && !canTransition(statuses, before.status, input.status)) {
+          const name = (x: string) => statuses.find((s) => s.id === x)?.name ?? x;
+          throw new BadRequestException(`"${name(before.status)}" cannot move to "${name(input.status)}" in this workflow`);
         }
+        put('status', input.status);
+        const target = statuses.find((s) => s.id === input.status)!;
+        const done = target.category === 'done';
+        if (done && !before.completedAt) set.completedAt = new Date().toISOString();
+        if (done) set.resolution = target.resolution ?? 'done';
         if (!done && before.completedAt) {
           set.completedAt = null;
           set.resolution = null;
@@ -563,6 +593,37 @@ export class TasksService {
         .catch(() => undefined);
     await this.changed(next.projectId, next);
     return (await this.views(actor, [next]))[0];
+  }
+
+  /** Statuses (and strictness) of a professional workflow. */
+  private workflowFor(id: Exclude<WorkflowId, 'custom'>, strict?: boolean) {
+    const w = WORKFLOWS.find((x) => x.id === id) ?? WORKFLOWS[0];
+    return { workflow: w.id, statuses: w.statuses, strictWorkflow: strict ?? ['software', 'bug', 'waterfall'].includes(w.id) };
+  }
+
+  /**
+   * Logs a bug found while working on (or testing) an issue: a Bug in the same epic, which blocks the issue until it
+   * is fixed.
+   */
+  async logBug(actor: Actor, id: string, input: { title: string; description?: string | null; priority?: TaskInput['priority']; assigneeId?: string | null }) {
+    const t = await this.load(id);
+    await this.access(actor, t, 'write');
+    if (!t.projectId) throw new BadRequestException('Bugs are logged on project issues');
+    // Put it in the closest epic (or phase) above the issue.
+    let parentId: string | null = null;
+    for (let up = t.parentId, i = 0; up && i < 4; i++) {
+      const a = await this.load(up);
+      if (ISSUE_RANK[a.type] < 2) {
+        parentId = a.id;
+        break;
+      }
+      up = a.parentId;
+    }
+    if (!parentId && ISSUE_RANK[t.type] < 2) parentId = t.id;
+    const bug = await this.create(actor, { projectId: t.projectId, parentId, type: 'bug', title: input.title, description: input.description ?? null, priority: input.priority ?? 'high', assigneeId: input.assigneeId ?? null, sprintId: t.sprintId, tags: ['bug'] });
+    if (ISSUE_RANK[t.type] >= 2 && t.type !== 'subtask') await this.link(actor, bug.id, { toId: t.id, kind: 'blocks' });
+    else await this.link(actor, bug.id, { toId: t.id, kind: 'relates' });
+    return bug;
   }
 
   /** A sprint of this project that is not closed. */

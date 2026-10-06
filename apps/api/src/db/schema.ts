@@ -794,7 +794,7 @@ export const eventAttendees = pgTable(
 
 // ── Tasks (Phase 7, docs/ARCHITECTURE.md §72) ───────────────────────────────
 
-export type TaskStatusDef = { id: string; name: string; color: string; category: 'todo' | 'doing' | 'done' };
+export type TaskStatusDef = { id: string; name: string; color: string; category: 'todo' | 'doing' | 'done'; next?: string[]; resolution?: string };
 
 /** A project of a space: its board columns (statuses) and the key of its task numbers (WEB-12). */
 export const projects = pgTable(
@@ -825,6 +825,9 @@ export const projects = pgTable(
     dailyTime: text('daily_time').notNull().default('09:30'),
     /** Work-in-progress limit per status column (status id → max cards). */
     wipLimits: jsonb('wip_limits').$type<Record<string, number>>().notNull().default({}),
+    /** Which professional workflow the statuses came from (§76), and whether its transitions are enforced. */
+    workflow: text('workflow').$type<'software' | 'scrum' | 'basic' | 'bug' | 'waterfall' | 'custom'>().notNull().default('scrum'),
+    strictWorkflow: boolean('strict_workflow').notNull().default(false),
     archivedAt: ts('archived_at'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(sql`now()`),

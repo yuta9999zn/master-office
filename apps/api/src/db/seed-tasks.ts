@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { between } from '@workos/shared';
+import { between, WORKFLOWS } from '@workos/shared';
 import { DEFAULT_STATUSES } from '../tasks/tasks.service';
 import type { Db } from './client';
 import * as s from './schema';
@@ -11,8 +11,9 @@ type User = typeof s.users.$inferSelect;
  * a request queue) and "Branch 625 System" (Waterfall — phases, tasks, a milestone, dependencies), plus personal tasks.
  */
 export async function seedTasks(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
-  const project = async (space: string, name: string, key: string, color: string, owner: string, methodology: 'scrum' | 'kanban' | 'waterfall' | 'hybrid' = 'kanban') => {
-    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses: DEFAULT_STATUSES, methodology, leadId: u[owner].id, createdBy: u[owner].id }).returning();
+  const project = async (space: string, name: string, key: string, color: string, owner: string, methodology: 'scrum' | 'kanban' | 'waterfall' | 'hybrid' = 'kanban', workflow: 'software' | 'waterfall' | 'scrum' = 'scrum') => {
+    const statuses = WORKFLOWS.find((w) => w.id === workflow)?.statuses ?? DEFAULT_STATUSES;
+    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses, workflow, methodology, leadId: u[owner].id, createdBy: u[owner].id }).returning();
     return p;
   };
   const last = new Map<string, string>();
@@ -60,7 +61,7 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   }
 
   // Scrum: Website Revamp — epics, stories / tasks / bugs with points, requests waiting in triage (§76).
-  const web = await project('ITM Japan', 'Website Revamp', 'WEB', '#7c3aed', 'fujita', 'scrum');
+  const web = await project('ITM Japan', 'Website Revamp', 'WEB', '#7c3aed', 'fujita', 'scrum', 'software');
   const brand = await task(web, { title: 'Brand refresh', type: 'epic', status: 'doing', by: 'fujita', who: 'minh', start: '2026-09-15', due: '2026-10-16', desc: 'New look for the site: homepage, logo, campaign assets.' });
   const bookingEpic = await task(web, { title: 'Online booking', type: 'epic', status: 'doing', by: 'fujita', who: 'fujita', start: '2026-09-21', due: '2026-10-20', desc: 'Customers book visits online at every branch.' });
   const platform = await task(web, { title: 'Platform', type: 'epic', status: 'doing', by: 'fujita', who: 'ken', start: '2026-09-15', due: '2026-10-15' });
@@ -112,7 +113,7 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   ]);
 
   // Gantt: Branch 625 System.
-  const sys = await project('Branch 625', 'Branch 625 System', 'B625', '#ef4444', 'sora', 'waterfall');
+  const sys = await project('Branch 625', 'Branch 625 System', 'B625', '#ef4444', 'sora', 'waterfall', 'waterfall');
   const byTitle = new Map<string, string>();
   const phase = async (title: string, start: string, due: string, items: [string, string, string, number, string][]) => {
     const total = items.length;

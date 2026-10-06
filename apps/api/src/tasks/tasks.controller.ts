@@ -30,9 +30,17 @@ const taskBody = z.object({
   before: z.string().uuid().nullish(),
   after: z.string().uuid().nullish(),
 });
-const status = z.object({ id: z.string().min(1).max(40), name: z.string().max(60), color: z.string().max(20), category: z.enum(['todo', 'doing', 'done']) });
+const status = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().max(60),
+  color: z.string().max(20),
+  category: z.enum(['todo', 'doing', 'done']),
+  next: z.array(z.string().max(40)).max(20).optional(),
+  resolution: z.string().max(40).optional(),
+});
+const workflow = z.enum(['software', 'scrum', 'basic', 'bug', 'waterfall']);
 const methodology = z.enum(['scrum', 'kanban', 'waterfall', 'hybrid']);
-const projectBody = z.object({ spaceId: z.string().uuid(), name: z.string().max(120), key: z.string().max(10).optional(), color: z.string().max(20).optional(), description: z.string().max(2000).nullish(), methodology: methodology.optional() });
+const projectBody = z.object({ spaceId: z.string().uuid(), name: z.string().max(120), key: z.string().max(10).optional(), color: z.string().max(20).optional(), description: z.string().max(2000).nullish(), methodology: methodology.optional(), workflow: workflow.optional(), strictWorkflow: z.boolean().optional() });
 const projectUpdate = z.object({
   name: z.string().max(120).optional(),
   color: z.string().max(20).optional(),
@@ -45,6 +53,8 @@ const projectUpdate = z.object({
   sprintDays: z.number().int().min(1).max(60).optional(),
   dailyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   wipLimits: z.record(z.string(), z.number().int().min(0).max(999)).optional(),
+  workflow: workflow.or(z.literal('custom')).optional(),
+  strictWorkflow: z.boolean().optional(),
 });
 const requestBody = z.object({ title: z.string().max(500), description: z.string().max(50_000).nullish(), type: z.enum(['story', 'task', 'bug']).optional(), priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']).optional() });
 
@@ -109,6 +119,12 @@ export class TasksController {
   @Post(':id/comments')
   comment(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     return this.svc.comment(a, id, parse(z.object({ body: z.string().max(10_000) }), b).body);
+  }
+
+  /** A bug found on this issue: in the same epic, blocking the issue. */
+  @Post(':id/bugs')
+  logBug(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.svc.logBug(a, id, parse(z.object({ title: z.string().min(1).max(500), description: z.string().max(50_000).nullish(), priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']).optional(), assigneeId: z.string().uuid().nullish() }), b));
   }
 
   @Post(':id/decline')

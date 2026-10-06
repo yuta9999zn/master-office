@@ -25,7 +25,7 @@ const inbox = async (user) => (await call('GET', '/notifications?unread=1', { us
 const ps = (await call('GET', '/tasks/projects', { user: claudia })).data;
 const web = ps.find((p) => p.key === 'WEB');
 const sys = ps.find((p) => p.key === 'B625');
-check('projects of the spaces you see, with counts', !!web && !!sys && web.counts.total === 11 && web.counts.done === 3 && web.statuses.length === 4, ps.map((p) => [p.key, p.counts]));
+check('projects of the spaces you see, with counts', !!web && !!sys && web.counts.total === 11 && web.counts.done === 3 && web.statuses.length === 11 && web.workflow === 'software', ps.map((p) => [p.key, p.counts]));
 const board = await list(claudia, web.id);
 const booking = board.find((t) => t.title === 'Implement booking system');
 check('tasks carry their reference and subtask progress', booking.ref.startsWith('WEB-') && booking.subtasks.total === 5 && booking.subtasks.done === 3 && booking.progress === 60, booking);
@@ -51,7 +51,7 @@ check('moving to a "done" column completes the task', done.data.completedAt && d
 const back = await call('PATCH', `/tasks/${created.data.id}`, { user: mika, body: { status: 'doing' } });
 check('… and out of it reopens it', back.data.completedAt === null);
 const detail = (await call('GET', `/tasks/${created.data.id}`, { user: claudia })).data;
-check('the activity trail records the changes', detail.events.some((e) => e.kind === 'change' && e.data.status?.[1] === 'done') && detail.statuses.length === 4, detail.events.map((e) => e.data));
+check('the activity trail records the changes', detail.events.some((e) => e.kind === 'change' && e.data.status?.[1] === 'done') && detail.statuses.length === 11, detail.events.map((e) => e.data));
 
 // ── Subtasks, comments ──────────────────────────────────────────────────────
 const sub = await call('POST', '/tasks', { user: mika, body: { parentId: created.data.id, title: 'Collect questions' } });
@@ -67,17 +67,18 @@ check('viewers who cannot comment are refused', (await call('POST', `/tasks/${cr
 // ── Assignment rules, private spaces ────────────────────────────────────────
 const spaces = (await call('GET', '/spaces', { user: claudia })).data;
 const hrProj = await call('POST', '/tasks/projects', { user: rina, body: { spaceId: spaces.find((s) => s.name === 'HR').id, name: 'Hiring 2027', key: 'HIRE' } });
-check('editors of a space create projects', hrProj.status === 201 && hrProj.data.key === 'HIRE' && hrProj.data.statuses.length === 4, hrProj.data);
+check('editors of a space create projects, with the software workflow enforced', hrProj.status === 201 && hrProj.data.key === 'HIRE' && hrProj.data.workflow === 'software' && hrProj.data.strictWorkflow && hrProj.data.statuses.some((x) => x.id === 'retest'), hrProj.data);
 check('keys are unique', (await call('POST', '/tasks/projects', { user: rina, body: { spaceId: spaces.find((s) => s.name === 'HR').id, name: 'Other', key: 'HIRE' } })).status === 400);
 check('tasks can only be assigned to people who see the project', (await call('POST', '/tasks', { user: rina, body: { projectId: hrProj.data.id, title: 'x', assigneeId: ken } })).status === 400);
 check('private projects are invisible to outsiders', !(await call('GET', '/tasks/projects', { user: ken })).data.some((p) => p.key === 'HIRE') && (await call('GET', `/tasks?project=${hrProj.data.id}`, { user: ken })).status === 404);
 
 // ── Statuses ────────────────────────────────────────────────────────────────
-const statuses = [...web.statuses.filter((s) => s.id !== 'review'), { id: 'blocked', name: 'Blocked', color: '#ef4444', category: 'doing' }];
+const statuses = [...web.statuses.filter((s) => s.id !== 'review').map((s) => ({ ...s, next: s.next?.filter((n) => n !== 'review') })), { id: 'blocked', name: 'Blocked', color: '#ef4444', category: 'doing' }];
 check('members cannot change the columns', (await call('PATCH', `/tasks/projects/${web.id}`, { user: mika, body: { statuses } })).status === 403);
 check('the project owner changes the columns', (await call('PATCH', `/tasks/projects/${web.id}`, { user: fujita, body: { statuses } })).status === 204);
 const afterCols = await list(claudia, web.id);
-check('tasks of a removed column move to the first one', !afterCols.some((t) => t.status === 'review') && afterCols.find((t) => t.title === 'Design logo variations').status === 'todo');
+check('tasks of a removed status move to the first status of the same kind', !afterCols.some((t) => t.status === 'review') && afterCols.find((t) => t.title === 'Design logo variations').status === 'doing');
+check('changed columns make the workflow custom', (await call('GET', '/tasks/projects', { user: claudia })).data.find((p) => p.id === web.id).workflow === 'custom');
 check('a "done" column must remain', (await call('PATCH', `/tasks/projects/${web.id}`, { user: fujita, body: { statuses: statuses.filter((s) => s.category !== 'done') } })).status === 400);
 
 // ── Personal tasks ──────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ check('anyone keeps personal tasks', p2.status === 201 && p2.data.projectId === 
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 const st = (await call('GET', `/tasks/projects/${sys.id}/stats`, { user: claudia })).data;
-check('dashboard numbers (work items, not phases or milestones)', st.total === 10 && st.done === 2 && st.completionRate === 20 && st.byStatus.length === 4 && st.trend.length === 30 && st.people.length >= 1, st);
+check('dashboard numbers (work items, not phases or milestones)', st.total === 10 && st.done === 2 && st.completionRate === 20 && st.byStatus.length === 7 && st.trend.length === 30 && st.people.length >= 1, st);
 check('removing a task', (await call('DELETE', `/tasks/${p2.data.id}`, { user: ken })).status === 204 && (await call('GET', `/tasks/${p2.data.id}`, { user: ken })).status === 404);
 void claudia;
 

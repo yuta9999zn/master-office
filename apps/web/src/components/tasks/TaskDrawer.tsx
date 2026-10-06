@@ -1,12 +1,12 @@
 'use client';
 
-import { childTypeOf, ISSUE_RANK, WORK_TYPES, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
-import { Ban, CalendarDays, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
+import { canTransition, childTypeOf, ISSUE_RANK, WORK_TYPES, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
+import { ArrowRight, Ban, Bug, CalendarDays, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '@/lib/format';
 import { useUsers } from '@/lib/queries';
-import { LINK_LABEL, PRIORITY, shortDate, useTask, useTaskActions, useTasks } from '@/lib/tasks';
+import { LINK_LABEL, PRIORITY, shortDate, useProjects, useTask, useTaskActions, useTasks } from '@/lib/tasks';
 import { Avatar, AvatarStack, Button, cn, Dialog, EmptyState, IconButton, Skeleton } from '../ui/primitives';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 
@@ -32,7 +32,12 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const { data: t, error } = useTask(id);
   const { data: users } = useUsers();
   const { data: siblings } = useTasks(t?.projectId ?? null);
-  const { update, create, remove, comment, decline, breakdown, link, unlink, watch } = useTaskActions();
+  const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug } = useTaskActions();
+  const { data: projects } = useProjects();
+  const [bugging, setBugging] = useState(false);
+  const [bugTitle, setBugTitle] = useState('');
+  const [bugDesc, setBugDesc] = useState('');
+  const [bugWho, setBugWho] = useState('');
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [tag, setTag] = useState('');
@@ -60,6 +65,10 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const status = t.statuses.find((s) => s.id === t.status);
   const field = 'h-8 w-full min-w-0 rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-brand-500 disabled:bg-canvas';
   const inProject = !!t.projectId;
+  // Workflow (§76): where this issue may go next; a strict workflow only offers those.
+  const strict = !!projects?.find((p) => p.id === t.projectId)?.strictWorkflow;
+  const nextSteps = (status?.next ?? []).map((id) => t.statuses.find((s) => s.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const statusChoices = strict ? t.statuses.filter((s) => canTransition(t.statuses, t.status, s.id)) : t.statuses;
   const childType: IssueType = childTypeOf(t.type);
   const containers = ISSUE_RANK[t.type] < 2;
   const childLabel = t.type === 'phase' ? 'Issues in this phase' : t.type === 'epic' ? 'Issues in this epic' : 'Subtasks';
@@ -112,6 +121,11 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
           aria-label="Task title"
           className="w-full resize-none bg-transparent text-[19px] font-semibold leading-snug text-ink outline-none"
         />
+        {!ro && inProject && ISSUE_RANK[t.type] >= 2 && t.type !== 'bug' && (
+          <button onClick={() => (setBugging(true), setBugTitle(''), setBugDesc(''), setBugWho(''))} className="mt-1 mr-3 inline-flex items-center gap-1 text-[12px] font-medium text-red-600 hover:underline" data-testid="log-bug">
+            <Bug size={13} /> Log bug
+          </button>
+        )}
         {t.source && (
           <Link href={`/chat/${t.source.conversationId}?thread=${t.source.messageId}`} className="mt-1 inline-flex items-center gap-1 text-[12px] text-brand-700 hover:underline" data-testid="from-chat">
             <MessagesSquare size={13} /> From a chat message
@@ -132,12 +146,24 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
           )}
           <span className="text-muted">Status</span>
           <select value={t.status} disabled={ro} onChange={(e) => set({ status: e.target.value })} className={field} aria-label="Status" style={{ color: status?.color }}>
-            {t.statuses.map((s) => (
+            {statusChoices.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
           </select>
+          {!ro && nextSteps.length > 0 && (
+            <>
+              <span className="text-muted">Next step</span>
+              <span className="flex flex-wrap gap-1" data-testid="transitions">
+                {nextSteps.map((n) => (
+                  <button key={n.id} onClick={() => set({ status: n.id })} className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium ring-1 hover:bg-hover" style={{ color: n.color, borderColor: n.color }} data-testid="transition" data-to={n.id}>
+                    <ArrowRight size={12} /> {n.name}
+                  </button>
+                ))}
+              </span>
+            </>
+          )}
           <span className="flex items-center gap-1.5 text-muted">
             <UserRound size={13} /> Assignee
           </span>
@@ -388,6 +414,30 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
               </li>
             ))}
           </ul>
+        </div>
+      </Dialog>
+      <Dialog
+        open={bugging}
+        onOpenChange={setBugging}
+        title="Log a bug"
+        description={`Found on "${t.title}" — the bug blocks it until it is fixed.`}
+        footer={
+          <Button variant="danger" disabled={!bugTitle.trim()} loading={logBug.isPending} onClick={() => logBug.mutate({ id: t.id, title: bugTitle, description: bugDesc || null, assigneeId: bugWho || null }, { onSuccess: () => setBugging(false) })} data-testid="confirm-bug">
+            Log bug
+          </Button>
+        }
+      >
+        <div className="space-y-2">
+          <input value={bugTitle} onChange={(e) => setBugTitle(e.target.value)} placeholder="What is wrong?" aria-label="Bug title" className="h-9 w-full rounded-lg border border-line-strong px-3 text-[13.5px] outline-none focus:border-brand-500" />
+          <textarea value={bugDesc} onChange={(e) => setBugDesc(e.target.value)} rows={4} placeholder={'Steps to reproduce\nExpected\nActual'} aria-label="Bug details" className="w-full rounded-lg border border-line-strong px-3 py-2 text-[13.5px] outline-none focus:border-brand-500" />
+          <select value={bugWho} onChange={(e) => setBugWho(e.target.value)} aria-label="Bug assignee" className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2 text-[13px]">
+            <option value="">Unassigned</option>
+            {(users ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
         </div>
       </Dialog>
       <Dialog
