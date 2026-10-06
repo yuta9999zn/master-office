@@ -814,6 +814,12 @@ export const projects = pgTable(
     statuses: jsonb('statuses').$type<TaskStatusDef[]>().notNull(),
     /** Next task number. */
     counter: integer('counter').notNull().default(0),
+    /** How the project is run (§76): which views lead (board + sprints, flow board, Gantt with phases, or both). */
+    methodology: text('methodology').$type<'scrum' | 'kanban' | 'waterfall' | 'hybrid'>().notNull().default('kanban'),
+    /** Project lead: gets new requests from the intake queue. */
+    leadId: uuid('lead_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Anyone who can see the project may file requests (they wait in Triage). */
+    intakeOpen: boolean('intake_open').notNull().default(true),
     archivedAt: ts('archived_at'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(sql`now()`),
@@ -832,11 +838,23 @@ export const tasks = pgTable(
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     number: integer('number'),
     parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id, { onDelete: 'cascade' }),
+    /** Issue type (§76): phase › epic › story / task / bug / milestone › subtask. */
+    type: text('type').$type<'phase' | 'epic' | 'story' | 'task' | 'bug' | 'subtask' | 'milestone'>().notNull().default('task'),
     title: text('title').notNull(),
     description: text('description'),
     status: text('status').notNull(),
     priority: text('priority').$type<'none' | 'low' | 'medium' | 'high' | 'urgent'>().notNull().default('none'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Who asked for it (the requester of an intake request). */
+    reporterId: uuid('reporter_id').references(() => users.id, { onDelete: 'set null' }),
+    storyPoints: integer('story_points'),
+    estimateMinutes: integer('estimate_minutes'),
+    /** A request waiting in the intake queue (not on the board until accepted). */
+    triage: boolean('triage').notNull().default(false),
+    /** Why it is closed: done, declined, duplicate, won't do. */
+    resolution: text('resolution'),
+    /** Where it came from, e.g. { kind: 'chat', conversationId, messageId }. */
+    source: jsonb('source').$type<Record<string, unknown> | null>(),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     startDate: date('start_date'),
     dueDate: date('due_date'),
@@ -1059,4 +1077,36 @@ export const approvalEvents = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [index('approval_events_request_idx').on(t.requestId, t.createdAt)],
+);
+
+/** Issue links (§76): A blocks B (dependency, also finish-to-start on the Gantt), relates to, duplicates. */
+export const taskLinks = pgTable(
+  'task_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    fromId: uuid('from_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    toId: uuid('to_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'blocks' | 'relates' | 'duplicates'>().notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('task_links_pair_idx').on(t.fromId, t.toId, t.kind), index('task_links_to_idx').on(t.toId)],
+);
+
+/** People following an issue: told about comments and changes. */
+export const taskWatchers = pgTable(
+  'task_watchers',
+  {
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.userId] }), index('task_watchers_user_idx').on(t.userId)],
 );

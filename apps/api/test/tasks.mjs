@@ -29,7 +29,7 @@ check('projects of the spaces you see, with counts', !!web && !!sys && web.count
 const board = await list(claudia, web.id);
 const booking = board.find((t) => t.title === 'Implement booking system');
 check('tasks carry their reference and subtask progress', booking.ref.startsWith('WEB-') && booking.subtasks.total === 5 && booking.subtasks.done === 3 && booking.progress === 60, booking);
-check('cards come in board order inside each column', board.filter((t) => t.status === 'todo' && !t.parentId).map((t) => t.title).slice(0, 3).join() === 'Design new homepage,Build user authentication,Prepare marketing assets');
+check('cards come in board order inside each column', board.filter((t) => t.status === 'todo' && ['story', 'task', 'bug'].includes(t.type) && !t.triage).map((t) => t.title).slice(0, 3).join() === 'Design new homepage,Build user authentication,Prepare marketing assets');
 
 // ── Roles ───────────────────────────────────────────────────────────────────
 const asHana = (await call('GET', '/tasks/projects', { user: hana })).data.find((p) => p.id === web.id);
@@ -90,7 +90,7 @@ check('anyone keeps personal tasks', p2.status === 201 && p2.data.projectId === 
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 const st = (await call('GET', `/tasks/projects/${sys.id}/stats`, { user: claudia })).data;
-check('dashboard numbers', st.total === 5 && st.done === 1 && st.completionRate === 20 && st.byStatus.length === 4 && st.trend.length === 30 && st.people.length >= 1, st);
+check('dashboard numbers (work items, not phases or milestones)', st.total === 10 && st.done === 2 && st.completionRate === 20 && st.byStatus.length === 4 && st.trend.length === 30 && st.people.length >= 1, st);
 check('removing a task', (await call('DELETE', `/tasks/${p2.data.id}`, { user: ken })).status === 204 && (await call('GET', `/tasks/${p2.data.id}`, { user: ken })).status === 404);
 void claudia;
 

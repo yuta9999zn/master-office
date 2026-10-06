@@ -431,7 +431,7 @@ export type RealtimeEvent =
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'task.request' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
 
 export interface AppNotification {
   id: string;
@@ -697,6 +697,21 @@ export interface TaskStatus {
   category: 'todo' | 'doing' | 'done';
 }
 
+/** Issue types (§76), from the top of the hierarchy down: phase › epic › story / task / bug / milestone › subtask. */
+export const ISSUE_TYPES = ['phase', 'epic', 'story', 'task', 'bug', 'milestone', 'subtask'] as const;
+export type IssueType = (typeof ISSUE_TYPES)[number];
+/** Level in the hierarchy: a parent's rank is always lower than its children's. */
+export const ISSUE_RANK: Record<IssueType, number> = { phase: 0, epic: 1, story: 2, task: 2, bug: 2, milestone: 2, subtask: 3 };
+/** The work items of a board / sprint (not containers, not subtasks). */
+export const WORK_TYPES: IssueType[] = ['story', 'task', 'bug'];
+export type Methodology = 'scrum' | 'kanban' | 'waterfall' | 'hybrid';
+export type IssueLinkKind = 'blocks' | 'relates' | 'duplicates';
+
+/** Default child type when breaking an item down. */
+export function childTypeOf(parent: IssueType): IssueType {
+  return parent === 'phase' ? 'task' : parent === 'epic' ? 'story' : 'subtask';
+}
+
 export interface Project {
   id: string;
   key: string;
@@ -705,9 +720,13 @@ export interface Project {
   color: string;
   spaceId: string;
   statuses: TaskStatus[];
+  methodology: Methodology;
+  lead: UserSummary | null;
+  intakeOpen: boolean;
   /** read = see; write = create / change tasks; comment = discuss; manage = statuses, settings. */
   perms: { read: boolean; comment: boolean; write: boolean; manage: boolean };
-  counts: { total: number; done: number; overdue: number };
+  /** Work items (stories, tasks, bugs) — not containers, subtasks or requests in triage. */
+  counts: { total: number; done: number; overdue: number; triage: number };
 }
 
 export interface TaskView {
@@ -716,11 +735,21 @@ export interface TaskView {
   /** "WEB-12" (or null for personal tasks). */
   ref: string | null;
   parentId: string | null;
+  type: IssueType;
   title: string;
   description: string | null;
   status: string;
   priority: TaskPriority;
   assignee: UserSummary | null;
+  reporter: UserSummary | null;
+  storyPoints: number | null;
+  estimateMinutes: number | null;
+  /** Waiting in the intake queue. */
+  triage: boolean;
+  resolution: string | null;
+  source: { kind: 'chat'; conversationId: string; messageId: string } | null;
+  /** Unfinished issues that block this one. */
+  blockedBy: number;
   tags: string[];
   startDate: string | null;
   dueDate: string | null;
@@ -747,6 +776,14 @@ export interface TaskEventView {
 export interface TaskInput {
   projectId?: string | null;
   parentId?: string | null;
+  type?: IssueType;
+  reporterId?: string | null;
+  storyPoints?: number | null;
+  estimateMinutes?: number | null;
+  /** Accept a request from the intake queue (false). */
+  triage?: boolean;
+  /** Made from a chat message. */
+  source?: { kind: 'chat'; conversationId: string; messageId: string } | null;
   title: string;
   description?: string | null;
   status?: string;
@@ -759,6 +796,26 @@ export interface TaskInput {
   /** Place the card between these two neighbours of its column (board drag and drop). */
   before?: string | null;
   after?: string | null;
+}
+
+export interface TaskLinkView {
+  id: string;
+  kind: IssueLinkKind;
+  /** out: this issue → other ("blocks", "relates to", "duplicates"); in: other → this ("is blocked by"…). */
+  direction: 'out' | 'in';
+  task: { id: string; ref: string | null; title: string; type: IssueType; status: string; done: boolean; projectId: string | null };
+}
+
+/** One issue with everything the side panel shows. */
+export interface TaskDetail extends TaskView {
+  events: TaskEventView[];
+  children: TaskView[];
+  statuses: TaskStatus[];
+  /** Parents from the top (phase › epic › …). */
+  ancestors: { id: string; ref: string | null; title: string; type: IssueType }[];
+  links: TaskLinkView[];
+  watchers: UserSummary[];
+  watching: boolean;
 }
 
 export interface ProjectStats {

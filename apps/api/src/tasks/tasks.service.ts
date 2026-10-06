@@ -1,11 +1,30 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { between, can, type Project, type ProjectStats, type Role, type TaskEventView, type TaskInput, type TaskStatus, type TaskView } from '@workos/shared';
+import {
+  between,
+  can,
+  childTypeOf,
+  ISSUE_RANK,
+  WORK_TYPES,
+  type IssueLinkKind,
+  type IssueType,
+  type Methodology,
+  type Project,
+  type ProjectStats,
+  type Role,
+  type TaskDetail,
+  type TaskInput,
+  type TaskLinkView,
+  type TaskStatus,
+  type TaskView,
+} from '@workos/shared';
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { ChatService } from '../chat/chat.service';
 import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
+import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { projects, spaceMembers, taskEvents, tasks, workspaceMembers } from '../db/schema';
+import { messages, projects, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -26,11 +45,16 @@ const PERSONAL_STATUSES: TaskStatus[] = [
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
+const NONE = '00000000-0000-0000-0000-000000000000';
+/** SQL list of the work types (stories, tasks, bugs). */
+const workTypes = sql.join(WORK_TYPES.map((t) => sql`${t}`), sql`, `);
 
 /**
- * Tasks (docs/ARCHITECTURE.md §72). Projects live in spaces and follow the space role — viewer reads, commenter
- * discusses, editor creates and changes tasks, admin (or the project's creator) manages statuses and settings.
- * Personal tasks (no project) belong to their creator and their assignee.
+ * Tasks (docs/ARCHITECTURE.md §72, issues §76). Projects live in spaces and follow the space role — viewer reads
+ * (and may file requests into the intake queue), commenter discusses, editor creates and changes issues, admin (or
+ * the project's creator) manages statuses and settings. Issues form a hierarchy (phase › epic › story / task / bug /
+ * milestone › subtask), link to each other (blocks, relates, duplicates) and have watchers. Personal tasks (no
+ * project) belong to their creator and their assignee.
  */
 @Injectable()
 export class TasksService {
@@ -39,12 +63,13 @@ export class TasksService {
     private readonly perms: PermissionsService,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeService,
+    private readonly chat: ChatService,
   ) {}
 
   // ── Projects ──────────────────────────────────────────────────────────────
 
   private projectPerms(p: Proj, actor: Actor, role: Role | null | undefined) {
-    return { read: can(role, 'viewer'), comment: can(role, 'commenter'), write: can(role, 'editor'), manage: can(role, 'admin') || (p.createdBy === actor.id && can(role, 'editor')) };
+    return { read: can(role, 'viewer'), comment: can(role, 'commenter'), write: can(role, 'editor'), manage: can(role, 'admin') || ((p.createdBy === actor.id || p.leadId === actor.id) && can(role, 'editor')) };
   }
 
   private async project(actor: Actor, id: string, need: 'read' | 'comment' | 'write' | 'manage' = 'read', tx: Tx = this.db) {
@@ -53,7 +78,7 @@ export class TasksService {
     const role = (await this.perms.spaceRoles(actor, tx)).get(p.spaceId);
     const perms = this.projectPerms(p, actor, role);
     if (!perms.read) throw new NotFoundException('Project not found');
-    if (!perms[need]) throw new ForbiddenException({ comment: 'You cannot comment here', write: 'Your role in the space lets you see this project, not change it', manage: 'Only space admins or the project owner change project settings', read: '' }[need]);
+    if (!perms[need]) throw new ForbiddenException({ comment: 'You cannot comment here', write: 'Your role in the space lets you see this project, not change it', manage: 'Only space admins or the project lead change project settings', read: '' }[need]);
     return { p, perms };
   }
 
@@ -63,15 +88,20 @@ export class TasksService {
     if (!visible.length) return [];
     const rows = await this.db.select().from(projects).where(and(inArray(projects.spaceId, visible), isNull(projects.archivedAt))).orderBy(asc(projects.name));
     if (!rows.length) return [];
-    const counts = await this.db.execute<{ project_id: string; total: string; done: string; overdue: string }>(sql`
-      SELECT project_id, count(*) AS total, count(*) FILTER (WHERE completed_at IS NOT NULL) AS done,
-             count(*) FILTER (WHERE completed_at IS NULL AND due_date < ${today()}) AS overdue
-      FROM tasks WHERE parent_id IS NULL AND project_id IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)}) GROUP BY project_id`);
+    const counts = await this.db.execute<{ project_id: string; total: string; done: string; overdue: string; triage: string }>(sql`
+      SELECT project_id,
+             count(*) FILTER (WHERE NOT triage AND type IN (${workTypes})) AS total,
+             count(*) FILTER (WHERE NOT triage AND type IN (${workTypes}) AND completed_at IS NOT NULL) AS done,
+             count(*) FILTER (WHERE NOT triage AND type IN (${workTypes}) AND completed_at IS NULL AND due_date < ${today()}) AS overdue,
+             count(*) FILTER (WHERE triage) AS triage
+      FROM tasks WHERE project_id IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)}) GROUP BY project_id`);
     const by = new Map(counts.rows.map((c) => [c.project_id, c]));
-    return rows.map((p) => this.projectDto(p, actor, roles.get(p.spaceId), by.get(p.id)));
+    const leads = await loadUsers(this.db, rows.map((r) => r.leadId ?? r.createdBy));
+    return rows.map((p) => this.projectDto(p, actor, roles.get(p.spaceId), leads, by.get(p.id)));
   }
 
-  private projectDto(p: Proj, actor: Actor, role: Role | null | undefined, c?: { total: string; done: string; overdue: string }): Project {
+  private projectDto(p: Proj, actor: Actor, role: Role | null | undefined, people: Map<string, import('@workos/shared').UserSummary>, c?: { total: string; done: string; overdue: string; triage: string }): Project {
+    const lead = p.leadId ?? p.createdBy;
     return {
       id: p.id,
       key: p.key,
@@ -80,12 +110,15 @@ export class TasksService {
       color: p.color,
       spaceId: p.spaceId,
       statuses: p.statuses,
+      methodology: p.methodology,
+      lead: lead ? people.get(lead) ?? null : null,
+      intakeOpen: p.intakeOpen,
       perms: this.projectPerms(p, actor, role),
-      counts: { total: Number(c?.total ?? 0), done: Number(c?.done ?? 0), overdue: Number(c?.overdue ?? 0) },
+      counts: { total: Number(c?.total ?? 0), done: Number(c?.done ?? 0), overdue: Number(c?.overdue ?? 0), triage: Number(c?.triage ?? 0) },
     };
   }
 
-  async createProject(actor: Actor, input: { spaceId: string; name: string; key?: string; color?: string; description?: string | null }) {
+  async createProject(actor: Actor, input: { spaceId: string; name: string; key?: string; color?: string; description?: string | null; methodology?: Methodology }) {
     const role = await this.perms.requireSpace(actor, input.spaceId, 'viewer');
     if (!can(role, 'editor')) throw new ForbiddenException('Editors of the space create projects');
     const name = input.name.trim();
@@ -96,18 +129,36 @@ export class TasksService {
     if (taken) throw new BadRequestException(`The key ${key} is already used`);
     const [p] = await this.db
       .insert(projects)
-      .values({ workspaceId: actor.workspaceId, spaceId: input.spaceId, name, key, color: input.color ?? '#2563eb', description: input.description?.trim() || null, statuses: DEFAULT_STATUSES, createdBy: actor.id })
+      .values({
+        workspaceId: actor.workspaceId,
+        spaceId: input.spaceId,
+        name,
+        key,
+        color: input.color ?? '#2563eb',
+        description: input.description?.trim() || null,
+        statuses: DEFAULT_STATUSES,
+        methodology: input.methodology ?? 'kanban',
+        leadId: actor.id,
+        createdBy: actor.id,
+      })
       .returning();
-    return this.projectDto(p, actor, role);
+    return this.projectDto(p, actor, role, await loadUsers(this.db, [actor.id]));
   }
 
-  async updateProject(actor: Actor, id: string, input: { name?: string; color?: string; description?: string | null; statuses?: TaskStatus[]; archived?: boolean }) {
+  async updateProject(
+    actor: Actor,
+    id: string,
+    input: { name?: string; color?: string; description?: string | null; statuses?: TaskStatus[]; archived?: boolean; methodology?: Methodology; leadId?: string | null; intakeOpen?: boolean },
+  ) {
     const { p } = await this.project(actor, id, 'manage');
     const set: Partial<Proj> = {};
     if (input.name !== undefined) set.name = input.name.trim() || p.name;
     if (input.color) set.color = input.color;
     if (input.description !== undefined) set.description = input.description?.trim() || null;
     if (input.archived !== undefined) set.archivedAt = input.archived ? new Date().toISOString() : null;
+    if (input.methodology) set.methodology = input.methodology;
+    if (input.intakeOpen !== undefined) set.intakeOpen = input.intakeOpen;
+    if (input.leadId !== undefined) set.leadId = input.leadId ? await this.checkAssignee(actor, p, input.leadId, this.db) : null;
     await this.db.transaction(async (tx) => {
       if (input.statuses) {
         const list = input.statuses.map((s) => ({ id: s.id.trim(), name: s.name.trim() || s.id, color: s.color, category: s.category }));
@@ -165,13 +216,15 @@ export class TasksService {
 
   private async views(actor: Actor, rows: Task[], projs?: Map<string, Proj>, canEditAll?: boolean): Promise<TaskView[]> {
     if (!rows.length) return [];
-    const projMap = projs ?? new Map((await this.db.select().from(projects).where(inArray(projects.id, [...new Set(rows.map((r) => r.projectId).filter((x): x is string => !!x))].concat(['00000000-0000-0000-0000-000000000000'])))).map((p) => [p.id, p]));
+    const projMap = projs ?? new Map((await this.db.select().from(projects).where(inArray(projects.id, [...new Set(rows.map((r) => r.projectId).filter((x): x is string => !!x))].concat([NONE])))).map((p) => [p.id, p]));
     const ids = rows.map((r) => r.id);
-    const [subs, comments] = await Promise.all([
-      this.db.execute<{ parent_id: string; total: string; done: string }>(sql`SELECT parent_id, count(*) AS total, count(*) FILTER (WHERE completed_at IS NOT NULL) AS done FROM tasks WHERE parent_id IN (${sql.join(ids.map((x) => sql`${x}`), sql`, `)}) GROUP BY parent_id`),
-      this.db.execute<{ task_id: string; n: string }>(sql`SELECT task_id, count(*) AS n FROM task_events WHERE kind = 'comment' AND task_id IN (${sql.join(ids.map((x) => sql`${x}`), sql`, `)}) GROUP BY task_id`),
+    const idList = sql.join(ids.map((x) => sql`${x}`), sql`, `);
+    const [subs, comments, blockers] = await Promise.all([
+      this.db.execute<{ parent_id: string; total: string; done: string }>(sql`SELECT parent_id, count(*) AS total, count(*) FILTER (WHERE completed_at IS NOT NULL) AS done FROM tasks WHERE parent_id IN (${idList}) GROUP BY parent_id`),
+      this.db.execute<{ task_id: string; n: string }>(sql`SELECT task_id, count(*) AS n FROM task_events WHERE kind = 'comment' AND task_id IN (${idList}) GROUP BY task_id`),
+      this.db.execute<{ to_id: string; n: string }>(sql`SELECT l.to_id, count(*) AS n FROM task_links l JOIN tasks b ON b.id = l.from_id WHERE l.kind = 'blocks' AND b.completed_at IS NULL AND l.to_id IN (${idList}) GROUP BY l.to_id`),
     ]);
-    const people = await loadUsers(this.db, [...rows.map((r) => r.assigneeId), ...rows.map((r) => r.createdBy)]);
+    const people = await loadUsers(this.db, [...rows.map((r) => r.assigneeId), ...rows.map((r) => r.createdBy), ...rows.map((r) => r.reporterId)]);
     const roles = canEditAll === undefined ? await this.perms.spaceRoles(actor) : null;
     return rows.map((t) => {
       const p = t.projectId ? projMap.get(t.projectId) : null;
@@ -184,11 +237,19 @@ export class TasksService {
         projectId: t.projectId,
         ref: p && t.number ? `${p.key}-${t.number}` : null,
         parentId: t.parentId,
+        type: t.type,
         title: t.title,
         description: t.description,
         status: t.status,
         priority: t.priority,
         assignee: t.assigneeId ? people.get(t.assigneeId) ?? null : null,
+        reporter: t.reporterId ? people.get(t.reporterId) ?? null : null,
+        storyPoints: t.storyPoints,
+        estimateMinutes: t.estimateMinutes,
+        triage: t.triage,
+        resolution: t.resolution,
+        source: (t.source as TaskView['source']) ?? null,
+        blockedBy: Number(blockers.rows.find((x) => x.to_id === t.id)?.n ?? 0),
         tags: t.tags,
         startDate: t.startDate,
         dueDate: t.dueDate,
@@ -205,18 +266,32 @@ export class TasksService {
     });
   }
 
-  async get(actor: Actor, id: string): Promise<TaskView & { events: TaskEventView[]; children: TaskView[]; statuses: TaskStatus[] }> {
+  async get(actor: Actor, id: string): Promise<TaskDetail> {
     const t = await this.load(id);
     const p = await this.access(actor, t, 'read');
     const [view] = await this.views(actor, [t]);
     const children = await this.db.select().from(tasks).where(eq(tasks.parentId, id)).orderBy(asc(tasks.position));
     const ev = await this.db.select().from(taskEvents).where(eq(taskEvents.taskId, id)).orderBy(asc(taskEvents.createdAt));
-    const people = await loadUsers(this.db, ev.map((e) => e.actorId));
+    const watchers = await this.db.select({ id: taskWatchers.userId }).from(taskWatchers).where(eq(taskWatchers.taskId, id));
+    const people = await loadUsers(this.db, [...ev.map((e) => e.actorId), ...watchers.map((w) => w.id)]);
+    // Ancestors, top first.
+    const ancestors: TaskDetail['ancestors'] = [];
+    let up = t.parentId;
+    for (let i = 0; up && i < 5; i++) {
+      const a = await this.load(up).catch(() => null);
+      if (!a) break;
+      ancestors.unshift({ id: a.id, ref: p && a.number ? `${p.key}-${a.number}` : null, title: a.title, type: a.type });
+      up = a.parentId;
+    }
     return {
       ...view,
       statuses: p?.statuses ?? PERSONAL_STATUSES,
       children: await this.views(actor, children),
       events: ev.map((e) => ({ id: e.id, kind: e.kind, actor: e.actorId ? people.get(e.actorId) ?? null : null, body: e.body, data: e.data, createdAt: e.createdAt })),
+      ancestors,
+      links: await this.linksOf(actor, id),
+      watchers: watchers.map((w) => people.get(w.id)!).filter(Boolean),
+      watching: watchers.some((w) => w.id === actor.id),
     };
   }
 
@@ -236,6 +311,15 @@ export class TasksService {
     return userId;
   }
 
+  /** A child's type must sit below its parent's (phase › epic › story / task / bug / milestone › subtask). */
+  private checkHierarchy(type: IssueType, parent: Task | null, personal: boolean) {
+    if (personal && type !== 'task' && type !== 'subtask') throw new BadRequestException('Personal tasks are tasks and subtasks');
+    if (type === 'subtask' && !parent) throw new BadRequestException('A subtask needs a parent');
+    if (!parent) return;
+    if (ISSUE_RANK[parent.type] >= ISSUE_RANK[type]) throw new BadRequestException(`A ${type} cannot go under a ${parent.type}`);
+    if (type === 'subtask' && ISSUE_RANK[parent.type] !== 2) throw new BadRequestException('Subtasks go under stories, tasks or bugs');
+  }
+
   private async positionFor(tx: Tx, projectId: string | null, status: string, before?: string | null, after?: string | null, ownerId?: string) {
     if (before || after) {
       const ids = [before, after].filter((x): x is string => !!x);
@@ -253,17 +337,34 @@ export class TasksService {
     return between(last?.position ?? null, null);
   }
 
-  async create(actor: Actor, input: TaskInput): Promise<TaskView> {
+  private estimate(n: number | null | undefined, max: number, what: string) {
+    if (n === undefined) return undefined;
+    if (n === null) return null;
+    if (!Number.isInteger(n) || n < 0 || n > max) throw new BadRequestException(`${what} must be a whole number from 0 to ${max}`);
+    return n;
+  }
+
+  async create(actor: Actor, input: TaskInput, opts: { request?: boolean } = {}): Promise<TaskView> {
     const title = input.title.trim();
     if (!title) throw new BadRequestException('A task needs a title');
+    let source: TaskView['source'] = null;
+    if (input.source) {
+      // Made from a chat message: you must be able to read it.
+      const conv = await this.chat.peek(actor, input.source.conversationId);
+      const [m] = conv ? await this.db.select({ id: messages.id }).from(messages).where(and(eq(messages.id, input.source.messageId), eq(messages.conversationId, input.source.conversationId))) : [];
+      if (!m) throw new NotFoundException('Message not found');
+      source = { kind: 'chat', conversationId: input.source.conversationId, messageId: input.source.messageId };
+    }
     const row = await this.db.transaction(async (tx) => {
       let p: Proj | null = null;
+      let parent: Task | null = null;
       if (input.parentId) {
-        const parent = await this.load(input.parentId, tx);
-        p = await this.access(actor, parent, 'write', tx);
-        if (parent.parentId) throw new BadRequestException('Subtasks cannot have subtasks');
+        parent = await this.load(input.parentId, tx);
+        p = await this.access(actor, parent, opts.request ? 'read' : 'write', tx);
         input.projectId = parent.projectId;
-      } else if (input.projectId) p = (await this.project(actor, input.projectId, 'write', tx)).p;
+      } else if (input.projectId) p = (await this.project(actor, input.projectId, opts.request ? 'read' : 'write', tx)).p;
+      const type: IssueType = input.type ?? (parent ? childTypeOf(parent.type) : 'task');
+      this.checkHierarchy(type, parent, !p);
       const statuses = this.statusesOf(p);
       const status = input.status && statuses.some((s) => s.id === input.status) ? input.status : statuses[0].id;
       let number: number | null = null;
@@ -278,28 +379,77 @@ export class TasksService {
           workspaceId: actor.workspaceId,
           projectId: p?.id ?? null,
           number,
-          parentId: input.parentId ?? null,
+          parentId: parent?.id ?? null,
+          type,
           title,
           description: input.description?.trim() || null,
           status,
           priority: input.priority ?? 'none',
           assigneeId: await this.checkAssignee(actor, p, input.assigneeId, tx),
+          reporterId: (await this.checkAssignee(actor, p, input.reporterId, tx)) ?? actor.id,
+          storyPoints: this.estimate(input.storyPoints, 1000, 'Story points') ?? null,
+          estimateMinutes: this.estimate(input.estimateMinutes, 100_000, 'The estimate') ?? null,
+          triage: !!opts.request,
+          source,
           tags: [...new Set((input.tags ?? []).map((x) => x.trim()).filter(Boolean))].slice(0, 10),
           startDate: input.startDate ?? null,
-          dueDate: input.dueDate ?? null,
+          dueDate: type === 'milestone' ? input.dueDate ?? input.startDate ?? null : input.dueDate ?? null,
           progress: Math.min(100, Math.max(0, input.progress ?? 0)),
           position: await this.positionFor(tx, p?.id ?? null, status, input.before, input.after, actor.id),
           completedAt: done ? new Date().toISOString() : null,
+          resolution: done ? 'done' : null,
           createdBy: actor.id,
         })
         .returning();
       if (t.startDate && t.dueDate && t.dueDate < t.startDate) throw new BadRequestException('The due date is before the start');
-      await tx.insert(taskEvents).values({ taskId: t.id, actorId: actor.id, kind: 'change', data: { created: true } });
-      return t;
+      await tx.insert(taskEvents).values({ taskId: t.id, actorId: actor.id, kind: 'change', data: { created: true, ...(opts.request ? { request: true } : {}), ...(source ? { fromChat: true } : {}) } });
+      // The reporter and the assignee follow the issue.
+      const follow = [...new Set([t.reporterId, t.assigneeId].filter((x): x is string => !!x))];
+      if (follow.length) await tx.insert(taskWatchers).values(follow.map((userId) => ({ taskId: t.id, userId }))).onConflictDoNothing();
+      return { t, p };
     });
-    if (row.assigneeId) await this.notifyAssigned(actor, row);
-    await this.changed(row.projectId, row);
-    return (await this.views(actor, [row]))[0];
+    const { t, p } = row;
+    if (t.assigneeId) await this.notifyAssigned(actor, t);
+    if (opts.request && p) {
+      const lead = p.leadId ?? p.createdBy;
+      if (lead)
+        await this.notifications
+          .notify(actor, [lead], { kind: 'task.request', title: `${actor.name} filed a request in ${p.name}: "${t.title}"`, body: t.description?.slice(0, 200) ?? null, url: `/tasks?project=${p.id}&view=intake&task=${t.id}` })
+          .catch(() => undefined);
+    }
+    if (source && p) {
+      const url = `${config.webOrigin}/tasks?project=${p.id}&task=${t.id}`;
+      await this.chat.send(actor, source.conversationId, { body: `📋 Created ${p.key}-${t.number}: ${t.title} — ${url}`, threadRootId: source.messageId }).catch(() => undefined);
+    }
+    await this.changed(t.projectId, t);
+    return (await this.views(actor, [t]))[0];
+  }
+
+  /** A request for the intake queue: anyone who can see the project (when intake is open). */
+  async request(actor: Actor, projectId: string, input: { title: string; description?: string | null; type?: IssueType; priority?: TaskInput['priority'] }) {
+    const { p, perms } = await this.project(actor, projectId, 'read');
+    if (!p.intakeOpen && !perms.write) throw new ForbiddenException('This project does not take requests');
+    const type = input.type && WORK_TYPES.includes(input.type) ? input.type : 'task';
+    return this.create(actor, { projectId, title: input.title, description: input.description, type, priority: input.priority }, { request: true });
+  }
+
+  /** Declines a request from the intake queue (closes it, says why). */
+  async decline(actor: Actor, id: string, reason: string) {
+    const t = await this.load(id);
+    const p = await this.access(actor, t, 'write');
+    if (!t.triage) throw new BadRequestException('Only requests in triage are declined');
+    const done = this.statusesOf(p).find((s) => s.category === 'done')!;
+    const now = new Date().toISOString();
+    await this.db.transaction(async (tx) => {
+      await tx.update(tasks).set({ triage: false, status: done.id, completedAt: now, resolution: 'declined', updatedAt: now }).where(eq(tasks.id, id));
+      await tx.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', data: { declined: true }, body: reason.trim() || null });
+    });
+    if (t.reporterId)
+      await this.notifications
+        .notify(actor, [t.reporterId], { kind: 'task.request', title: `${actor.name} declined your request "${t.title}"`, body: reason.trim() || null, url: `/tasks?project=${t.projectId}&task=${t.id}` })
+        .catch(() => undefined);
+    await this.changed(t.projectId, t);
+    return (await this.views(actor, [await this.load(id)]))[0];
   }
 
   async update(actor: Actor, id: string, input: Partial<TaskInput>): Promise<TaskView> {
@@ -323,28 +473,77 @@ export class TasksService {
       if (input.dueDate !== undefined) put('dueDate', input.dueDate);
       if (input.progress !== undefined) put('progress', Math.min(100, Math.max(0, input.progress)));
       if (input.assigneeId !== undefined) put('assigneeId', await this.checkAssignee(actor, p, input.assigneeId, tx));
+      if (input.reporterId !== undefined) put('reporterId', await this.checkAssignee(actor, p, input.reporterId, tx));
+      if (input.storyPoints !== undefined) put('storyPoints', this.estimate(input.storyPoints, 1000, 'Story points') ?? null);
+      if (input.estimateMinutes !== undefined) put('estimateMinutes', this.estimate(input.estimateMinutes, 100_000, 'The estimate') ?? null);
+      if (input.triage === false && before.triage) put('triage', false);
+      // Moving in the hierarchy (into an epic, under another phase…) or changing the type.
+      if (input.parentId !== undefined || input.type !== undefined) {
+        const parentId = input.parentId !== undefined ? input.parentId : before.parentId;
+        const type = input.type ?? before.type;
+        let parent: Task | null = null;
+        if (parentId) {
+          if (parentId === id) throw new BadRequestException('An issue cannot be its own parent');
+          parent = await this.load(parentId, tx);
+          if (parent.projectId !== before.projectId) throw new BadRequestException('The parent must be in the same project');
+          for (let up: string | null = parent.parentId, i = 0; up && i < 6; i++) {
+            if (up === id) throw new BadRequestException('That would put the issue inside itself');
+            up = (await this.load(up, tx)).parentId;
+          }
+        }
+        this.checkHierarchy(type, parent, !p);
+        const kids = await tx.select({ type: tasks.type }).from(tasks).where(eq(tasks.parentId, id));
+        if (kids.some((k) => ISSUE_RANK[k.type] <= ISSUE_RANK[type])) throw new BadRequestException(`Its children cannot go under a ${type}`);
+        put('parentId', parent?.id ?? null);
+        put('type', type);
+      }
       if (input.status !== undefined) {
         if (!statuses.some((s) => s.id === input.status)) throw new BadRequestException('Unknown status');
         put('status', input.status);
         const done = statuses.find((s) => s.id === input.status)!.category === 'done';
-        if (done && !before.completedAt) set.completedAt = new Date().toISOString();
-        if (!done && before.completedAt) set.completedAt = null;
+        if (done && !before.completedAt) {
+          set.completedAt = new Date().toISOString();
+          set.resolution = 'done';
+        }
+        if (!done && before.completedAt) {
+          set.completedAt = null;
+          set.resolution = null;
+        }
+        if (before.triage) set.triage = false;
       }
       if (input.before !== undefined || input.after !== undefined || set.status) {
         set.position = await this.positionFor(tx, before.projectId, (set.status as string) ?? before.status, input.before, input.after, before.createdBy ?? actor.id);
       }
-      const start = (set.startDate ?? before.startDate) as string | null;
-      const due = (set.dueDate ?? before.dueDate) as string | null;
+      const start = (set.startDate !== undefined ? set.startDate : before.startDate) as string | null;
+      const due = (set.dueDate !== undefined ? set.dueDate : before.dueDate) as string | null;
       if (start && due && due < start) throw new BadRequestException('The due date is before the start');
       const [row] = await tx.update(tasks).set(set).where(eq(tasks.id, id)).returning();
       // Moving a card is not news; other changes go to the activity trail.
       const logged = Object.fromEntries(Object.entries(changes).filter(([k]) => k !== 'position'));
+      if (before.triage && row.triage === false) logged.accepted = [true, true];
       if (Object.keys(logged).length) await tx.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', data: logged });
+      if (row.assigneeId && row.assigneeId !== before.assigneeId) await tx.insert(taskWatchers).values({ taskId: id, userId: row.assigneeId }).onConflictDoNothing();
       return row;
     });
     if (next.assigneeId && next.assigneeId !== before.assigneeId) await this.notifyAssigned(actor, next);
+    if (before.triage && !next.triage && next.reporterId && next.resolution !== 'declined')
+      await this.notifications
+        .notify(actor, [next.reporterId], { kind: 'task.request', title: `${actor.name} accepted your request "${next.title}"`, body: null, url: `/tasks?project=${next.projectId}&task=${next.id}` })
+        .catch(() => undefined);
     await this.changed(next.projectId, next);
     return (await this.views(actor, [next]))[0];
+  }
+
+  /** Breaks an issue down: one child per line (epic → stories, story / task / bug → subtasks, phase → tasks). */
+  async breakdown(actor: Actor, id: string, input: { titles: string[]; type?: IssueType }) {
+    const parent = await this.load(id);
+    await this.access(actor, parent, 'write');
+    const titles = input.titles.map((x) => x.trim()).filter(Boolean);
+    if (!titles.length) throw new BadRequestException('Write at least one line');
+    if (titles.length > 50) throw new BadRequestException('At most 50 at a time');
+    const out: TaskView[] = [];
+    for (const title of titles) out.push(await this.create(actor, { parentId: id, title, type: input.type ?? childTypeOf(parent.type) }));
+    return out;
   }
 
   async remove(actor: Actor, id: string) {
@@ -352,6 +551,68 @@ export class TasksService {
     await this.access(actor, t, 'write');
     await this.db.delete(tasks).where(eq(tasks.id, id));
     await this.changed(t.projectId, t);
+  }
+
+  // ── Links & watchers ──────────────────────────────────────────────────────
+
+  private async linksOf(actor: Actor, id: string): Promise<TaskLinkView[]> {
+    const rows = await this.db.select().from(taskLinks).where(or(eq(taskLinks.fromId, id), eq(taskLinks.toId, id)));
+    if (!rows.length) return [];
+    const otherIds = rows.map((l) => (l.fromId === id ? l.toId : l.fromId));
+    const others = await this.db.select().from(tasks).where(inArray(tasks.id, otherIds));
+    const projs = new Map((await this.db.select().from(projects).where(inArray(projects.id, [...new Set(others.map((o) => o.projectId).filter((x): x is string => !!x))].concat([NONE])))).map((p) => [p.id, p]));
+    const out: TaskLinkView[] = [];
+    for (const l of rows) {
+      const o = others.find((x) => x.id === (l.fromId === id ? l.toId : l.fromId));
+      if (!o || !(await this.access(actor, o, 'read').then(() => true, () => false))) continue;
+      const p = o.projectId ? projs.get(o.projectId) : null;
+      out.push({ id: l.id, kind: l.kind, direction: l.fromId === id ? 'out' : 'in', task: { id: o.id, ref: p && o.number ? `${p.key}-${o.number}` : null, title: o.title, type: o.type, status: o.status, done: !!o.completedAt, projectId: o.projectId } });
+    }
+    return out;
+  }
+
+  async link(actor: Actor, id: string, input: { toId: string; kind: IssueLinkKind }) {
+    if (id === input.toId) throw new BadRequestException('An issue cannot link to itself');
+    const a = await this.load(id);
+    await this.access(actor, a, 'write');
+    const b = await this.load(input.toId);
+    await this.access(actor, b, 'read');
+    if (input.kind === 'blocks') {
+      // No cycles of "blocks": walk what b blocks.
+      const seen = new Set<string>();
+      const stack = [b.id];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        if (cur === a.id) throw new BadRequestException('That would make the two issues wait for each other');
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        const next = await this.db.select({ to: taskLinks.toId }).from(taskLinks).where(and(eq(taskLinks.fromId, cur), eq(taskLinks.kind, 'blocks')));
+        stack.push(...next.map((n) => n.to));
+      }
+    }
+    await this.db.insert(taskLinks).values({ fromId: id, toId: input.toId, kind: input.kind, createdBy: actor.id }).onConflictDoNothing();
+    await this.db.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', data: { linked: [input.kind, input.toId] } });
+    await this.changed(a.projectId, a);
+    if (b.projectId !== a.projectId) await this.changed(b.projectId, b);
+    return this.linksOf(actor, id);
+  }
+
+  async unlink(actor: Actor, id: string, linkId: string) {
+    const t = await this.load(id);
+    await this.access(actor, t, 'write');
+    const [l] = await this.db.select().from(taskLinks).where(eq(taskLinks.id, linkId));
+    if (!l || (l.fromId !== id && l.toId !== id)) throw new NotFoundException('Link not found');
+    await this.db.delete(taskLinks).where(eq(taskLinks.id, linkId));
+    await this.changed(t.projectId, t);
+    return this.linksOf(actor, id);
+  }
+
+  async watch(actor: Actor, id: string, on: boolean) {
+    const t = await this.load(id);
+    await this.access(actor, t, 'read');
+    if (on) await this.db.insert(taskWatchers).values({ taskId: id, userId: actor.id }).onConflictDoNothing();
+    else await this.db.delete(taskWatchers).where(and(eq(taskWatchers.taskId, id), eq(taskWatchers.userId, actor.id)));
+    return { watching: on };
   }
 
   async comment(actor: Actor, id: string, body: string) {
@@ -362,8 +623,14 @@ export class TasksService {
     const [e] = await this.db.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'comment', body: text }).returning();
     const p = t.projectId ? (await this.db.select().from(projects).where(eq(projects.id, t.projectId)))[0] : null;
     const ref = p && t.number ? `${p.key}-${t.number} ` : '';
+    const watchers = await this.db.select({ id: taskWatchers.userId }).from(taskWatchers).where(eq(taskWatchers.taskId, id));
     await this.notifications
-      .notify(actor, [t.assigneeId, t.createdBy].filter((x): x is string => !!x), { kind: 'task.comment', title: `${actor.name} commented on ${ref}"${t.title}"`, body: text, url: `/tasks?${t.projectId ? `project=${t.projectId}&` : ''}task=${t.id}` })
+      .notify(actor, [t.assigneeId, t.createdBy, t.reporterId, ...watchers.map((w) => w.id)].filter((x): x is string => !!x), {
+        kind: 'task.comment',
+        title: `${actor.name} commented on ${ref}"${t.title}"`,
+        body: text,
+        url: `/tasks?${t.projectId ? `project=${t.projectId}&` : ''}task=${t.id}`,
+      })
       .catch(() => undefined);
     await this.changed(t.projectId, t);
     return { id: e.id };
@@ -393,8 +660,11 @@ export class TasksService {
 
   async stats(actor: Actor, projectId: string): Promise<ProjectStats> {
     const { p } = await this.project(actor, projectId);
-    const rows = await this.db.select().from(tasks).where(and(eq(tasks.projectId, projectId), isNull(tasks.parentId)));
-    const done = rows.filter((t) => t.completedAt);
+    const rows = await this.db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.triage, false), sql`${tasks.type} IN (${workTypes})`));
+    const done = rows.filter((t) => t.completedAt && t.resolution !== 'declined');
     const withDue = done.filter((t) => t.dueDate);
     const onTime = withDue.filter((t) => t.completedAt!.slice(0, 10) <= t.dueDate!);
     const cycles = done.map((t) => (new Date(t.completedAt!).getTime() - new Date(t.createdAt).getTime()) / 86_400_000);

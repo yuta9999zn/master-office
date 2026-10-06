@@ -1,13 +1,14 @@
 'use client';
 
 import { meetingCodeFromUrl, type ChatMessage, type UserSummary } from '@workos/shared';
-import { Copy, Ellipsis, MessageSquareText, Pencil, Pin, PinOff, SmilePlus, Trash2 } from 'lucide-react';
+import { Copy, Ellipsis, ListPlus, MessageSquareText, Pencil, Pin, PinOff, SmilePlus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useChatActions } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
 import { Avatar, AvatarStack, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Tip } from '../ui/primitives';
 import { MeetingCard } from '../meetings/MeetingCard';
+import { TaskFromMessage } from '../tasks/TaskFromMessage';
 import { FileCard } from './attachments';
 import { Composer } from './Composer';
 import { EmojiPicker, MessageText, QUICK_REACTIONS } from './bits';
@@ -65,6 +66,7 @@ export function MessageItem({
 }) {
   const { react, edit, remove, pin } = useChatActions();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [makingTask, setMakingTask] = useState(false);
   const mine = !!me && m.sender?.id === me;
   const pending = m.id.startsWith('tmp-');
   const deleted = !!m.deletedAt;
@@ -223,6 +225,9 @@ export function MessageItem({
               >
                 Copy text
               </MenuItem>
+              <MenuItem icon={<ListPlus />} onSelect={() => setMakingTask(true)} data-testid="message-create-task">
+                Create task
+              </MenuItem>
               {(mine || canModerate) && (
                 <>
                   <MenuSeparator />
@@ -235,6 +240,7 @@ export function MessageItem({
           </Menu>
         </div>
       )}
+      {makingTask && <TaskFromMessage m={m} text={m.body.replace(/<@([0-9a-f-]{36})>/gi, (_x, id: string) => `@${people.get(id)?.name ?? ''}`)} open onClose={() => setMakingTask(false)} />}
     </div>
   );
 }

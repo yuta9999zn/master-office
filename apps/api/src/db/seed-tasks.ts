@@ -7,16 +7,17 @@ import * as s from './schema';
 type User = typeof s.users.$inferSelect;
 
 /**
- * Tasks demo data after "over view.png" (§72): the "Website Revamp" Kanban board (ITM Japan) and the "Branch 625
- * System" plan with phases and subtasks for the Gantt view, plus a few personal tasks.
+ * Tasks demo data after "over view.png" (§72, §76): "Website Revamp" (ITM Japan, Scrum — epics, stories with points,
+ * a request queue) and "Branch 625 System" (Waterfall — phases, tasks, a milestone, dependencies), plus personal tasks.
  */
 export async function seedTasks(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
-  const project = async (space: string, name: string, key: string, color: string, owner: string) => {
-    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses: DEFAULT_STATUSES, createdBy: u[owner].id }).returning();
+  const project = async (space: string, name: string, key: string, color: string, owner: string, methodology: 'scrum' | 'kanban' | 'waterfall' | 'hybrid' = 'kanban') => {
+    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses: DEFAULT_STATUSES, methodology, leadId: u[owner].id, createdBy: u[owner].id }).returning();
     return p;
   };
   const last = new Map<string, string>();
-  async function task(p: typeof s.projects.$inferSelect | null, o: { title: string; status: string; tags?: string[]; priority?: 'low' | 'medium' | 'high' | 'urgent'; who?: string; start?: string; due?: string; progress?: number; parent?: string; by: string; desc?: string; doneOn?: string }) {
+  type Type = 'phase' | 'epic' | 'story' | 'task' | 'bug' | 'subtask' | 'milestone';
+  async function task(p: typeof s.projects.$inferSelect | null, o: { title: string; status: string; type?: Type; points?: number; triage?: boolean; reporter?: string; tags?: string[]; priority?: 'low' | 'medium' | 'high' | 'urgent'; who?: string; start?: string; due?: string; progress?: number; parent?: string; by: string; desc?: string; doneOn?: string }) {
     let number: number | null = null;
     if (p) {
       const [c] = await db.update(s.projects).set({ counter: p.counter + 1 }).where(eq(s.projects.id, p.id)).returning();
@@ -34,6 +35,10 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
         projectId: p?.id ?? null,
         number,
         parentId: o.parent ?? null,
+        type: o.type ?? (o.parent ? 'subtask' : 'task'),
+        storyPoints: o.points ?? null,
+        triage: !!o.triage,
+        reporterId: u[o.reporter ?? o.by].id,
         title: o.title,
         description: o.desc ?? null,
         status: o.status,
@@ -45,6 +50,7 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
         progress: o.progress ?? (done ? 100 : 0),
         position,
         completedAt: done ? new Date(`${o.doneOn ?? o.due ?? '2026-09-20'}T08:00:00Z`).toISOString() : null,
+        resolution: done ? 'done' : null,
         createdBy: u[o.by].id,
         createdAt: new Date(`${o.start ?? '2026-09-10'}T01:00:00Z`).toISOString(),
       })
@@ -53,30 +59,40 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
     return t;
   }
 
-  // Kanban: Website Revamp.
-  const web = await project('ITM Japan', 'Website Revamp', 'WEB', '#7c3aed', 'fujita');
-  await task(web, { title: 'Design new homepage', status: 'todo', tags: ['UI/UX'], priority: 'high', who: 'minh', due: '2026-10-09', by: 'fujita' });
-  await task(web, { title: 'Build user authentication', status: 'todo', tags: ['Backend'], priority: 'high', who: 'ken', due: '2026-10-12', by: 'fujita' });
-  await task(web, { title: 'Prepare marketing assets', status: 'todo', tags: ['Marketing'], priority: 'medium', who: 'mika', due: '2026-10-16', by: 'claudia' });
-  const booking = await task(web, { title: 'Implement booking system', status: 'doing', tags: ['Development'], priority: 'high', who: 'fujita', start: '2026-09-21', due: '2026-10-08', by: 'fujita', desc: 'Online booking for all branches: calendar, staff selection, confirmation e-mail.' });
+  // Scrum: Website Revamp — epics, stories / tasks / bugs with points, requests waiting in triage (§76).
+  const web = await project('ITM Japan', 'Website Revamp', 'WEB', '#7c3aed', 'fujita', 'scrum');
+  const brand = await task(web, { title: 'Brand refresh', type: 'epic', status: 'doing', by: 'fujita', who: 'minh', start: '2026-09-15', due: '2026-10-16', desc: 'New look for the site: homepage, logo, campaign assets.' });
+  const bookingEpic = await task(web, { title: 'Online booking', type: 'epic', status: 'doing', by: 'fujita', who: 'fujita', start: '2026-09-21', due: '2026-10-20', desc: 'Customers book visits online at every branch.' });
+  const platform = await task(web, { title: 'Platform', type: 'epic', status: 'doing', by: 'fujita', who: 'ken', start: '2026-09-15', due: '2026-10-15' });
+  await task(web, { title: 'Design new homepage', type: 'story', points: 5, parent: brand.id, status: 'todo', tags: ['UI/UX'], priority: 'high', who: 'minh', due: '2026-10-09', by: 'fujita' });
+  await task(web, { title: 'Build user authentication', type: 'story', points: 8, parent: platform.id, status: 'todo', tags: ['Backend'], priority: 'high', who: 'ken', due: '2026-10-12', by: 'fujita' });
+  await task(web, { title: 'Prepare marketing assets', type: 'task', points: 3, parent: brand.id, status: 'todo', tags: ['Marketing'], priority: 'medium', who: 'mika', due: '2026-10-16', by: 'claudia' });
+  const booking = await task(web, { title: 'Implement booking system', type: 'story', points: 13, parent: bookingEpic.id, status: 'doing', tags: ['Development'], priority: 'high', who: 'fujita', start: '2026-09-21', due: '2026-10-08', by: 'fujita', desc: 'Online booking for all branches: calendar, staff selection, confirmation e-mail.' });
   for (const [i, t] of ['Booking calendar', 'Staff selection', 'Confirmation e-mail', 'Cancellation flow', 'Admin overview'].entries())
     await task(web, { title: t, status: i < 3 ? 'done' : 'todo', parent: booking.id, who: i % 2 ? 'ken' : 'fujita', by: 'fujita', doneOn: '2026-10-01' });
-  const api = await task(web, { title: 'API integration (payment)', status: 'doing', tags: ['Development'], priority: 'medium', who: 'ken', due: '2026-10-11', by: 'fujita' });
+  const api = await task(web, { title: 'API integration (payment)', type: 'story', points: 8, parent: bookingEpic.id, status: 'doing', tags: ['Development'], priority: 'medium', who: 'ken', due: '2026-10-11', by: 'fujita' });
   for (const [i, t] of ['Choose provider', 'Sandbox keys', 'Webhooks', 'Refunds'].entries()) await task(web, { title: t, status: i < 1 ? 'done' : 'todo', parent: api.id, who: 'ken', by: 'fujita', doneOn: '2026-10-02' });
-  await task(web, { title: 'Testing & QA', status: 'doing', tags: ['QA'], priority: 'medium', who: 'mika', due: '2026-10-10', by: 'fujita' });
-  await task(web, { title: 'Create content for branch 625', status: 'review', tags: ['Content'], priority: 'medium', who: 'sora', due: '2026-10-07', by: 'claudia' });
-  await task(web, { title: 'Design logo variations', status: 'review', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-10-05', by: 'fujita' });
-  await task(web, { title: 'Setup server environment', status: 'done', tags: ['DevOps'], priority: 'low', who: 'ken', due: '2026-09-20', doneOn: '2026-09-19', by: 'fujita' });
-  await task(web, { title: 'Requirements document', status: 'done', tags: ['Product'], priority: 'low', who: 'fujita', due: '2026-09-19', doneOn: '2026-09-19', by: 'fujita' });
-  await task(web, { title: 'Initial wireframe', status: 'done', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-09-18', doneOn: '2026-09-21', by: 'fujita' });
+  await task(web, { title: 'Testing & QA', type: 'task', points: 5, parent: platform.id, status: 'doing', tags: ['QA'], priority: 'medium', who: 'mika', due: '2026-10-10', by: 'fujita' });
+  await task(web, { title: 'Create content for branch 625', type: 'task', points: 3, parent: brand.id, status: 'review', tags: ['Content'], priority: 'medium', who: 'sora', due: '2026-10-07', by: 'claudia' });
+  await task(web, { title: 'Design logo variations', type: 'story', points: 3, parent: brand.id, status: 'review', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-10-05', by: 'fujita' });
+  await task(web, { title: 'Setup server environment', type: 'task', points: 2, parent: platform.id, status: 'done', tags: ['DevOps'], priority: 'low', who: 'ken', due: '2026-09-20', doneOn: '2026-09-19', by: 'fujita' });
+  await task(web, { title: 'Requirements document', type: 'task', points: 2, parent: platform.id, status: 'done', tags: ['Product'], priority: 'low', who: 'fujita', due: '2026-09-19', doneOn: '2026-09-19', by: 'fujita' });
+  await task(web, { title: 'Initial wireframe', type: 'story', points: 3, parent: brand.id, status: 'done', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-09-18', doneOn: '2026-09-21', by: 'fujita' });
+  await task(web, { title: 'Log in and book with LINE', type: 'story', triage: true, reporter: 'hana', status: 'todo', by: 'hana', desc: 'Customers ask to log in and book with their LINE account.' });
+  await task(web, { title: 'Booking page is slow on mobile', type: 'bug', triage: true, reporter: 'yuki', status: 'todo', priority: 'high', by: 'yuki', desc: 'Takes about 8 s to load on 4G at Branch 575.' });
 
   // Gantt: Branch 625 System.
-  const sys = await project('Branch 625', 'Branch 625 System', 'B625', '#ef4444', 'sora');
+  const sys = await project('Branch 625', 'Branch 625 System', 'B625', '#ef4444', 'sora', 'waterfall');
+  const byTitle = new Map<string, string>();
   const phase = async (title: string, start: string, due: string, items: [string, string, string, number, string][]) => {
     const total = items.length;
     const doneCount = items.filter((i) => i[3] === 100).length;
-    const parent = await task(sys, { title, status: doneCount === total ? 'done' : items.some((i) => i[3] > 0) ? 'doing' : 'todo', start, due, by: 'sora', who: 'sora' });
-    for (const [t, s1, d1, pct, who] of items) await task(sys, { title: t, status: pct === 100 ? 'done' : pct > 0 ? 'doing' : 'todo', start: s1, due: d1, progress: pct, parent: parent.id, who, by: 'sora' });
+    const parent = await task(sys, { title, type: 'phase', status: doneCount === total ? 'done' : items.some((i) => i[3] > 0) ? 'doing' : 'todo', start, due, by: 'sora', who: 'sora' });
+    for (const [t, s1, d1, pct, who] of items) {
+      const milestone = t.startsWith('◆ ');
+      const row = await task(sys, { title: milestone ? t.slice(2) : t, type: milestone ? 'milestone' : 'task', status: pct === 100 ? 'done' : pct > 0 ? 'doing' : 'todo', start: s1, due: d1, progress: pct, parent: parent.id, who, by: 'sora' });
+      byTitle.set(row.title, row.id);
+    }
   };
   await phase('Planning', '2026-09-01', '2026-09-10', [
     ['Requirements gathering', '2026-09-01', '2026-09-05', 100, 'sora'],
@@ -95,7 +111,18 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
     ['System testing', '2026-10-15', '2026-10-25', 0, 'mika'],
     ['UAT', '2026-10-20', '2026-10-30', 0, 'sora'],
   ]);
-  await phase('Deployment', '2026-11-01', '2026-11-05', [['Production release', '2026-11-01', '2026-11-05', 0, 'ken']]);
+  await phase('Deployment', '2026-11-01', '2026-11-05', [
+    ['Production release', '2026-11-01', '2026-11-05', 0, 'ken'],
+    ['◆ Go-live', '2026-11-05', '2026-11-05', 0, 'sora'],
+  ]);
+  // Finish-to-start dependencies.
+  for (const [a, b] of [
+    ['Backend development', 'API integration'],
+    ['System testing', 'UAT'],
+    ['UAT', 'Production release'],
+    ['Production release', 'Go-live'],
+  ])
+    await db.insert(s.taskLinks).values({ fromId: byTitle.get(a)!, toId: byTitle.get(b)!, kind: 'blocks', createdBy: u.sora.id });
 
   // Personal tasks of Claudia.
   await task(null, { title: 'Review Q4 budget', status: 'todo', priority: 'high', who: 'claudia', due: '2026-10-07', by: 'claudia' });

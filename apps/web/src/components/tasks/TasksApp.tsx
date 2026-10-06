@@ -1,24 +1,27 @@
 'use client';
 
-import { can, type Project, type TaskStatus, type TaskView } from '@workos/shared';
-import { CheckSquare, ChevronDown, ChevronLeft, ChevronRight, ListChecks, MessageSquare, Plus, Search, SquareCheckBig } from 'lucide-react';
+import { can, ISSUE_RANK, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView } from '@workos/shared';
+import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { formatShort } from '@/lib/format';
 import { useSpaces, useUsers } from '@/lib/queries';
-import { PRIORITY, shortDate, todayStr, useProjects, useTaskActions, useTasks } from '@/lib/tasks';
+import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useTaskActions, useTasks } from '@/lib/tasks';
 import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
+import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 import { TaskDashboard } from './TaskDashboard';
 import { TaskDrawer } from './TaskDrawer';
 
-type View = 'board' | 'list' | 'gantt' | 'calendar' | 'dashboard';
+type View = 'board' | 'list' | 'gantt' | 'calendar' | 'dashboard' | 'intake';
 const PERSONAL: TaskStatus[] = [
   { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo' },
   { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing' },
   { id: 'done', name: 'Done', color: '#10b981', category: 'done' },
 ];
+const isWork = (t: TaskView) => WORK_TYPES.includes(t.type) && !t.triage;
 
-/** /tasks?project=&view=&task= — projects of your spaces and My tasks (docs/ARCHITECTURE.md §72, over view.png). */
+/** /tasks?project=&view=&task= — projects of your spaces and My tasks (docs/ARCHITECTURE.md §72, §76, over view.png). */
 export function TasksApp() {
   const mounted = useMounted();
   const params = useSearchParams();
@@ -32,6 +35,8 @@ export function TasksApp() {
   const [q, setQ] = useState('');
   const [who, setWho] = useState<string>('');
   const [creating, setCreating] = useState<{ status?: string } | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [settings, setSettings] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const statuses = project?.statuses ?? PERSONAL;
   const canEdit = project ? project.perms.write : true;
@@ -51,7 +56,8 @@ export function TasksApp() {
     const needle = q.trim().toLowerCase();
     return (tasks ?? []).filter((t) => (!needle || t.title.toLowerCase().includes(needle) || t.ref?.toLowerCase().includes(needle) || t.tags.some((x) => x.toLowerCase().includes(needle))) && (!who || t.assignee?.id === who));
   }, [tasks, q, who]);
-  const views: View[] = project ? ['board', 'list', 'gantt', 'calendar', 'dashboard'] : ['board', 'list', 'calendar'];
+  const triage = (tasks ?? []).filter((t) => t.triage);
+  const views: View[] = project ? ['board', 'list', 'gantt', 'calendar', 'dashboard', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])] : ['board', 'list', 'calendar'];
 
   if (!mounted) return <div className="h-full bg-canvas" />;
   return (
@@ -59,11 +65,17 @@ export function TasksApp() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5">
         <SquareCheckBig size={20} className="text-brand-600" />
         <h1 className="text-[17px] font-semibold text-ink">Tasks</h1>
-        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? view : view === 'gantt' || view === 'dashboard' ? 'board' : view })} onNew={() => setNewProject(true)} />
-        <nav className="ml-3 flex gap-1" role="tablist">
+        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? view : view === 'gantt' || view === 'dashboard' || view === 'intake' ? 'board' : view })} onNew={() => setNewProject(true)} />
+        {project && (
+          <span className="rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
+            {METHODOLOGY[project.methodology].label}
+          </span>
+        )}
+        <nav className="ml-2 flex gap-1" role="tablist">
           {views.map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn('rounded-md px-3 py-1.5 text-[13px] capitalize', view === v ? 'bg-selected font-semibold text-brand-700' : 'text-muted hover:bg-hover hover:text-ink')}>
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn('flex items-center gap-1 rounded-md px-3 py-1.5 text-[13px] capitalize', view === v ? 'bg-selected font-semibold text-brand-700' : 'text-muted hover:bg-hover hover:text-ink')}>
               {v}
+              {v === 'intake' && triage.length > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10.5px] font-semibold text-white" data-testid="intake-count">{triage.length}</span>}
             </button>
           ))}
         </nav>
@@ -73,6 +85,16 @@ export function TasksApp() {
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks" className="w-36 bg-transparent outline-none" aria-label="Search tasks" />
           </label>
           <AssigneeFilter value={who} onChange={setWho} />
+          {project?.perms.manage && (
+            <button onClick={() => setSettings(true)} className="grid size-8 place-items-center rounded-lg text-muted ring-1 ring-line hover:bg-hover" aria-label="Project settings" data-testid="project-settings">
+              <Settings2 size={16} />
+            </button>
+          )}
+          {project && !canEdit && project.intakeOpen && (
+            <Button icon={<Inbox size={15} />} onClick={() => setRequesting(true)} data-testid="file-request">
+              Request
+            </Button>
+          )}
           {canEdit && (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating({})} data-testid="create-task">
               Create task
@@ -86,19 +108,23 @@ export function TasksApp() {
             <Skeleton className="m-6 h-80" />
           ) : view === 'dashboard' && project ? (
             <TaskDashboard projectId={project.id} />
+          ) : view === 'intake' && project ? (
+            <IntakeView tasks={triage} canEdit={canEdit} open={(id) => go({ task: id })} />
           ) : view === 'list' ? (
-            <ListView tasks={shown} statuses={statuses} open={(id) => go({ task: id })} />
+            <ListView tasks={shown.filter((t) => !t.triage)} all={tasks ?? []} statuses={statuses} hierarchy={!!project} open={(id) => go({ task: id })} />
           ) : view === 'gantt' && project ? (
-            <GanttView tasks={shown} statuses={statuses} open={(id) => go({ task: id })} />
+            <GanttView tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} />
           ) : view === 'calendar' ? (
-            <DueCalendar tasks={shown} statuses={statuses} open={(id) => go({ task: id })} />
+            <DueCalendar tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} />
           ) : (
-            <BoardView tasks={shown} statuses={statuses} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+            <BoardView tasks={shown} all={tasks ?? []} statuses={statuses} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
           )}
         </main>
-        {taskId && <TaskDrawer key={taskId} id={taskId} onClose={() => go({ task: null })} />}
+        {taskId && <TaskDrawer key={taskId} id={taskId} onClose={() => go({ task: null })} onOpen={(id) => go({ task: id })} />}
       </div>
-      <NewTaskDialog open={!!creating} onClose={() => setCreating(null)} project={project} status={creating?.status} onCreated={(id) => go({ task: id })} />
+      <NewTaskDialog open={!!creating} onClose={() => setCreating(null)} project={project} tasks={tasks ?? []} status={creating?.status} onCreated={(id) => go({ task: id })} />
+      {project && <RequestDialog open={requesting} onClose={() => setRequesting(false)} project={project} />}
+      {project && <ProjectSettingsDialog key={project.id + String(settings)} open={settings} onClose={() => setSettings(false)} project={project} />}
       <NewProjectDialog open={newProject} onClose={() => setNewProject(false)} onCreated={(id) => go({ project: id, view: 'board', task: null })} />
     </div>
   );
@@ -112,7 +138,7 @@ function ProjectPicker({ projects, current, onPick, onNew }: { projects: Project
   return (
     <Menu>
       <MenuTrigger asChild>
-        <button className="flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13.5px] font-medium text-ink ring-1 ring-line hover:bg-hover" data-testid="project-picker">
+        <button className="flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 text-[13.5px] font-medium text-ink ring-1 ring-line hover:bg-hover" data-testid="project-picker">
           {current ? <span className="size-2.5 rounded-sm" style={{ background: current.color }} /> : <CheckSquare size={14} className="text-muted" />}
           {current ? current.name : 'My tasks'}
           <ChevronDown size={14} className="text-muted" />
@@ -185,13 +211,24 @@ function PriorityChip({ p }: { p: string }) {
   );
 }
 
+/** The epic an issue belongs to (directly, or through its parent). */
+function epicOf(t: TaskView, all: TaskView[]) {
+  let cur = all.find((x) => x.id === t.parentId);
+  for (let i = 0; cur && i < 3; i++) {
+    if (cur.type === 'epic') return cur;
+    cur = all.find((x) => x.id === cur!.parentId);
+  }
+  return null;
+}
+
 // ── Board ───────────────────────────────────────────────────────────────────
 
-function BoardView({ tasks, statuses, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; statuses: TaskStatus[]; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
+function BoardView({ tasks, all, statuses, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
   const { update } = useTaskActions();
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ status: string; index: number } | null>(null);
-  const top = tasks.filter((t) => !t.parentId || !projectId);
+  // A project board shows the work items (stories, tasks, bugs); My tasks shows top-level tasks.
+  const top = tasks.filter((t) => (projectId ? isWork(t) : !t.parentId || !projectId));
   const column = (s: string) => top.filter((t) => columnOf(t, statuses) === s).sort((a, b) => (a.position < b.position ? -1 : 1));
   const drop = (status: string, index: number) => {
     if (!drag) return;
@@ -211,6 +248,7 @@ function BoardView({ tasks, statuses, canEdit, projectId, open, onAdd }: { tasks
     <div className="flex h-full gap-4 overflow-x-auto p-5" data-testid="board">
       {statuses.map((s) => {
         const list = column(s.id);
+        const points = list.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
         return (
           <section
             key={s.id}
@@ -228,49 +266,65 @@ function BoardView({ tasks, statuses, canEdit, projectId, open, onAdd }: { tasks
               <span className="size-2.5 rounded-full" style={{ background: s.color }} />
               <span className="text-[13px] font-semibold text-ink">{s.name}</span>
               <span className="text-[12px] text-muted">{list.length}</span>
+              {points > 0 && <span className="ml-auto text-[11px] text-muted" title="Story points">{points} pts</span>}
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-              {list.map((t, i) => (
-                <div key={t.id}>
-                  {over?.status === s.id && over.index === i && drag && <div className="mb-2 h-1 rounded bg-brand-500" />}
-                  <button
-                    draggable={canEdit && t.canEdit}
-                    onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
-                    onDragEnd={() => (setDrag(null), setOver(null))}
-                    onClick={() => open(t.id)}
-                    className={cn('block w-full rounded-lg border border-line bg-surface p-3 text-left shadow-[var(--shadow-card)] hover:border-brand-200', drag === t.id && 'opacity-40')}
-                    data-testid="task-card"
-                    data-id={t.id}
-                    data-title={t.title}
-                  >
-                    <div className="text-[13.5px] font-medium leading-snug text-ink">{t.title}</div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {t.tags.map((x) => (
-                        <span key={x} className="inline-flex h-5 items-center rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-700">
-                          {x}
-                        </span>
-                      ))}
-                      <PriorityChip p={t.priority} />
-                    </div>
-                    <div className="mt-2 flex items-center gap-2.5">
-                      <Due t={t} />
-                      {t.subtasks.total > 0 && (
-                        <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
-                          <ListChecks size={12} /> {t.subtasks.done}/{t.subtasks.total}
-                        </span>
-                      )}
-                      {t.comments > 0 && (
-                        <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
-                          <MessageSquare size={12} /> {t.comments}
-                        </span>
-                      )}
-                      <span className="flex-1" />
-                      {t.ref && <span className="font-mono text-[10.5px] text-subtle">{t.ref}</span>}
-                      {t.assignee && <Avatar user={t.assignee} size={22} />}
-                    </div>
-                  </button>
-                </div>
-              ))}
+              {list.map((t, i) => {
+                const epic = epicOf(t, all);
+                return (
+                  <div key={t.id}>
+                    {over?.status === s.id && over.index === i && drag && <div className="mb-2 h-1 rounded bg-brand-500" />}
+                    <button
+                      draggable={canEdit && t.canEdit}
+                      onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
+                      onDragEnd={() => (setDrag(null), setOver(null))}
+                      onClick={() => open(t.id)}
+                      className={cn('block w-full rounded-lg border border-line bg-surface p-3 text-left shadow-[var(--shadow-card)] hover:border-brand-200', drag === t.id && 'opacity-40')}
+                      data-testid="task-card"
+                      data-id={t.id}
+                      data-title={t.title}
+                    >
+                      <div className="text-[13.5px] font-medium leading-snug text-ink">{t.title}</div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {epic && (
+                          <span className="inline-flex h-5 max-w-[150px] items-center truncate rounded px-1.5 text-[11px] font-medium" style={{ background: '#ede9fe', color: '#6d28d9' }} data-testid="card-epic">
+                            {epic.title}
+                          </span>
+                        )}
+                        {t.tags.map((x) => (
+                          <span key={x} className="inline-flex h-5 items-center rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-700">
+                            {x}
+                          </span>
+                        ))}
+                        <PriorityChip p={t.priority} />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2.5">
+                        {projectId && <IssueIcon type={t.type} size={15} />}
+                        {t.blockedBy > 0 && (
+                          <span className="flex items-center gap-0.5 text-[11.5px] font-medium text-red-600" title="Waiting on other issues" data-testid="card-blocked">
+                            <Ban size={12} /> {t.blockedBy}
+                          </span>
+                        )}
+                        <Due t={t} />
+                        {t.subtasks.total > 0 && (
+                          <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
+                            <ListChecks size={12} /> {t.subtasks.done}/{t.subtasks.total}
+                          </span>
+                        )}
+                        {t.comments > 0 && (
+                          <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
+                            <MessageSquare size={12} /> {t.comments}
+                          </span>
+                        )}
+                        <span className="flex-1" />
+                        <Points n={t.storyPoints} />
+                        {t.ref && <span className="font-mono text-[10.5px] text-subtle">{t.ref}</span>}
+                        {t.assignee && <Avatar user={t.assignee} size={22} />}
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
               {over?.status === s.id && over.index === list.length && drag && <div className="h-1 rounded bg-brand-500" />}
             </div>
             {canEdit && (
@@ -287,47 +341,163 @@ function BoardView({ tasks, statuses, canEdit, projectId, open, onAdd }: { tasks
 
 // ── List ────────────────────────────────────────────────────────────────────
 
-function ListView({ tasks, statuses, open }: { tasks: TaskView[]; statuses: TaskStatus[]; open: (id: string) => void }) {
+function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; hierarchy: boolean; open: (id: string) => void }) {
   const { update } = useTaskActions();
-  const top = tasks.filter((t) => !t.parentId);
+  const [group, setGroup] = useState<'status' | 'hierarchy'>('status');
+  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const top = tasks.filter((t) => !t.parentId || WORK_TYPES.includes(t.type));
+  const row = (t: TaskView, depth = 0, hasKids = false) => (
+    <tr key={t.id} className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-hover" onClick={() => open(t.id)} data-testid="task-row" data-title={t.title} data-type={t.type}>
+      <td className="w-24 px-4 py-2 font-mono text-[11.5px] text-subtle">{t.ref ?? '—'}</td>
+      <td className="py-2 font-medium text-ink">
+        <span className="flex items-center gap-1.5" style={{ paddingLeft: depth * 18 }}>
+          {group === 'hierarchy' &&
+            (hasKids ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setClosed((v) => {
+                    const n = new Set(v);
+                    if (!n.delete(t.id)) n.add(t.id);
+                    return n;
+                  });
+                }}
+                className="text-muted"
+                aria-label={closed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`}
+              >
+                {closed.has(t.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+              </button>
+            ) : (
+              <span className="w-[13px]" />
+            ))}
+          {hierarchy && <IssueIcon type={t.type} size={15} />}
+          <span className={cn(ISSUE_RANK[t.type] < 2 && 'font-semibold')}>{t.title}</span>
+          {t.blockedBy > 0 && <Ban size={12} className="text-red-500" />}
+        </span>
+      </td>
+      <td className="w-40 py-2">{t.assignee ? <span className="flex items-center gap-1.5"><Avatar user={t.assignee} size={20} />{t.assignee.name.split(' ')[0]}</span> : <span className="text-subtle">—</span>}</td>
+      <td className="w-12 py-2"><Points n={t.storyPoints} /></td>
+      <td className="w-28 py-2"><PriorityChip p={t.priority} /></td>
+      <td className="w-24 py-2"><Due t={t} /></td>
+      <td className="w-36 py-2 pr-4" onClick={(e) => e.stopPropagation()}>
+        <select value={t.status} disabled={!t.canEdit} onChange={(e) => update.mutate({ id: t.id, status: e.target.value })} className="h-7 w-full rounded-md border border-line bg-surface px-1.5 text-[12px]" aria-label={`Status of ${t.title}`}>
+          {statuses.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      </td>
+    </tr>
+  );
+  // Hierarchy: phases › epics › work items › subtasks (an item whose parent is filtered out starts its own branch).
+  const tree = () => {
+    const ids = new Set(tasks.map((t) => t.id));
+    const roots = tasks.filter((t) => !t.parentId || !ids.has(t.parentId)).sort((a, b) => ISSUE_RANK[a.type] - ISSUE_RANK[b.type] || (a.position < b.position ? -1 : 1));
+    const out: React.ReactNode[] = [];
+    const walk = (t: TaskView, depth: number) => {
+      const kids = tasks.filter((x) => x.parentId === t.id).sort((a, b) => ISSUE_RANK[a.type] - ISSUE_RANK[b.type] || (a.position < b.position ? -1 : 1));
+      out.push(row(t, depth, kids.length > 0));
+      if (!closed.has(t.id)) for (const k of kids) walk(k, depth + 1);
+    };
+    for (const r of roots) walk(r, 0);
+    return out;
+  };
+  void all;
   return (
     <div className="h-full overflow-y-auto p-5" data-testid="task-list">
-      {statuses.map((s) => {
-        const list = top.filter((t) => columnOf(t, statuses) === s.id);
-        if (!list.length) return null;
-        return (
-          <section key={s.id} className="card mb-4 overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-line px-4 py-2">
-              <span className="size-2.5 rounded-full" style={{ background: s.color }} />
-              <span className="text-[13px] font-semibold text-ink">{s.name}</span>
-              <span className="text-[12px] text-muted">{list.length}</span>
-            </div>
-            <table className="w-full text-[13px]">
-              <tbody>
-                {list.map((t) => (
-                  <tr key={t.id} className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-hover" onClick={() => open(t.id)} data-testid="task-row" data-title={t.title}>
-                    <td className="w-20 px-4 py-2 font-mono text-[11.5px] text-subtle">{t.ref ?? '—'}</td>
-                    <td className="py-2 font-medium text-ink">{t.title}</td>
-                    <td className="w-40 py-2">{t.assignee ? <span className="flex items-center gap-1.5"><Avatar user={t.assignee} size={20} />{t.assignee.name.split(' ')[0]}</span> : <span className="text-subtle">—</span>}</td>
-                    <td className="w-28 py-2"><PriorityChip p={t.priority} /></td>
-                    <td className="w-24 py-2"><Due t={t} /></td>
-                    <td className="w-36 py-2 pr-4" onClick={(e) => e.stopPropagation()}>
-                      <select value={t.status} disabled={!t.canEdit} onChange={(e) => update.mutate({ id: t.id, status: e.target.value })} className="h-7 w-full rounded-md border border-line bg-surface px-1.5 text-[12px]" aria-label={`Status of ${t.title}`}>
-                        {statuses.map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        );
-      })}
+      {hierarchy && (
+        <div className="mb-3 flex items-center gap-2 text-[12.5px]">
+          <span className="text-muted">Group by</span>
+          {(['status', 'hierarchy'] as const).map((g) => (
+            <button key={g} onClick={() => setGroup(g)} className={cn('rounded-md px-2.5 py-1 capitalize', group === g ? 'bg-selected font-semibold text-brand-700' : 'text-ink-2 hover:bg-hover')} data-testid={`group-${g}`}>
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+      {group === 'hierarchy' ? (
+        <section className="card overflow-hidden" data-testid="hierarchy">
+          <table className="w-full text-[13px]">
+            <tbody>{tree()}</tbody>
+          </table>
+        </section>
+      ) : (
+        statuses.map((s) => {
+          const list = top.filter((t) => columnOf(t, statuses) === s.id);
+          if (!list.length) return null;
+          return (
+            <section key={s.id} className="card mb-4 overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-line px-4 py-2">
+                <span className="size-2.5 rounded-full" style={{ background: s.color }} />
+                <span className="text-[13px] font-semibold text-ink">{s.name}</span>
+                <span className="text-[12px] text-muted">{list.length}</span>
+              </div>
+              <table className="w-full text-[13px]">
+                <tbody>{list.map((t) => row(t))}</tbody>
+              </table>
+            </section>
+          );
+        })
+      )}
       {!top.length && <EmptyState icon={<CheckSquare size={32} />} title="No tasks" />}
+    </div>
+  );
+}
+
+// ── Intake ──────────────────────────────────────────────────────────────────
+
+function IntakeView({ tasks, canEdit, open }: { tasks: TaskView[]; canEdit: boolean; open: (id: string) => void }) {
+  const { update, decline } = useTaskActions();
+  const [declining, setDeclining] = useState<TaskView | null>(null);
+  const [reason, setReason] = useState('');
+  return (
+    <div className="h-full overflow-y-auto p-5" data-testid="intake">
+      <div className="mx-auto max-w-[920px]">
+        <p className="mb-3 text-[13px] text-muted">Requests filed by people who can see the project. Accept to put them on the backlog, or decline with a reason.</p>
+        {tasks.length ? (
+          <ul className="space-y-2">
+            {tasks.map((t) => (
+              <li key={t.id} className="flex items-start gap-3 rounded-xl bg-surface p-4 ring-1 ring-line" data-testid="request-item" data-title={t.title}>
+                <IssueIcon type={t.type} size={18} className="mt-0.5" />
+                <button onClick={() => open(t.id)} className="min-w-0 flex-1 text-left">
+                  <p className="text-[14px] font-medium text-ink">{t.title}</p>
+                  <p className="mt-0.5 text-[12px] text-muted">
+                    {t.ref} · {t.reporter?.name ?? 'Someone'} · {formatShort(t.createdAt)}
+                    {t.priority !== 'none' && ` · ${PRIORITY[t.priority].label}`}
+                  </p>
+                  {t.description && <p className="mt-1 line-clamp-2 text-[13px] text-ink-2">{t.description}</p>}
+                </button>
+                {canEdit && (
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="ghost" icon={<X size={14} />} onClick={() => (setDeclining(t), setReason(''))} data-testid="decline-request">
+                      Decline
+                    </Button>
+                    <Button size="sm" variant="primary" icon={<Check size={14} />} onClick={() => update.mutate({ id: t.id, triage: false })} data-testid="accept-request">
+                      Accept
+                    </Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState icon={<Inbox size={30} />} title="No requests waiting" />
+        )}
+      </div>
+      <Dialog
+        open={!!declining}
+        onOpenChange={(o) => !o && setDeclining(null)}
+        title="Decline this request"
+        description={declining ? `${declining.reporter?.name ?? 'The requester'} will see your reason.` : ''}
+        footer={
+          <Button variant="danger" loading={decline.isPending} onClick={() => declining && decline.mutate({ id: declining.id, reason }, { onSuccess: () => setDeclining(null) })} data-testid="confirm-decline">
+            Decline
+          </Button>
+        }
+      >
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Why not?" aria-label="Reason" className="w-full rounded-lg border border-line-strong px-3 py-2 text-[13.5px] outline-none focus:border-brand-500" />
+      </Dialog>
     </div>
   );
 }
@@ -342,7 +512,7 @@ function GanttView({ tasks, statuses, open }: { tasks: TaskView[]; statuses: Tas
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const scroller = useRef<HTMLDivElement>(null);
   const px = 26;
-  const LEFT = 420;
+  const LEFT = 440;
   const starts = dated.map((t) => dayOf(t.startDate ?? t.dueDate!));
   const ends = dated.map((t) => dayOf(t.dueDate ?? t.startDate!));
   const from = Math.min(...starts, Date.now()) - 3 * DAY;
@@ -354,13 +524,15 @@ function GanttView({ tasks, statuses, open }: { tasks: TaskView[]; statuses: Tas
     if (scroller.current) scroller.current.scrollLeft = Math.max(0, todayX - 7 * px);
   }, [dated.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!dated.length) return <EmptyState icon={<CheckSquare size={32} />} title="Add start and due dates to see the plan" />;
-  const parents = dated.filter((t) => !t.parentId).sort((a, b) => (a.startDate ?? a.dueDate!).localeCompare(b.startDate ?? b.dueDate!));
+  // Any depth: phase › epic › work item › subtask; an item whose parent has no dates starts a branch.
+  const ids = new Set(dated.map((t) => t.id));
+  const byStart = (a: TaskView, b: TaskView) => (a.startDate ?? a.dueDate!).localeCompare(b.startDate ?? b.dueDate!);
   const rows: { t: TaskView; depth: number }[] = [];
-  for (const p of parents) {
-    rows.push({ t: p, depth: 0 });
-    if (!collapsed.has(p.id)) for (const c of dated.filter((x) => x.parentId === p.id)) rows.push({ t: c, depth: 1 });
-  }
-  for (const orphan of dated.filter((t) => t.parentId && !parents.some((p) => p.id === t.parentId))) rows.push({ t: orphan, depth: 0 });
+  const walk = (t: TaskView, depth: number) => {
+    rows.push({ t, depth });
+    if (!collapsed.has(t.id)) for (const c of dated.filter((x) => x.parentId === t.id).sort(byStart)) walk(c, depth + 1);
+  };
+  for (const r of dated.filter((t) => !t.parentId || !ids.has(t.parentId)).sort(byStart)) walk(r, 0);
   // A phase is as far along as its steps on average (the board counts finished subtasks instead).
   const progressOf = (t: TaskView) => {
     const kids = tasks.filter((x) => x.parentId === t.id);
@@ -416,36 +588,54 @@ function GanttView({ tasks, statuses, open }: { tasks: TaskView[]; statuses: Tas
             const e = dayOf(t.dueDate ?? t.startDate!) + DAY;
             const left = ((s - from) / DAY) * px;
             const width = Math.max(px * 0.6, ((e - s) / DAY) * px - 4);
-            const c = colorOf(t);
+            const c = t.type === 'phase' ? '#4f46e5' : t.type === 'epic' ? '#7c3aed' : colorOf(t);
+            const container = ISSUE_RANK[t.type] < 2;
             return (
-              <div key={t.id} className="flex h-9 border-b border-line/60 hover:bg-hover/40" data-testid="gantt-row" data-title={t.title}>
+              <div key={t.id} className="flex h-9 border-b border-line/60 hover:bg-hover/40" data-testid="gantt-row" data-title={t.title} data-type={t.type}>
                 <div className={cn('sticky left-0 z-10 grid shrink-0 items-center border-r border-line bg-surface px-3 text-[12.5px]', cols)} style={{ width: LEFT }}>
-                  <span className="flex min-w-0 items-center gap-1" style={{ paddingLeft: depth * 18 }}>
+                  <span className="flex min-w-0 items-center gap-1" style={{ paddingLeft: depth * 16 }}>
                     {kids ? (
-                      <button onClick={() => setCollapsed((v) => { const n = new Set(v); if (!n.delete(t.id)) n.add(t.id); return n; })} aria-label={collapsed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`} className="text-muted">
+                      <button
+                        onClick={() =>
+                          setCollapsed((v) => {
+                            const n = new Set(v);
+                            if (!n.delete(t.id)) n.add(t.id);
+                            return n;
+                          })
+                        }
+                        aria-label={collapsed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`}
+                        className="text-muted"
+                      >
                         {collapsed.has(t.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                       </button>
                     ) : (
                       <span className="w-[13px]" />
                     )}
-                    <button onClick={() => open(t.id)} className={cn('truncate text-left hover:underline', depth === 0 ? 'font-semibold text-ink' : 'text-ink-2')}>
+                    <IssueIcon type={t.type} size={14} />
+                    <button onClick={() => open(t.id)} className={cn('truncate text-left hover:underline', depth === 0 || container ? 'font-semibold text-ink' : 'text-ink-2')}>
                       {t.title}
                     </button>
                   </span>
                   <span className="text-muted">{t.startDate ? shortDate(t.startDate) : '—'}</span>
                   <span className="text-muted">{t.dueDate ? shortDate(t.dueDate) : '—'}</span>
-                  <span className="text-right tabular-nums text-ink-2" data-testid="gantt-progress">{progress}%</span>
+                  <span className="text-right tabular-nums text-ink-2" data-testid="gantt-progress">
+                    {t.type === 'milestone' ? (t.completedAt ? '✓' : '—') : `${progress}%`}
+                  </span>
                 </div>
                 <div className="relative" style={{ width: days * px }}>
-                  <button
-                    onClick={() => open(t.id)}
-                    className={cn('absolute z-[6] overflow-hidden rounded-[4px] text-left', depth === 0 ? 'top-2 h-5' : 'top-2.5 h-4')}
-                    style={{ left: left + 2, width, background: `${c}33`, borderLeft: `3px solid ${c}` }}
-                    title={`${t.title}: ${progress}%`}
-                    data-testid="gantt-bar"
-                  >
-                    <span className="block h-full" style={{ width: `${progress}%`, background: c, opacity: 0.85 }} />
-                  </button>
+                  {t.type === 'milestone' ? (
+                    <button onClick={() => open(t.id)} className="absolute top-2.5 z-[6] size-4 rotate-45 rounded-[2px]" style={{ left: ((dayOf(t.dueDate ?? t.startDate!) - from) / DAY) * px + px / 2 - 8, background: t.completedAt ? '#10b981' : '#d97706' }} title={`${t.title} (milestone)`} data-testid="gantt-milestone" />
+                  ) : (
+                    <button
+                      onClick={() => open(t.id)}
+                      className={cn('absolute z-[6] overflow-hidden rounded-[4px] text-left', container ? 'top-2 h-5' : 'top-2.5 h-4')}
+                      style={{ left: left + 2, width, background: `${c}33`, borderLeft: `3px solid ${c}` }}
+                      title={`${t.title}: ${progress}%`}
+                      data-testid="gantt-bar"
+                    >
+                      <span className="block h-full" style={{ width: `${progress}%`, background: c, opacity: 0.85 }} />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -502,16 +692,31 @@ function DueCalendar({ tasks, statuses, open }: { tasks: TaskView[]; statuses: T
 
 // ── Dialogs ─────────────────────────────────────────────────────────────────
 
-function NewTaskDialog({ open, onClose, project, status, onCreated }: { open: boolean; onClose: () => void; project: Project | null; status?: string; onCreated: (id: string) => void }) {
+const CREATE_TYPES: IssueType[] = ['story', 'task', 'bug', 'epic', 'phase', 'milestone'];
+
+function NewTaskDialog({ open, onClose, project, tasks, status, onCreated }: { open: boolean; onClose: () => void; project: Project | null; tasks: TaskView[]; status?: string; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState('');
   const [due, setDue] = useState('');
   const [priority, setPriority] = useState('none');
+  const [type, setType] = useState<IssueType>('task');
+  const [parent, setParent] = useState('');
+  const [points, setPoints] = useState('');
   const { data: users } = useUsers();
   const { create } = useTaskActions();
-  const close = () => (onClose(), setTitle(''), setAssignee(''), setDue(''), setPriority('none'));
+  const close = () => (onClose(), setTitle(''), setAssignee(''), setDue(''), setPriority('none'), setType('task'), setParent(''), setPoints(''));
+  // Possible parents: anything one level up (phases for epics, epics or phases for work items and milestones).
+  const parents = project ? tasks.filter((t) => !t.triage && ISSUE_RANK[t.type] < ISSUE_RANK[type] && ISSUE_RANK[t.type] < 2) : [];
   const save = async () => {
-    const t = await create.mutateAsync({ projectId: project?.id ?? null, title, status, assigneeId: assignee || null, dueDate: due || null, priority: priority as never });
+    const t = await create.mutateAsync({
+      projectId: project?.id ?? null,
+      title,
+      status,
+      assigneeId: assignee || null,
+      dueDate: due || null,
+      priority: priority as never,
+      ...(project ? { type, parentId: parent || null, storyPoints: points ? Number(points) : null } : {}),
+    });
     close();
     onCreated(t.id);
   };
@@ -519,7 +724,8 @@ function NewTaskDialog({ open, onClose, project, status, onCreated }: { open: bo
     <Dialog
       open={open}
       onOpenChange={(v) => !v && close()}
-      title={project ? `New task in ${project.name}` : 'New personal task'}
+      title={project ? `New issue in ${project.name}` : 'New personal task'}
+      width={500}
       footer={
         <Button variant="primary" disabled={!title.trim()} loading={create.isPending} onClick={save} data-testid="task-save">
           Create
@@ -527,6 +733,15 @@ function NewTaskDialog({ open, onClose, project, status, onCreated }: { open: bo
       }
     >
       <div className="space-y-3">
+        {project && (
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Issue type">
+            {CREATE_TYPES.map((t) => (
+              <button key={t} role="radio" aria-checked={type === t} onClick={() => (setType(t), setParent(''))} className={cn('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] ring-1', type === t ? 'bg-selected font-semibold text-brand-700 ring-brand-200' : 'text-ink-2 ring-line hover:bg-hover')} data-testid={`type-${t}`}>
+                <IssueIcon type={t} size={14} /> {ISSUE_META[t].label}
+              </button>
+            ))}
+          </div>
+        )}
         <input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && title.trim() && save()} placeholder="Task title" aria-label="Task title" className="h-10 w-full rounded-lg border border-line-strong px-3 text-[14px] outline-none focus:border-brand-500" />
         <div className="grid grid-cols-3 gap-2">
           <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-[13px]" aria-label="Assignee">
@@ -546,6 +761,103 @@ function NewTaskDialog({ open, onClose, project, status, onCreated }: { open: bo
           </select>
           <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="h-9 rounded-lg border border-line-strong px-2 text-[13px]" aria-label="Due date" />
         </div>
+        {project && (
+          <div className="grid grid-cols-[1fr_110px] gap-2">
+            <select value={parent} onChange={(e) => setParent(e.target.value)} disabled={!parents.length} className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-[13px]" aria-label="Parent">
+              <option value="">{parents.length ? 'No parent' : type === 'phase' ? 'Phases are at the top' : 'No epic or phase yet'}</option>
+              {parents.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {ISSUE_META[p.type].label}: {p.title}
+                </option>
+              ))}
+            </select>
+            <input type="number" min={0} value={points} onChange={(e) => setPoints(e.target.value)} placeholder="Points" aria-label="Story points" disabled={!WORK_TYPES.includes(type)} className="h-9 rounded-lg border border-line-strong px-2 text-[13px] disabled:bg-canvas" />
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+function RequestDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [type, setType] = useState<'story' | 'task' | 'bug'>('task');
+  const { request } = useTaskActions();
+  const close = () => (onClose(), setTitle(''), setDesc(''), setType('task'));
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => !v && close()}
+      title={`Request in ${project.name}`}
+      description="Your request goes to the project's intake queue; you will hear when it is accepted or declined."
+      width={480}
+      footer={
+        <Button variant="primary" disabled={!title.trim()} loading={request.isPending} onClick={() => request.mutate({ projectId: project.id, title, description: desc || null, type }, { onSuccess: close })} data-testid="request-save">
+          Send request
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex gap-1.5" role="radiogroup" aria-label="Request type">
+          {(['task', 'story', 'bug'] as const).map((t) => (
+            <button key={t} role="radio" aria-checked={type === t} onClick={() => setType(t)} className={cn('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] ring-1', type === t ? 'bg-selected font-semibold text-brand-700 ring-brand-200' : 'text-ink-2 ring-line hover:bg-hover')}>
+              <IssueIcon type={t} size={14} /> {t === 'bug' ? 'Report a bug' : t === 'story' ? 'Feature' : 'Task'}
+            </button>
+          ))}
+        </div>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What do you need?" aria-label="Request title" className="h-10 w-full rounded-lg border border-line-strong px-3 text-[14px] outline-none focus:border-brand-500" />
+        <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={4} placeholder="Details, steps to reproduce, why it matters…" aria-label="Request details" className="w-full rounded-lg border border-line-strong px-3 py-2 text-[13.5px] outline-none focus:border-brand-500" />
+      </div>
+    </Dialog>
+  );
+}
+
+function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
+  const { data: users } = useUsers();
+  const { updateProject } = useTaskActions();
+  const [methodology, setMethodology] = useState<Methodology>(project.methodology);
+  const [lead, setLead] = useState(project.lead?.id ?? '');
+  const [intake, setIntake] = useState(project.intakeOpen);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => !v && onClose()}
+      title={`${project.name} settings`}
+      width={520}
+      footer={
+        <Button variant="primary" loading={updateProject.isPending} onClick={() => updateProject.mutate({ id: project.id, methodology, leadId: lead || null, intakeOpen: intake }, { onSuccess: onClose })} data-testid="settings-save">
+          Save
+        </Button>
+      }
+    >
+      <div className="space-y-4 text-[13px]">
+        <div>
+          <p className="mb-1.5 font-medium text-ink-2">How the project is run</p>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Methodology">
+            {(Object.keys(METHODOLOGY) as Methodology[]).map((m) => (
+              <button key={m} role="radio" aria-checked={methodology === m} onClick={() => setMethodology(m)} className={cn('rounded-lg p-2.5 text-left ring-1', methodology === m ? 'bg-selected ring-brand-300' : 'ring-line hover:bg-hover')} data-testid={`methodology-${m}`}>
+                <span className="block font-semibold text-ink">{METHODOLOGY[m].label}</span>
+                <span className="text-[12px] text-muted">{METHODOLOGY[m].note}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1.5 block font-medium text-ink-2">Project lead (receives requests)</span>
+          <select value={lead} onChange={(e) => setLead(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2" aria-label="Project lead">
+            <option value="">No lead</option>
+            {(users ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={intake} onChange={(e) => setIntake(e.target.checked)} className="accent-brand-600" data-testid="intake-open" />
+          People who can see the project may file requests
+        </label>
       </div>
     </Dialog>
   );
@@ -557,8 +869,9 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
   const [spaceId, setSpaceId] = useState('');
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
+  const [methodology, setMethodology] = useState<Methodology>('kanban');
   const { createProject } = useTaskActions();
-  const close = () => (onClose(), setName(''), setKey(''));
+  const close = () => (onClose(), setName(''), setKey(''), setMethodology('kanban'));
   return (
     <Dialog
       open={open}
@@ -571,7 +884,7 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
           disabled={!name.trim() || !(spaceId || editable[0])}
           loading={createProject.isPending}
           onClick={async () => {
-            const p = await createProject.mutateAsync({ spaceId: spaceId || editable[0].id, name, key: key || undefined });
+            const p = await createProject.mutateAsync({ spaceId: spaceId || editable[0].id, name, key: key || undefined, methodology });
             close();
             onCreated(p.id);
           }}
@@ -591,6 +904,13 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
         </select>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" aria-label="Project name" className="h-9 w-full rounded-lg border border-line-strong px-3 text-[13px] outline-none focus:border-brand-500" />
         <input value={key} onChange={(e) => setKey(e.target.value.toUpperCase())} placeholder="Key (e.g. WEB) — optional" aria-label="Project key" maxLength={10} className="h-9 w-full rounded-lg border border-line-strong px-3 text-[13px] outline-none focus:border-brand-500" />
+        <select value={methodology} onChange={(e) => setMethodology(e.target.value as Methodology)} className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2 text-[13px]" aria-label="Methodology">
+          {(Object.keys(METHODOLOGY) as Methodology[]).map((m) => (
+            <option key={m} value={m}>
+              {METHODOLOGY[m].label} — {METHODOLOGY[m].note}
+            </option>
+          ))}
+        </select>
       </div>
     </Dialog>
   );

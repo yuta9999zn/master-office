@@ -134,6 +134,13 @@
       "when": 1791301551309,
       "tag": "0018_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791313213909,
+      "tag": "0019_tasks_issues",
+      "breakpoints": true
     }
   ]
 }
