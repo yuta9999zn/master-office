@@ -228,13 +228,15 @@ const BOLT_DAYS = [1, 2, 3, 5];
 const durationsOf = (p: Project) => (p.methodology === 'ai-dlc' ? BOLT_DAYS : DURATIONS);
 const input = 'h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] outline-none focus:border-brand-500';
 
-function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: SprintView | 'new' | null; onClose: () => void }) {
+export function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: SprintView | 'new' | null; onClose: () => void }) {
   const a = useSprintActions();
   const word = sprintWord(project.methodology);
   const existing = sprint && sprint !== 'new' ? sprint : null;
   const [name, setName] = useState(existing?.name ?? '');
   const [goal, setGoal] = useState(existing?.goal ?? '');
-  const [start, setStart] = useState(existing?.startDate ?? '');
+  const { data: all } = useSprints(project.id);
+  const last = [...(all ?? [])].sort((x, y) => y.endDate.localeCompare(x.endDate))[0];
+  const [start, setStart] = useState(existing?.startDate ?? (last ? addDays(last.endDate, 1) : todayStr()));
   const [days, setDays] = useState(existing ? lengthOf(existing) : project.sprintDays);
   const save = async () => {
     if (existing) await a.update.mutateAsync({ id: existing.id, name: name || undefined, goal: goal || null, startDate: start || undefined, days });
@@ -246,7 +248,7 @@ function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: 
       open={!!sprint}
       onOpenChange={(o) => !o && onClose()}
       title={existing ? `Edit ${existing.name}` : `Create ${word.toLowerCase()}`}
-      description={existing ? undefined : `Leave the start empty to begin the day after the last ${word.toLowerCase()}.`}
+      description={existing ? undefined : `Starts the day after the last ${word.toLowerCase()} — change the dates as you need.`}
       footer={
         <Button variant="primary" loading={a.create.isPending || a.update.isPending} onClick={() => void save()} data-testid="save-sprint">
           {existing ? 'Save' : 'Create'}
@@ -262,16 +264,35 @@ function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: 
   );
 }
 
+/** Start and end of a sprint: pick either date, or a usual length (the end follows). */
 function SprintDates({ start, setStart, days, setDays, choices }: { start: string; setStart: (s: string) => void; days: number; setDays: (n: number) => void; choices: number[] }) {
+  const end = start ? addDays(start, days - 1) : '';
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <label>
-        <span className="mb-1 block text-[12px] text-muted">Start date</span>
-        <input type="date" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Start date" className={input} />
-      </label>
-      <label>
-        <span className="mb-1 block text-[12px] text-muted">Duration</span>
-        <select value={choices.includes(days) ? String(days) : 'custom'} onChange={(e) => setDays(e.target.value === 'custom' ? days : Number(e.target.value))} aria-label="Duration" className={input}>
+    <div className="space-y-2" data-testid="sprint-dates">
+      <div className="grid grid-cols-2 gap-2">
+        <label>
+          <span className="mb-1 block text-[12px] text-muted">Start date</span>
+          <input type="date" value={start} onChange={(e) => e.target.value && setStart(e.target.value)} aria-label="Start date" className={input} />
+        </label>
+        <label>
+          <span className="mb-1 block text-[12px] text-muted">End date</span>
+          <input
+            type="date"
+            value={end}
+            min={start || undefined}
+            onChange={(e) => {
+              if (!e.target.value || !start) return;
+              const n = Math.round((Date.parse(`${e.target.value}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY) + 1;
+              setDays(Math.max(1, Math.min(60, n)));
+            }}
+            aria-label="End date"
+            className={input}
+          />
+        </label>
+      </div>
+      <label className="flex items-center gap-2">
+        <span className="text-[12px] text-muted">Length</span>
+        <select value={choices.includes(days) ? String(days) : 'custom'} onChange={(e) => e.target.value !== 'custom' && setDays(Number(e.target.value))} aria-label="Duration" className={cn(input, 'h-8 w-auto')}>
           {choices.map((d) => (
             <option key={d} value={d}>
               {d % 7 ? `${d} day${d === 1 ? '' : 's'}` : `${d / 7} week${d === 7 ? '' : 's'}`}
@@ -279,18 +300,13 @@ function SprintDates({ start, setStart, days, setDays, choices }: { start: strin
           ))}
           <option value="custom">Custom ({days} days)</option>
         </select>
+        <span className="text-[12px] text-muted">{days} days · ends {end ? new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${end}T00:00:00Z`)) : '—'}</span>
       </label>
-      {!choices.includes(days) && (
-        <label className="col-span-2">
-          <span className="mb-1 block text-[12px] text-muted">Days</span>
-          <input type="number" min={1} max={60} value={days} onChange={(e) => setDays(Math.max(1, Math.min(60, Number(e.target.value) || 1)))} aria-label="Days" className={input} />
-        </label>
-      )}
     </div>
   );
 }
 
-function StartDialog({ project, sprint, items, onClose }: { project: Project; sprint: SprintView; items: TaskView[]; onClose: () => void }) {
+export function StartDialog({ project, sprint, items, onClose }: { project: Project; sprint: SprintView; items: TaskView[]; onClose: () => void }) {
   const a = useSprintActions();
   const [goal, setGoal] = useState(sprint.goal ?? '');
   const [start, setStart] = useState(sprint.startDate < todayStr() ? todayStr() : sprint.startDate);
@@ -368,7 +384,7 @@ function StartDialog({ project, sprint, items, onClose }: { project: Project; sp
   );
 }
 
-function CompleteDialog({ word, sprint, next, items, onClose }: { word: string; sprint: SprintView; next: SprintView[]; items: TaskView[]; onClose: () => void }) {
+export function CompleteDialog({ word, sprint, next, items, onClose }: { word: string; sprint: SprintView; next: SprintView[]; items: TaskView[]; onClose: () => void }) {
   const a = useSprintActions();
   const done = items.filter((t) => t.completedAt);
   const open = items.length - done.length;

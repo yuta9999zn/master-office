@@ -1,7 +1,7 @@
 'use client';
 
-import { can, canTransition, isAgile, sprintWord, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
-import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
+import { can, canTransition, isAgile, sprintWord, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type SprintView, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
+import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Play, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
@@ -9,7 +9,7 @@ import { useSpaces, useUsers } from '@/lib/queries';
 import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, useTaskActions, useTasks } from '@/lib/tasks';
 import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
-import { BacklogView } from './BacklogView';
+import { BacklogView, CompleteDialog, SprintDialog, StartDialog } from './BacklogView';
 import { DocsView } from './DocsView';
 import { GanttView } from './GanttView';
 import { IssueIcon, issueLabel, Points } from './issue-bits';
@@ -93,8 +93,8 @@ export function TasksApp() {
   }, [tasks, q, who]);
   const triage = (tasks ?? []).filter((t) => t.triage);
   // Scrum, Hybrid and AI-DLC plan in sprints (bolts): Backlog and Sprints tabs, and the board shows the active one.
-  const agile = isAgile(project?.methodology);
-  const { data: sprints } = useSprints(agile ? project?.id : null);
+  const { data: sprints } = useSprints(project?.id ?? null);
+  const agile = isAgile(project?.methodology) || !!sprints?.length;
   const activeSprint = agile ? sprints?.find((x) => x.state === 'active') ?? null : null;
   // Board scope (§76): which sprint, which epic, and swimlanes — kept in the URL.
   // Quick successive changes build on the last one even before the URL has caught up.
@@ -195,7 +195,7 @@ export function TasksApp() {
           ) : view === 'intake' && project ? (
             <IntakeView tasks={triage} canEdit={canEdit} open={(id) => go({ task: id })} />
           ) : view === 'list' ? (
-            <ListView tasks={shown.filter((t) => !t.triage)} all={tasks ?? []} statuses={statuses} hierarchy={!!project} open={(id) => go({ task: id })} />
+            <ListView tasks={shown.filter((t) => !t.triage)} all={tasks ?? []} statuses={statuses} hierarchy={!!project} open={(id) => go({ task: id })} project={project} sprints={sprints ?? []} strict={!!project?.strictWorkflow} />
           ) : view === 'gantt' && project ? (
             <GanttView tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} projectId={project.id} />
           ) : view === 'calendar' ? (
@@ -599,30 +599,44 @@ function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, project
 
 // ── List ────────────────────────────────────────────────────────────────────
 
-function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; hierarchy: boolean; open: (id: string) => void }) {
+function ListView({ tasks, all, statuses, hierarchy, open, project, sprints, strict = false }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; hierarchy: boolean; open: (id: string) => void; project?: Project | null; sprints?: SprintView[]; strict?: boolean }) {
   const { update } = useTaskActions();
-  const [group, setGroup] = useState<'status' | 'hierarchy'>('status');
+  const [group, setGroup] = useState<'status' | 'sprint' | 'hierarchy'>('status');
   const [closed, setClosed] = useState<Set<string>>(new Set());
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [sprintForm, setSprintForm] = useState(false);
+  const [starting, setStarting] = useState<SprintView | null>(null);
+  const [completing, setCompleting] = useState<SprintView | null>(null);
   const top = tasks.filter((t) => !t.parentId || WORK_TYPES.includes(t.type));
-  const row = (t: TaskView, depth = 0, hasKids = false) => (
-    <tr key={t.id} className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-hover" onClick={() => open(t.id)} data-testid="task-row" data-title={t.title} data-type={t.type}>
+  const canEdit = !!project?.perms.write || !project;
+  const word = sprintWord(project?.methodology);
+  const dragged = drag ? tasks.find((t) => t.id === drag) ?? null : null;
+  const fold = (key: string) =>
+    setClosed((v) => {
+      const n = new Set(v);
+      if (!n.delete(key)) n.add(key);
+      return n;
+    });
+
+  const row = (t: TaskView, depth = 0, hasKids = false, draggable = false) => (
+    <tr
+      key={t.id}
+      draggable={draggable && canEdit && t.canEdit}
+      onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
+      onDragEnd={() => (setDrag(null), setOver(null))}
+      className={cn('cursor-pointer border-b border-line/60 last:border-0 hover:bg-hover', drag === t.id && 'opacity-40')}
+      onClick={() => open(t.id)}
+      data-testid="task-row"
+      data-title={t.title}
+      data-type={t.type}
+    >
       <td className="w-24 px-4 py-2 font-mono text-[11.5px] text-subtle">{t.ref ?? '—'}</td>
       <td className="py-2 font-medium text-ink">
         <span className="flex items-center gap-1.5" style={{ paddingLeft: depth * 18 }}>
           {group === 'hierarchy' &&
             (hasKids ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setClosed((v) => {
-                    const n = new Set(v);
-                    if (!n.delete(t.id)) n.add(t.id);
-                    return n;
-                  });
-                }}
-                className="text-muted"
-                aria-label={closed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`}
-              >
+              <button onClick={(e) => (e.stopPropagation(), fold(t.id))} className="text-muted" aria-label={closed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`}>
                 {closed.has(t.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
               </button>
             ) : (
@@ -631,6 +645,9 @@ function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]
           {hierarchy && <IssueIcon type={t.type} size={15} />}
           <span className={cn(ISSUE_RANK[t.type] < 2 && 'font-semibold')}>{t.title}</span>
           {t.blockedBy > 0 && <Ban size={12} className="text-red-500" />}
+          {group !== 'sprint' && t.sprintId && sprints?.find((sp) => sp.id === t.sprintId && sp.state !== 'closed') && (
+            <span className="rounded bg-brand-50 px-1.5 text-[10.5px] font-medium text-brand-700">{sprints.find((sp) => sp.id === t.sprintId)!.name}</span>
+          )}
         </span>
       </td>
       <td className="w-40 py-2">{t.assignee ? <span className="flex items-center gap-1.5"><Avatar user={t.assignee} size={20} />{t.assignee.name.split(' ')[0]}</span> : <span className="text-subtle">—</span>}</td>
@@ -639,7 +656,7 @@ function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]
       <td className="w-24 py-2"><Due t={t} /></td>
       <td className="w-36 py-2 pr-4" onClick={(e) => e.stopPropagation()}>
         <select value={t.status} disabled={!t.canEdit} onChange={(e) => update.mutate({ id: t.id, status: e.target.value })} className="h-7 w-full rounded-md border border-line bg-surface px-1.5 text-[12px]" aria-label={`Status of ${t.title}`}>
-          {statuses.map((x) => (
+          {(strict ? statuses.filter((x) => canTransition(statuses, t.status, x.id)) : statuses).map((x) => (
             <option key={x.id} value={x.id}>
               {x.name}
             </option>
@@ -648,6 +665,49 @@ function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]
       </td>
     </tr>
   );
+
+  /** A group of rows that cards can be dragged into. */
+  const section = (key: string, head: React.ReactNode, list: TaskView[], accepts: (t: TaskView) => boolean, onDrop: (t: TaskView) => void, empty: string, testid: string, extra?: React.ReactNode) => {
+    const ok = !!dragged && accepts(dragged);
+    return (
+      <section
+        key={key}
+        className={cn('card mb-4 overflow-hidden', over === key && ok && 'ring-2 ring-brand-300', dragged && !ok && 'opacity-50')}
+        onDragOver={(e) => {
+          if (!ok) return;
+          e.preventDefault();
+          setOver(key);
+        }}
+        onDragLeave={() => over === key && setOver(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (dragged && ok) onDrop(dragged);
+          setDrag(null);
+          setOver(null);
+        }}
+        data-testid={testid}
+        data-group={key}
+      >
+        <div className="flex items-center gap-2 border-b border-line px-4 py-2">
+          <button onClick={() => fold(`g:${key}`)} className="text-muted" aria-label={closed.has(`g:${key}`) ? 'Expand group' : 'Collapse group'}>
+            {closed.has(`g:${key}`) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {head}
+          <span className="text-[12px] text-muted">{list.length}</span>
+          {extra}
+        </div>
+        {!closed.has(`g:${key}`) &&
+          (list.length ? (
+            <table className="w-full text-[13px]">
+              <tbody>{list.map((t) => row(t, 0, false, true))}</tbody>
+            </table>
+          ) : (
+            <p className="px-4 py-3 text-[12.5px] text-subtle">{empty}</p>
+          ))}
+      </section>
+    );
+  };
+
   // Hierarchy: phases › epics › work items › subtasks (an item whose parent is filtered out starts its own branch).
   const tree = () => {
     const ids = new Set(tasks.map((t) => t.id));
@@ -661,17 +721,29 @@ function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]
     for (const r of roots) walk(r, 0);
     return out;
   };
+
+  const openSprints = (sprints ?? []).filter((sp) => sp.state !== 'closed').sort((x, y) => (x.state === 'active' ? -1 : y.state === 'active' ? 1 : x.startDate.localeCompare(y.startDate)));
+  const work = top.filter((t) => WORK_TYPES.includes(t.type) && !t.triage);
+  const backlog = work.filter((t) => !t.completedAt && (!t.sprintId || !openSprints.some((sp) => sp.id === t.sprintId)));
+  const fmt = (d: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`));
+  const active = openSprints.find((sp) => sp.state === 'active');
   void all;
+
   return (
     <div className="h-full overflow-y-auto p-5" data-testid="task-list">
       {hierarchy && (
         <div className="mb-3 flex items-center gap-2 text-[12.5px]">
           <span className="text-muted">Group by</span>
-          {(['status', 'hierarchy'] as const).map((g) => (
+          {(['status', 'sprint', 'hierarchy'] as const).map((g) => (
             <button key={g} onClick={() => setGroup(g)} className={cn('rounded-md px-2.5 py-1 capitalize', group === g ? 'bg-selected font-semibold text-brand-700' : 'text-ink-2 hover:bg-hover')} data-testid={`group-${g}`}>
-              {g}
+              {g === 'sprint' ? word : g}
             </button>
           ))}
+          {project && canEdit && (
+            <Button size="sm" className="ml-auto" icon={<Plus size={14} />} onClick={() => (setGroup('sprint'), setSprintForm(true))} data-testid="list-new-sprint">
+              {word}
+            </Button>
+          )}
         </div>
       )}
       {group === 'hierarchy' ? (
@@ -680,25 +752,75 @@ function ListView({ tasks, all, statuses, hierarchy, open }: { tasks: TaskView[]
             <tbody>{tree()}</tbody>
           </table>
         </section>
+      ) : group === 'sprint' && project ? (
+        <>
+          {openSprints.map((sp) =>
+            section(
+              sp.id,
+              <>
+                <span className="text-[13px] font-semibold text-ink">{sp.name}</span>
+                <span className="text-[12px] text-muted" data-testid="sprint-range">
+                  {fmt(sp.startDate)} – {fmt(sp.endDate)}
+                </span>
+                {sp.state === 'active' && <span className="rounded-full bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">Active</span>}
+              </>,
+              work.filter((t) => t.sprintId === sp.id),
+              (t) => WORK_TYPES.includes(t.type) && t.sprintId !== sp.id,
+              (t) => update.mutate({ id: t.id, sprintId: sp.id }),
+              `Drag issues here to plan them into this ${word.toLowerCase()}.`,
+              'sprint-group',
+              canEdit && (
+                <span className="ml-auto flex gap-1.5">
+                  {sp.state === 'planned' && (
+                    <Button size="sm" variant={active ? 'ghost' : 'primary'} disabled={!!active || !work.some((t) => t.sprintId === sp.id)} icon={<Play size={12} />} onClick={() => setStarting(sp)} title={active ? `Complete ${active.name} first` : undefined}>
+                      Start
+                    </Button>
+                  )}
+                  {sp.state === 'active' && (
+                    <Button size="sm" onClick={() => setCompleting(sp)}>
+                      Complete
+                    </Button>
+                  )}
+                </span>
+              ),
+            ),
+          )}
+          {section(
+            'backlog',
+            <span className="text-[13px] font-semibold text-ink">Backlog</span>,
+            backlog,
+            (t) => WORK_TYPES.includes(t.type) && !!t.sprintId,
+            (t) => update.mutate({ id: t.id, sprintId: null }),
+            openSprints.length ? 'Nothing waiting — everything is planned.' : `Nothing waiting. Create a ${word.toLowerCase()} and drag issues into it.`,
+            'sprint-group',
+          )}
+          {!openSprints.length && (
+            <p className="text-[12.5px] text-muted">
+              No {word.toLowerCase()} yet — <button className="text-brand-700 hover:underline" onClick={() => setSprintForm(true)}>create one</button> with its start and end dates, then drag issues from the backlog into it.
+            </p>
+          )}
+        </>
       ) : (
-        statuses.map((s) => {
-          const list = top.filter((t) => columnOf(t, statuses) === s.id);
-          if (!list.length) return null;
-          return (
-            <section key={s.id} className="card mb-4 overflow-hidden">
-              <div className="flex items-center gap-2 border-b border-line px-4 py-2">
-                <span className="size-2.5 rounded-full" style={{ background: s.color }} />
-                <span className="text-[13px] font-semibold text-ink">{s.name}</span>
-                <span className="text-[12px] text-muted">{list.length}</span>
-              </div>
-              <table className="w-full text-[13px]">
-                <tbody>{list.map((t) => row(t))}</tbody>
-              </table>
-            </section>
-          );
-        })
+        // Every status of the workflow, like the board's columns — drag a row to another status.
+        statuses.map((s) =>
+          section(
+            s.id,
+            <>
+              <span className="size-2.5 rounded-full" style={{ background: s.color }} />
+              <span className="text-[13px] font-semibold text-ink">{s.name}</span>
+            </>,
+            top.filter((t) => columnOf(t, statuses) === s.id),
+            (t) => t.status !== s.id && (!strict || canTransition(statuses, t.status, s.id)),
+            (t) => update.mutate({ id: t.id, status: s.id }),
+            'No issues',
+            'status-group',
+          ),
+        )
       )}
-      {!top.length && <EmptyState icon={<CheckSquare size={32} />} title="No tasks" />}
+      {!top.length && group === 'hierarchy' && <EmptyState icon={<CheckSquare size={32} />} title="No tasks" />}
+      {project && sprintForm && <SprintDialog project={project} sprint="new" onClose={() => setSprintForm(false)} />}
+      {project && starting && <StartDialog project={project} sprint={starting} items={work.filter((t) => t.sprintId === starting.id)} onClose={() => setStarting(null)} />}
+      {project && completing && <CompleteDialog word={word} sprint={completing} next={openSprints.filter((sp) => sp.state === 'planned')} items={work.filter((t) => t.sprintId === completing.id)} onClose={() => setCompleting(null)} />}
     </div>
   );
 }
