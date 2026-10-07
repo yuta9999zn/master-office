@@ -829,6 +829,9 @@ export const projects = pgTable(
     workflow: text('workflow').$type<'software' | 'scrum' | 'basic' | 'bug' | 'waterfall' | 'custom'>().notNull().default('scrum'),
     strictWorkflow: boolean('strict_workflow').notNull().default(false),
     /** The project's documentation space (a folder in its Space, §76 batch 3). */
+    /** Definition of Done (§76 quality): the checklist every work item meets; enforced when `enforce_dod`. */
+    dod: jsonb('dod').$type<string[]>().notNull().default([]),
+    enforceDod: boolean('enforce_dod').notNull().default(false),
     docsFolderId: uuid('docs_folder_id').references((): AnyPgColumn => resources.id, { onDelete: 'set null' }),
     archivedAt: ts('archived_at'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
@@ -863,6 +866,10 @@ export const tasks = pgTable(
     triage: boolean('triage').notNull().default(false),
     /** Why it is closed: done, declined, duplicate, won't do. */
     resolution: text('resolution'),
+    /** Acceptance criteria (Given / When / Then…), each ticked when met. */
+    criteria: jsonb('criteria').$type<{ id: string; text: string; done: boolean }[]>().notNull().default([]),
+    /** Definition of Done items of the project ticked on this issue (by text). */
+    dodDone: jsonb('dod_done').$type<string[]>().notNull().default([]),
     /** The sprint it is planned in (Scrum, §76). */
     sprintId: uuid('sprint_id').references((): AnyPgColumn => sprints.id, { onDelete: 'set null' }),
     /** Order in the backlog and inside a sprint (fractional, like `position` on the board). */
@@ -1185,4 +1192,21 @@ export const taskDocs = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.taskId, t.resourceId] }), index('task_docs_resource_idx').on(t.resourceId)],
+);
+
+/** Time logged on an issue (worklog). */
+export const taskWorklogs = pgTable(
+  'task_worklogs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    minutes: integer('minutes').notNull(),
+    day: date('day').notNull(),
+    note: text('note'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('task_worklogs_task_idx').on(t.taskId, t.day)],
 );

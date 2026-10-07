@@ -863,7 +863,10 @@ function RequestDialog({ open, onClose, project }: { open: boolean; onClose: () 
 function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
   const { data: users } = useUsers();
   const { updateProject } = useTaskActions();
-  const [tab, setTab] = useState<'general' | 'workflow' | 'board'>('general');
+  const [tab, setTab] = useState<'general' | 'workflow' | 'quality' | 'board'>('general');
+  const [dod, setDod] = useState<string[]>(project.dod);
+  const [enforceDod, setEnforceDod] = useState(project.enforceDod);
+  const [dodDraft, setDodDraft] = useState('');
   const [methodology, setMethodology] = useState<Methodology>(project.methodology);
   const [lead, setLead] = useState(project.lead?.id ?? '');
   const [intake, setIntake] = useState(project.intakeOpen);
@@ -885,6 +888,8 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
         dailyTime,
         wipLimits: Object.fromEntries(Object.entries(wip).filter(([k, v]) => v > 0 && statuses.some((x) => x.id === k))),
         strictWorkflow: strict,
+        dod,
+        enforceDod,
         ...(workflow === 'custom' ? (changedStatuses ? { statuses } : {}) : workflow !== project.workflow ? { workflow } : {}),
       },
       { onSuccess: onClose },
@@ -903,7 +908,7 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
       }
     >
       <nav className="mb-4 flex gap-1 border-b border-line" role="tablist">
-        {(['general', 'workflow', 'board'] as const).map((t) => (
+        {(['general', 'workflow', 'quality', 'board'] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('-mb-px border-b-2 px-3 py-1.5 text-[13px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-muted hover:text-ink')} data-testid={`settings-tab-${t}`}>
             {t}
           </button>
@@ -957,6 +962,38 @@ function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onCl
         </div>
       )}
       {tab === 'workflow' && <WorkflowSettings workflow={workflow} setWorkflow={setWorkflow} statuses={statuses} setStatuses={setStatuses} strict={strict} setStrict={setStrict} />}
+      {tab === 'quality' && (
+        <div className="space-y-3 text-[13px]" data-testid="quality-settings">
+          <p className="font-medium text-ink-2">Definition of Done</p>
+          <ul className="space-y-1">
+            {dod.map((x, i) => (
+              <li key={x} className="flex items-center gap-2 rounded-md px-2 py-1 ring-1 ring-line">
+                <span className="flex-1">{x}</span>
+                <button onClick={() => setDod(dod.filter((_, j) => j !== i))} className="text-[12px] text-muted hover:text-red-600" aria-label={`Remove ${x}`}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (dodDraft.trim() && !dod.includes(dodDraft.trim())) setDod([...dod, dodDraft.trim()]);
+              setDodDraft('');
+            }}
+          >
+            <input value={dodDraft} onChange={(e) => setDodDraft(e.target.value)} placeholder="Add an item (e.g. Security review done)" aria-label="New DoD item" className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong px-3 outline-none focus:border-brand-500" />
+            <Button type="submit">Add</Button>
+          </form>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={enforceDod} onChange={(e) => setEnforceDod(e.target.checked)} className="accent-brand-600" data-testid="enforce-dod" />
+            <span>
+              <b>Quality gate</b> — a story, task or bug only goes to Done when its acceptance criteria and every Definition of Done item are ticked
+            </span>
+          </label>
+        </div>
+      )}
       {tab === 'board' && (
         <div className="text-[13px]">
           <p className="mb-1.5 font-medium text-ink-2">Work-in-progress limits (empty = none)</p>

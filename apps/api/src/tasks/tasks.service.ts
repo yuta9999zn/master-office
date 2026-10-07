@@ -4,6 +4,10 @@ import {
   can,
   canTransition,
   childTypeOf,
+  DEFAULT_DOD,
+  type AcceptanceCriterion,
+  type QualityStats,
+  type WorklogView,
   WORKFLOWS,
   type WorkflowId,
   ISSUE_RANK,
@@ -27,7 +31,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
+import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, taskWorklogs, workspaceMembers } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -121,6 +125,8 @@ export class TasksService {
       wipLimits: p.wipLimits,
       workflow: p.workflow,
       strictWorkflow: p.strictWorkflow,
+      dod: p.dod,
+      enforceDod: p.enforceDod,
       perms: this.projectPerms(p, actor, role),
       counts: { total: Number(c?.total ?? 0), done: Number(c?.done ?? 0), overdue: Number(c?.overdue ?? 0), triage: Number(c?.triage ?? 0) },
     };
@@ -149,6 +155,7 @@ export class TasksService {
         description: input.description?.trim() || null,
         ...this.workflowFor(input.workflow ?? (input.methodology === 'waterfall' ? 'waterfall' : 'software'), input.strictWorkflow),
         methodology: input.methodology ?? 'kanban',
+        dod: DEFAULT_DOD,
         leadId: actor.id,
         createdBy: actor.id,
       })
@@ -173,6 +180,8 @@ export class TasksService {
       wipLimits?: Record<string, number>;
       workflow?: WorkflowId;
       strictWorkflow?: boolean;
+      dod?: string[];
+      enforceDod?: boolean;
     },
   ) {
     const { p } = await this.project(actor, id, 'manage');
@@ -185,6 +194,8 @@ export class TasksService {
     if (input.intakeOpen !== undefined) set.intakeOpen = input.intakeOpen;
     if (input.sprintDays !== undefined) set.sprintDays = input.sprintDays;
     if (input.strictWorkflow !== undefined) set.strictWorkflow = input.strictWorkflow;
+    if (input.dod !== undefined) set.dod = [...new Set(input.dod.map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+    if (input.enforceDod !== undefined) set.enforceDod = input.enforceDod;
     // A professional workflow replaces the statuses (unless they come customised along with it).
     if (input.workflow && input.workflow !== 'custom' && !input.statuses) input.statuses = this.workflowFor(input.workflow).statuses;
     if (input.workflow) set.workflow = input.workflow;
@@ -262,10 +273,11 @@ export class TasksService {
     const projMap = projs ?? new Map((await this.db.select().from(projects).where(inArray(projects.id, [...new Set(rows.map((r) => r.projectId).filter((x): x is string => !!x))].concat([NONE])))).map((p) => [p.id, p]));
     const ids = rows.map((r) => r.id);
     const idList = sql.join(ids.map((x) => sql`${x}`), sql`, `);
-    const [subs, comments, blockers] = await Promise.all([
+    const [subs, comments, blockers, spent] = await Promise.all([
       this.db.execute<{ parent_id: string; total: string; done: string }>(sql`SELECT parent_id, count(*) AS total, count(*) FILTER (WHERE completed_at IS NOT NULL) AS done FROM tasks WHERE parent_id IN (${idList}) GROUP BY parent_id`),
       this.db.execute<{ task_id: string; n: string }>(sql`SELECT task_id, count(*) AS n FROM task_events WHERE kind = 'comment' AND task_id IN (${idList}) GROUP BY task_id`),
       this.db.execute<{ to_id: string; n: string }>(sql`SELECT l.to_id, count(*) AS n FROM task_links l JOIN tasks b ON b.id = l.from_id WHERE l.kind = 'blocks' AND b.completed_at IS NULL AND l.to_id IN (${idList}) GROUP BY l.to_id`),
+      this.db.execute<{ task_id: string; m: string }>(sql`SELECT task_id, sum(minutes) AS m FROM task_worklogs WHERE task_id IN (${idList}) GROUP BY task_id`),
     ]);
     const people = await loadUsers(this.db, [...rows.map((r) => r.assigneeId), ...rows.map((r) => r.createdBy), ...rows.map((r) => r.reporterId)]);
     const roles = canEditAll === undefined ? await this.perms.spaceRoles(actor) : null;
@@ -295,6 +307,9 @@ export class TasksService {
         blockedBy: Number(blockers.rows.find((x) => x.to_id === t.id)?.n ?? 0),
         sprintId: t.sprintId,
         rank: t.rank,
+        criteria: t.criteria,
+        dodDone: t.dodDone,
+        spentMinutes: Number(spent.rows.find((x) => x.task_id === t.id)?.m ?? 0),
         tags: t.tags,
         startDate: t.startDate,
         dueDate: t.dueDate,
@@ -338,6 +353,93 @@ export class TasksService {
       watchers: watchers.map((w) => people.get(w.id)!).filter(Boolean),
       watching: watchers.some((w) => w.id === actor.id),
       docs: await this.docsOf(actor, id),
+      worklogs: await this.worklogsOf(id),
+    };
+  }
+
+  private cleanCriteria(list: AcceptanceCriterion[] | undefined): AcceptanceCriterion[] | undefined {
+    if (!list) return undefined;
+    return list
+      .map((c, i) => ({ id: c.id || `c${Date.now().toString(36)}${i}`, text: c.text.trim().slice(0, 1000), done: !!c.done }))
+      .filter((c) => c.text)
+      .slice(0, 30);
+  }
+
+  private async worklogsOf(taskId: string): Promise<WorklogView[]> {
+    const rows = await this.db.select().from(taskWorklogs).where(eq(taskWorklogs.taskId, taskId)).orderBy(desc(taskWorklogs.day), desc(taskWorklogs.createdAt));
+    const people = await loadUsers(this.db, rows.map((r) => r.userId));
+    return rows.map((r) => ({ id: r.id, user: r.userId ? people.get(r.userId) ?? null : null, minutes: r.minutes, day: r.day, note: r.note, createdAt: r.createdAt }));
+  }
+
+  /** Logs time spent on an issue (anyone who may comment on it). */
+  async logWork(actor: Actor, id: string, input: { minutes: number; day?: string; note?: string | null }) {
+    const t = await this.load(id);
+    await this.access(actor, t, 'comment');
+    if (!Number.isInteger(input.minutes) || input.minutes < 1 || input.minutes > 24 * 60) throw new BadRequestException('Log between 1 minute and 24 hours');
+    await this.db.insert(taskWorklogs).values({ taskId: id, userId: actor.id, minutes: input.minutes, day: input.day ?? today(), note: input.note?.trim() || null });
+    await this.changed(t.projectId, t);
+    return this.worklogsOf(id);
+  }
+
+  async removeWork(actor: Actor, worklogId: string) {
+    const [w] = await this.db.select().from(taskWorklogs).where(eq(taskWorklogs.id, worklogId));
+    if (!w) throw new NotFoundException('Worklog not found');
+    const t = await this.load(w.taskId);
+    const p = await this.access(actor, t, 'comment');
+    const manager = p ? (await this.project(actor, p.id)).perms.manage : false;
+    if (w.userId !== actor.id && !manager) throw new ForbiddenException('Only who logged it removes it');
+    await this.db.delete(taskWorklogs).where(eq(taskWorklogs.id, worklogId));
+    await this.changed(t.projectId, t);
+    return this.worklogsOf(t.id);
+  }
+
+  /** Quality of the process: defects, rework, flow, DoD compliance, time. */
+  async quality(actor: Actor, projectId: string): Promise<QualityStats> {
+    const { p } = await this.project(actor, projectId);
+    const all = await this.db.select().from(tasks).where(and(eq(tasks.projectId, projectId), eq(tasks.triage, false)));
+    const work = all.filter((t) => WORK_TYPES.includes(t.type));
+    const bugs = all.filter((t) => t.type === 'bug');
+    const doneCat = new Set(p.statuses.filter((x) => x.category === 'done').map((x) => x.id));
+    const startCat = new Set(p.statuses.filter((x) => x.category !== 'todo').map((x) => x.id));
+    const ids = all.map((t) => t.id);
+    const events = ids.length ? await this.db.select().from(taskEvents).where(and(inArray(taskEvents.taskId, ids), eq(taskEvents.kind, 'change'))).orderBy(asc(taskEvents.createdAt)) : [];
+    const statusMoves = events.map((e) => ({ taskId: e.taskId, at: e.createdAt, move: (e.data as { status?: [string, string] }).status })).filter((e) => e.move);
+    const reopenedIds = new Set(statusMoves.filter((e) => doneCat.has(e.move![0]) && !doneCat.has(e.move![1])).map((e) => e.taskId));
+    const qaRejections = statusMoves.filter((e) => ['fixing', 'reopened'].includes(e.move![1]) && !doneCat.has(e.move![0])).length;
+    const since = Date.now() - 90 * 86_400_000;
+    const finished = work.filter((t) => t.completedAt && t.resolution === 'done' && Date.parse(t.completedAt) >= since);
+    const days = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
+    const lead = finished.map((t) => days(t.createdAt, t.completedAt!));
+    const cycle = finished
+      .map((t) => {
+        const first = statusMoves.find((e) => e.taskId === t.id && startCat.has(e.move![1]));
+        return first ? days(first.at, t.completedAt!) : null;
+      })
+      .filter((x): x is number => x !== null);
+    const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
+    const blocked = ids.length
+      ? Number((await this.db.execute<{ n: string }>(sql`SELECT count(DISTINCT l.to_id) AS n FROM task_links l JOIN tasks b ON b.id = l.from_id JOIN tasks t ON t.id = l.to_id WHERE l.kind = 'blocks' AND b.completed_at IS NULL AND t.completed_at IS NULL AND t.project_id = ${projectId}`)).rows[0]?.n ?? 0)
+      : 0;
+    const weeks = Array.from({ length: 8 }, (_, i) => {
+      const end = Date.now() - (7 - i) * 7 * 86_400_000;
+      return { start: end - 7 * 86_400_000, end, week: new Date(end - 6 * 86_400_000).toISOString().slice(0, 10) };
+    });
+    const points = work.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
+    const spent = ids.length ? Number((await this.db.execute<{ m: string }>(sql`SELECT coalesce(sum(minutes), 0) AS m FROM task_worklogs WHERE task_id IN (${sql.join(ids.map((x) => sql`${x}`), sql`, `)})`)).rows[0]?.m ?? 0) : 0;
+    const doneWork = work.filter((t) => t.completedAt && t.resolution === 'done');
+    return {
+      bugs: { open: bugs.filter((b) => !b.completedAt).length, closed: bugs.filter((b) => b.completedAt).length, critical: bugs.filter((b) => !b.completedAt && (b.priority === 'urgent' || b.priority === 'high')).length, perTenPoints: points ? Math.round((bugs.length / points) * 100) / 10 : null },
+      bugTrend: weeks.map((w) => ({ week: w.week, opened: bugs.filter((b) => Date.parse(b.createdAt) > w.start && Date.parse(b.createdAt) <= w.end).length, closed: bugs.filter((b) => b.completedAt && Date.parse(b.completedAt) > w.start && Date.parse(b.completedAt) <= w.end).length })),
+      reopened: reopenedIds.size,
+      reopenRate: doneWork.length ? Math.round((work.filter((t) => reopenedIds.has(t.id)).length / doneWork.length) * 100) : 0,
+      qaRejections,
+      leadDays: avg(lead),
+      cycleDays: avg(cycle),
+      blocked,
+      overdue: work.filter((t) => !t.completedAt && t.dueDate && t.dueDate < today()).length,
+      dodCompliance: doneWork.length && p.dod.length ? Math.round((doneWork.filter((t) => p.dod.every((x) => t.dodDone.includes(x))).length / doneWork.length) * 100) : null,
+      criteriaCoverage: work.length ? Math.round((work.filter((t) => t.criteria.length > 0).length / work.length) * 100) : null,
+      time: { estimateMinutes: work.reduce((n, t) => n + (t.estimateMinutes ?? 0), 0), spentMinutes: spent },
     };
   }
 
@@ -457,6 +559,7 @@ export class TasksService {
           position: await this.positionFor(tx, p?.id ?? null, status, input.before, input.after, actor.id),
           sprintId: p && input.sprintId && WORK_TYPES.includes(type) ? await this.checkSprint(tx, p.id, input.sprintId) : null,
           rank: p ? await this.rankFor(tx, p.id, input.rankAfter, input.rankBefore) : 'm',
+          criteria: this.cleanCriteria(input.criteria) ?? [],
           completedAt: done ? new Date().toISOString() : null,
           resolution: done ? target?.resolution ?? 'done' : null,
           createdBy: actor.id,
@@ -538,6 +641,8 @@ export class TasksService {
       if (input.storyPoints !== undefined) put('storyPoints', this.estimate(input.storyPoints, 1000, 'Story points') ?? null);
       if (input.estimateMinutes !== undefined) put('estimateMinutes', this.estimate(input.estimateMinutes, 100_000, 'The estimate') ?? null);
       if (input.triage === false && before.triage) put('triage', false);
+      if (input.criteria !== undefined) put('criteria', this.cleanCriteria(input.criteria)!);
+      if (input.dodDone !== undefined) put('dodDone', [...new Set(input.dodDone)].filter((x) => p?.dod.includes(x)));
       // Planning: into a sprint (or back to the backlog), and the order there.
       if (input.sprintId !== undefined && before.projectId) {
         const type = input.type ?? before.type;
@@ -574,9 +679,19 @@ export class TasksService {
           const name = (x: string) => statuses.find((s) => s.id === x)?.name ?? x;
           throw new BadRequestException(`"${name(before.status)}" cannot move to "${name(input.status)}" in this workflow`);
         }
-        put('status', input.status);
         const target = statuses.find((s) => s.id === input.status)!;
         const done = target.category === 'done';
+        // Quality gate: a work item is Done only when its acceptance criteria and the Definition of Done are met.
+        if (done && !before.completedAt && p?.enforceDod && WORK_TYPES.includes((set.type as IssueType) ?? before.type) && (target.resolution ?? 'done') === 'done') {
+          const openCriteria = ((set.criteria as AcceptanceCriterion[] | undefined) ?? before.criteria).filter((c) => !c.done).length;
+          const ticked = (set.dodDone as string[] | undefined) ?? before.dodDone;
+          const openDod = p.dod.filter((x) => !ticked.includes(x)).length;
+          if (openCriteria || openDod)
+            throw new BadRequestException(
+              `Not done yet: ${[openCriteria ? `${openCriteria} acceptance criteria` : '', openDod ? `${openDod} Definition of Done item${openDod === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')} open`,
+            );
+        }
+        put('status', input.status);
         if (done && !before.completedAt) set.completedAt = new Date().toISOString();
         if (done) set.resolution = target.resolution ?? 'done';
         if (!done && before.completedAt) {

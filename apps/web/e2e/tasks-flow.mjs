@@ -138,7 +138,7 @@ await step('the dashboard: numbers, a chart with a hover readout, people', claud
   await claudia.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2);
   await claudia.getByTestId('trend-tooltip').getByText(/Created \d+/).waitFor();
   await claudia.getByTestId('team-performance').getByText('Mika Tanaka').waitFor();
-  await claudia.getByText('Show table').click();
+  await claudia.getByText('Show table').first().click();
   await claudia.getByRole('columnheader', { name: 'Completed' }).waitFor();
 });
 

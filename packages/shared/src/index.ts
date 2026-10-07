@@ -821,6 +821,9 @@ export interface Project {
   /** The workflow the statuses came from, and whether its transitions are enforced. */
   workflow: WorkflowId;
   strictWorkflow: boolean;
+  /** Definition of Done, and whether a work item must meet it (and its acceptance criteria) to be Done. */
+  dod: string[];
+  enforceDod: boolean;
   /** read = see; write = create / change tasks; comment = discuss; manage = statuses, settings. */
   perms: { read: boolean; comment: boolean; write: boolean; manage: boolean };
   /** Work items (stories, tasks, bugs) — not containers, subtasks or requests in triage. */
@@ -851,6 +854,12 @@ export interface TaskView {
   sprintId: string | null;
   /** Order in the backlog / inside a sprint. */
   rank: string;
+  /** Acceptance criteria, each ticked when met. */
+  criteria: AcceptanceCriterion[];
+  /** Definition of Done items ticked on this issue. */
+  dodDone: string[];
+  /** Time logged on it. */
+  spentMinutes: number;
   tags: string[];
   startDate: string | null;
   dueDate: string | null;
@@ -887,6 +896,8 @@ export interface TaskInput {
   source?: { kind: 'chat'; conversationId: string; messageId: string } | null;
   /** Plan into a sprint (null = backlog). */
   sprintId?: string | null;
+  criteria?: AcceptanceCriterion[];
+  dodDone?: string[];
   /** Backlog / sprint order: drop between these two issues. */
   rankAfter?: string | null;
   rankBefore?: string | null;
@@ -983,6 +994,45 @@ export interface TaskDetail extends TaskView {
   watching: boolean;
   /** Documents it traces to (requirements, specs, use cases…). */
   docs: { id: string; name: string; type: ResourceType; accessible: boolean }[];
+  worklogs: WorklogView[];
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface WorklogView {
+  id: string;
+  user: UserSummary | null;
+  minutes: number;
+  day: string;
+  note: string | null;
+  createdAt: string;
+}
+
+/** The usual Definition of Done of a software team (new projects start with it). */
+export const DEFAULT_DOD = ['Acceptance criteria met', 'Code reviewed', 'Tests pass', 'QA tested, no open critical bugs', 'Documentation updated', 'Product owner accepted'];
+
+/** Quality of the process (§76): defects, rework, flow, compliance, time. */
+export interface QualityStats {
+  bugs: { open: number; closed: number; critical: number; perTenPoints: number | null };
+  /** Bugs opened vs closed per week, last 8 weeks. */
+  bugTrend: { week: string; opened: number; closed: number }[];
+  /** Done work items reopened at least once / sent back from QA to Fixing. */
+  reopened: number;
+  reopenRate: number;
+  qaRejections: number;
+  /** Days: created → done, and first in progress → done (work items done in the last 90 days). */
+  leadDays: number | null;
+  cycleDays: number | null;
+  blocked: number;
+  overdue: number;
+  /** Share of done work items that ticked the whole Definition of Done / have acceptance criteria. */
+  dodCompliance: number | null;
+  criteriaCoverage: number | null;
+  time: { estimateMinutes: number; spentMinutes: number };
 }
 
 /** A page or folder of a project's documentation space (§76). */

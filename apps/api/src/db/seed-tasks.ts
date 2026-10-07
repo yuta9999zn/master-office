@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { between, WORKFLOWS } from '@workos/shared';
+import { between, DEFAULT_DOD, WORKFLOWS } from '@workos/shared';
 import { DEFAULT_STATUSES } from '../tasks/tasks.service';
 import type { Db } from './client';
 import * as s from './schema';
@@ -13,7 +13,7 @@ type User = typeof s.users.$inferSelect;
 export async function seedTasks(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
   const project = async (space: string, name: string, key: string, color: string, owner: string, methodology: 'scrum' | 'kanban' | 'waterfall' | 'hybrid' = 'kanban', workflow: 'software' | 'waterfall' | 'scrum' = 'scrum') => {
     const statuses = WORKFLOWS.find((w) => w.id === workflow)?.statuses ?? DEFAULT_STATUSES;
-    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses, workflow, methodology, leadId: u[owner].id, createdBy: u[owner].id }).returning();
+    const [p] = await db.insert(s.projects).values({ workspaceId, spaceId: spaceId(space), name, key, color, statuses, workflow, methodology, dod: DEFAULT_DOD, leadId: u[owner].id, createdBy: u[owner].id }).returning();
     return p;
   };
   const last = new Map<string, string>();
@@ -81,6 +81,25 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   await task(web, { title: 'Initial wireframe', type: 'story', points: 3, parent: brand.id, status: 'done', tags: ['Design'], priority: 'low', who: 'minh', due: '2026-09-18', doneOn: '2026-09-21', by: 'fujita' });
   await task(web, { title: 'Log in and book with LINE', type: 'story', triage: true, reporter: 'hana', status: 'todo', by: 'hana', desc: 'Customers ask to log in and book with their LINE account.' });
   await task(web, { title: 'Booking page is slow on mobile', type: 'bug', triage: true, reporter: 'yuki', status: 'todo', priority: 'high', by: 'yuki', desc: 'Takes about 8 s to load on 4G at Branch 575.' });
+
+  // Quality (§76): acceptance criteria and time logged on the booking story.
+  await db
+    .update(s.tasks)
+    .set({
+      criteria: [
+        { id: 'c1', text: 'Given a free slot, when the customer books, then the slot is held for 10 minutes', done: true },
+        { id: 'c2', text: 'Given a booking, when it is confirmed, then the customer gets a confirmation e-mail', done: true },
+        { id: 'c3', text: 'Given a booking, when the customer cancels 24 h before, then no fee is charged', done: false },
+      ],
+      dodDone: ['Code reviewed', 'Tests pass'],
+      estimateMinutes: 40 * 60,
+    })
+    .where(eq(s.tasks.id, booking.id));
+  await db.insert(s.taskWorklogs).values([
+    { taskId: booking.id, userId: u.fujita.id, minutes: 6 * 60, day: '2026-09-29', note: 'Calendar component' },
+    { taskId: booking.id, userId: u.ken.id, minutes: 4 * 60, day: '2026-09-30', note: 'Staff selection API' },
+    { taskId: booking.id, userId: u.fujita.id, minutes: 5 * 60, day: '2026-10-01', note: 'Confirmation e-mail' },
+  ]);
 
   // Sprints (§76): Sprint 1 closed with its retrospective, Sprint 2 running now, Sprint 3 planned, one item in the backlog.
   const ymd = (d: Date) => d.toISOString().slice(0, 10);

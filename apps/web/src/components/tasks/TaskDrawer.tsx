@@ -1,7 +1,7 @@
 'use client';
 
-import { canTransition, childTypeOf, ISSUE_RANK, WORK_TYPES, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
-import { ArrowRight, Ban, BookOpen, Bug, CalendarDays, Lock, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
+import { canTransition, childTypeOf, ISSUE_RANK, WORK_TYPES, type AcceptanceCriterion, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
+import { ArrowRight, Ban, BookOpen, Bug, CalendarDays, CheckCheck, ListChecks, Lock, Timer, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '@/lib/format';
@@ -32,11 +32,21 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const { data: t, error } = useTask(id);
   const { data: users } = useUsers();
   const { data: siblings } = useTasks(t?.projectId ?? null);
-  const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug } = useTaskActions();
+  const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug, logWork, removeWork } = useTaskActions();
   const { data: projects } = useProjects();
   const { data: projectDocs } = useProjectDocs(t?.projectId ?? null);
   const docActions = useProjectDocActions();
   const [linkingDoc, setLinkingDoc] = useState(false);
+  const [criterion, setCriterion] = useState('');
+  // Checklists follow the click at once; the server's answer replaces them when it arrives.
+  const [criteriaLocal, setCriteriaLocal] = useState<AcceptanceCriterion[] | null>(null);
+  const [dodLocal, setDodLocal] = useState<string[] | null>(null);
+  const serverCriteria = JSON.stringify(t?.criteria ?? null);
+  const serverDod = JSON.stringify(t?.dodDone ?? null);
+  useEffect(() => setCriteriaLocal(null), [serverCriteria]);
+  useEffect(() => setDodLocal(null), [serverDod]);
+  const [logH, setLogH] = useState('');
+  const [logNote, setLogNote] = useState('');
   const [docQ, setDocQ] = useState('');
   const [bugging, setBugging] = useState(false);
   const [bugTitle, setBugTitle] = useState('');
@@ -70,7 +80,12 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const field = 'h-8 w-full min-w-0 rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-brand-500 disabled:bg-canvas';
   const inProject = !!t.projectId;
   // Workflow (§76): where this issue may go next; a strict workflow only offers those.
-  const strict = !!projects?.find((p) => p.id === t.projectId)?.strictWorkflow;
+  const project = projects?.find((p) => p.id === t.projectId);
+  const strict = !!project?.strictWorkflow;
+  const criteriaNow = criteriaLocal ?? t.criteria;
+  const dodNow = dodLocal ?? t.dodDone;
+  const setCriteria = (next: AcceptanceCriterion[]) => (setCriteriaLocal(next), set({ criteria: next }));
+  const setDod = (next: string[]) => (setDodLocal(next), set({ dodDone: next }));
   const nextSteps = (status?.next ?? []).map((id) => t.statuses.find((s) => s.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
   const statusChoices = strict ? t.statuses.filter((s) => canTransition(t.statuses, t.status, s.id)) : t.statuses;
   const childType: IssueType = childTypeOf(t.type);
@@ -364,6 +379,103 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
                 </li>
               ))}
               {!t.links.length && <li className="px-1 text-[12.5px] text-subtle">No links</li>}
+            </ul>
+          </section>
+        )}
+
+        {inProject && WORK_TYPES.includes(t.type) && (
+          <section className="mt-4" data-testid="criteria">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <ListChecks size={14} /> Acceptance criteria {criteriaNow.length ? `· ${criteriaNow.filter((c) => c.done).length}/${criteriaNow.length}` : ''}
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {criteriaNow.map((c) => (
+                <li key={c.id} className="group flex items-start gap-2 rounded-md px-1 py-1 text-[13px] hover:bg-hover" data-testid="criterion">
+                  <input type="checkbox" checked={c.done} disabled={ro} onChange={() => setCriteria(criteriaNow.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)))} className="mt-0.5 accent-brand-600" aria-label={c.text} />
+                  <span className={cn('flex-1', c.done && 'text-muted line-through')}>{c.text}</span>
+                  {!ro && (
+                    <button onClick={() => setCriteria(criteriaNow.filter((x) => x.id !== c.id))} className="hidden rounded p-0.5 text-muted hover:bg-white group-hover:block" aria-label="Remove criterion">
+                      <X size={12} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {!ro && (
+              <input
+                value={criterion}
+                onChange={(e) => setCriterion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && criterion.trim()) {
+                    setCriteria([...criteriaNow, { id: '', text: criterion.trim(), done: false }]);
+                    setCriterion('');
+                  }
+                }}
+                placeholder="+ Given … when … then …"
+                aria-label="Add acceptance criterion"
+                className="mt-1 h-8 w-full rounded-md px-2 text-[13px] outline-none hover:bg-hover focus:bg-hover"
+              />
+            )}
+          </section>
+        )}
+
+        {inProject && WORK_TYPES.includes(t.type) && !!project?.dod.length && (
+          <section className="mt-4" data-testid="dod">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <CheckCheck size={14} /> Definition of Done · {project.dod.filter((x) => dodNow.includes(x)).length}/{project.dod.length}
+              {project.enforceDod && <span className="rounded bg-amber-50 px-1.5 text-[10.5px] font-medium text-amber-700">required for Done</span>}
+            </div>
+            <ul className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1">
+              {project.dod.map((x) => (
+                <li key={x}>
+                  <label className="flex items-center gap-2 text-[12.5px]">
+                    <input type="checkbox" checked={dodNow.includes(x)} disabled={ro} onChange={(e) => setDod(e.target.checked ? [...dodNow, x] : dodNow.filter((y) => y !== x))} className="accent-brand-600" aria-label={`DoD: ${x}`} />
+                    <span className={cn(dodNow.includes(x) && 'text-muted')}>{x}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {inProject && ISSUE_RANK[t.type] >= 2 && (
+          <section className="mt-4" data-testid="time">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <Timer size={14} /> Time · {Math.round((t.spentMinutes / 60) * 10) / 10} h logged{t.estimateMinutes ? ` of ${t.estimateMinutes / 60} h` : ''}
+            </div>
+            {!!t.estimateMinutes && (
+              <span className="mt-1.5 block h-1.5 rounded-full bg-hover">
+                <span className={cn('block h-1.5 rounded-full', t.spentMinutes > t.estimateMinutes ? 'bg-red-500' : 'bg-brand-600')} style={{ width: `${Math.min(100, (t.spentMinutes / t.estimateMinutes) * 100)}%` }} />
+              </span>
+            )}
+            {project?.perms.comment && (
+              <form
+                className="mt-2 flex gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const minutes = Math.round(Number(logH) * 60);
+                  if (minutes > 0) logWork.mutate({ id: t.id, minutes, note: logNote || null }, { onSuccess: () => (setLogH(''), setLogNote('')) });
+                }}
+              >
+                <input type="number" min={0.25} step={0.25} value={logH} onChange={(e) => setLogH(e.target.value)} placeholder="Hours" aria-label="Log hours" className={cn(field, 'w-20')} />
+                <input value={logNote} onChange={(e) => setLogNote(e.target.value)} placeholder="What did you work on?" aria-label="Work note" className={cn(field, 'flex-1')} />
+                <Button size="sm" type="submit" disabled={!logH} data-testid="log-time">
+                  Log
+                </Button>
+              </form>
+            )}
+            <ul className="mt-1.5 space-y-1">
+              {t.worklogs.map((w) => (
+                <li key={w.id} className="group flex items-center gap-2 text-[12.5px] text-ink-2" data-testid="worklog">
+                  {w.user && <Avatar user={w.user} size={18} />}
+                  <span className="font-medium">{Math.round((w.minutes / 60) * 100) / 100} h</span>
+                  <span className="text-muted">{shortDate(w.day)}</span>
+                  <span className="min-w-0 flex-1 truncate">{w.note}</span>
+                  <button onClick={() => removeWork.mutate(w.id)} className="hidden rounded p-0.5 text-muted hover:bg-hover group-hover:block" aria-label="Remove worklog">
+                    <X size={12} />
+                  </button>
+                </li>
+              ))}
             </ul>
           </section>
         )}

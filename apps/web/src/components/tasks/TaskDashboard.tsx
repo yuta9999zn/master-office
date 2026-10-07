@@ -4,6 +4,7 @@ import type { ProjectStats } from '@workos/shared';
 import { useState } from 'react';
 import { useProjectStats } from '@/lib/tasks';
 import { Avatar, EmptyState, Skeleton } from '../ui/primitives';
+import { QualityPanel } from './QualityPanel';
 
 // Validated with the dataviz skill's palette validator (light surface): slot 1 blue, slot 2 orange.
 const SERIES = { created: '#2a78d6', completed: '#eb6834' };
@@ -60,6 +61,7 @@ export function TaskDashboard({ projectId }: { projectId: string }) {
           })}
         </ul>
       </section>
+      <QualityPanel projectId={projectId} />
     </div>
   );
 }

@@ -16,6 +16,8 @@ const taskBody = z.object({
   triage: z.literal(false).optional(),
   source: z.object({ kind: z.literal('chat'), conversationId: z.string().uuid(), messageId: z.string().uuid() }).nullish(),
   sprintId: z.string().uuid().nullish(),
+  criteria: z.array(z.object({ id: z.string().max(40).default(''), text: z.string().max(1000), done: z.boolean().default(false) })).max(30).optional(),
+  dodDone: z.array(z.string().max(200)).max(20).optional(),
   rankAfter: z.string().uuid().nullish(),
   rankBefore: z.string().uuid().nullish(),
   title: z.string().max(500),
@@ -55,6 +57,8 @@ const projectUpdate = z.object({
   wipLimits: z.record(z.string(), z.number().int().min(0).max(999)).optional(),
   workflow: workflow.or(z.literal('custom')).optional(),
   strictWorkflow: z.boolean().optional(),
+  dod: z.array(z.string().max(200)).max(20).optional(),
+  enforceDod: z.boolean().optional(),
 });
 const requestBody = z.object({ title: z.string().max(500), description: z.string().max(50_000).nullish(), type: z.enum(['story', 'task', 'bug']).optional(), priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']).optional() });
 
@@ -82,6 +86,11 @@ export class TasksController {
   @Post('projects/:id/requests')
   request(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     return this.svc.request(a, id, parse(requestBody, b));
+  }
+
+  @Get('projects/:id/quality')
+  quality(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.quality(a, id);
   }
 
   @Get('projects/:id/stats')
@@ -119,6 +128,16 @@ export class TasksController {
   @Post(':id/comments')
   comment(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     return this.svc.comment(a, id, parse(z.object({ body: z.string().max(10_000) }), b).body);
+  }
+
+  @Post(':id/worklogs')
+  logWork(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.svc.logWork(a, id, parse(z.object({ minutes: z.number().int(), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), note: z.string().max(1000).nullish() }), b));
+  }
+
+  @Delete('worklogs/:wid')
+  removeWork(@CurrentUser() a: Actor, @Param('wid', ParseUUIDPipe) wid: string) {
+    return this.svc.removeWork(a, wid);
   }
 
   /** A bug found on this issue: in the same epic, blocking the issue. */
