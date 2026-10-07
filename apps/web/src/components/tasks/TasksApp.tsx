@@ -3,7 +3,7 @@
 import { can, canTransition, isAgile, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
 import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
 import { useSpaces, useUsers } from '@/lib/queries';
 import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, useTaskActions, useTasks } from '@/lib/tasks';
@@ -44,6 +44,28 @@ export function TasksApp() {
   const [settings, setSettings] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const statuses = project?.statuses ?? PERSONAL;
+  const mine = params.get('mine') === '1' || (!!taskId && !projectId);
+  // /tasks opens the project you used last (or the first one): each project has its own workflow columns,
+  // while My tasks folds every project into To do / In progress / Done.
+  useEffect(() => {
+    if (projectId || mine || !projects?.length) return;
+    let last: string | null = null;
+    try {
+      last = localStorage.getItem('mo-tasks-project');
+    } catch {
+      /* storage blocked */
+    }
+    const target = projects.find((p) => p.id === last) ?? projects[0];
+    router.replace(`/tasks?project=${target.id}&view=${params.get('view') ?? 'board'}`);
+  }, [projectId, mine, projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      localStorage.setItem('mo-tasks-project', projectId);
+    } catch {
+      /* storage blocked */
+    }
+  }, [projectId]);
   const canEdit = project ? project.perms.write : true;
 
   const go = (p: { project?: string | null; view?: View; task?: string | null }) => {
@@ -51,6 +73,8 @@ export function TasksApp() {
     const n = new URLSearchParams();
     const proj = p.project === undefined ? cur.get('project') : p.project;
     if (proj) n.set('project', proj);
+    // Choosing My tasks is explicit: plain /tasks opens the last project.
+    else if (p.project === null || cur.get('mine') === '1') n.set('mine', '1');
     n.set('view', p.view ?? (cur.get('view') as View | null) ?? view);
     const t = p.task === undefined ? cur.get('task') : p.task;
     if (t) n.set('task', t);
@@ -150,6 +174,11 @@ export function TasksApp() {
                       <button onClick={() => go({ view: 'backlog' })} className="text-brand-700 hover:underline">Plan a sprint in the Backlog</button>
                     </>
                   )}
+                </div>
+              )}
+              {!project && (
+                <div className="shrink-0 border-b border-line bg-canvas px-5 py-1.5 text-[12.5px] text-muted" data-testid="my-tasks-note">
+                  My tasks folds your work from every project into To do / In progress / Done. Open a project to see its full workflow (Code Review, QA, Fixing, Retest, UAT…).
                 </div>
               )}
               <div className="min-h-0 flex-1">

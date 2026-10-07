@@ -142,8 +142,17 @@ await step('the dashboard: numbers, a chart with a hover readout, people', claud
   await claudia.getByRole('columnheader', { name: 'Completed' }).waitFor();
 });
 
-await step('My tasks: personal tasks, and a new one', claudia, async () => {
+await step('plain /tasks opens the last project (each has its own workflow columns)', claudia, async () => {
   await claudia.goto(`${BASE}/tasks`);
+  await claudia.waitForURL(/project=/);
+  await claudia.getByTestId('board-column').nth(5).waitFor();
+});
+
+await step('My tasks: personal tasks, and a new one', claudia, async () => {
+  await claudia.getByTestId('project-picker').click();
+  await claudia.getByRole('menuitem', { name: 'My tasks' }).click();
+  await claudia.waitForURL(/mine=1/);
+  await claudia.getByTestId('my-tasks-note').waitFor();
   await card(claudia, 'Review Q4 budget').waitFor({ timeout: 30000 });
   if (await claudia.getByRole('tab', { name: 'gantt' }).count()) throw new Error('gantt on My tasks');
   await claudia.getByRole('button', { name: 'Add task to To Do' }).click();
