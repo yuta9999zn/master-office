@@ -50,7 +50,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
           </div>
         ) : (
           <>
-            <MessageItem m={data.root} me={me?.user.id} people={people} candidates={candidates} grouped={false} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === data.root.id} setEditing={(v) => setEditing(v ? data.root.id : null)} />
+            <MessageItem m={data.root} me={me?.user.id} spaceId={conv.spaceId} people={people} candidates={candidates} grouped={false} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === data.root.id} setEditing={(v) => setEditing(v ? data.root.id : null)} />
             <div className="my-3 flex items-center gap-3 px-5 text-[12px] text-muted">
               <span>
                 {count} {count === 1 ? 'reply' : 'replies'}
@@ -61,7 +61,7 @@ export function ThreadPanel({ conv, rootId, onClose }: { conv: ConversationDetai
               const prev = data.replies[i - 1];
               const grouped = !!prev && prev.sender?.id === m.sender?.id && new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60_000;
               return (
-                <MessageItem key={m.id} m={m} me={me?.user.id} people={people} candidates={candidates} grouped={grouped} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === m.id} setEditing={(v) => setEditing(v ? m.id : null)} />
+                <MessageItem key={m.id} m={m} me={me?.user.id} spaceId={conv.spaceId} people={people} candidates={candidates} grouped={grouped} canModerate={canModerate} canReact={conv.perms.react} canPin={conv.kind !== 'channel' || conv.perms.moderate} inThread editing={editing === m.id} setEditing={(v) => setEditing(v ? m.id : null)} />
               );
             })}
             <div ref={end} />

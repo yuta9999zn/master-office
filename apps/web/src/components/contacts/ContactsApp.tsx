@@ -1,5 +1,6 @@
 'use client';
 
+import { TeamTags } from './TeamTags';
 import type { Contact, UserProfile } from '@workos/shared';
 import { Briefcase, Building2, CalendarDays, Copy, Ellipsis, Mail, MapPin, MessageCircle, Pencil, Phone, Search, Sparkles, UserRound, Users, Video } from 'lucide-react';
 import Link from 'next/link';
@@ -123,6 +124,7 @@ function ContactRow({ c, active }: { c: Contact; active: boolean }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-semibold text-ink">{c.name}</span>
           <span className="block truncate text-[12px] text-muted">{[c.title, c.department].filter(Boolean).join(' · ')}</span>
+          {c.projects.length > 0 && <TeamTags teams={c.projects} max={2} className="mt-1" />}
           {!!c.skills.length && (
             <span className="mt-1 flex flex-wrap gap-1">
               {c.skills.slice(0, 3).map((s) => (
@@ -268,7 +270,8 @@ function Overview({ p }: { p: UserProfile }) {
         </a>
       </Field>
       <Field icon={<Phone />} label="Phone">
-        {p.phone ?? <span className="text-subtle">—</span>}
+        {p.phone ?? (p.phoneHidden ? <span className="text-subtle" data-testid="phone-hidden">Only visible to their team leads and administrators</span> : <span className="text-subtle">—</span>)}
+        {p.isMe && <span className="ml-2 text-[11.5px] text-subtle">({p.phoneVisibility === 'everyone' ? 'everyone sees it' : 'your team leads and admins see it'})</span>}
       </Field>
       <Field icon={<Building2 />} label="Department">
         {p.department ?? <span className="text-subtle">—</span>}
@@ -277,7 +280,7 @@ function Overview({ p }: { p: UserProfile }) {
         {p.title ?? <span className="text-subtle">—</span>}
       </Field>
       <Field icon={<MapPin />} label="Location">
-        {p.location ?? <span className="text-subtle">—</span>}
+        {p.location ?? (p.phoneHidden ? <span className="text-subtle">Hidden</span> : <span className="text-subtle">—</span>)}
       </Field>
       <Field icon={<Sparkles />} label="Skills">
         {p.skills.length ? (
@@ -290,18 +293,8 @@ function Overview({ p }: { p: UserProfile }) {
           <span className="text-subtle">—</span>
         )}
       </Field>
-      <Field icon={<Users />} label="Projects">
-        {p.projects.length ? (
-          <span className="flex flex-wrap gap-1.5">
-            {p.projects.map((s) => (
-              <Link key={s.id} href={`/spaces/${s.id}`}>
-                <Chip color={s.color ?? '#2563eb'}>{s.name}</Chip>
-              </Link>
-            ))}
-          </span>
-        ) : (
-          <span className="text-subtle">—</span>
-        )}
+      <Field icon={<Users />} label="Teams">
+        {p.projects.length ? <TeamTags teams={p.projects} max={20} links className="gap-1.5" /> : <span className="text-subtle">—</span>}
       </Field>
       <Field icon={<UserRound />} label="Manager">
         {p.manager ? (
@@ -390,6 +383,7 @@ function EditProfileDialog({ p, onClose }: { p: UserProfile; onClose: () => void
     title: p.title ?? '',
     department: p.department ?? '',
     managerId: p.managerId ?? '',
+    phoneVisibility: p.phoneVisibility ?? 'leads',
   });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
   const input = (k: keyof typeof f, label: string, placeholder = '') => (
@@ -404,6 +398,7 @@ function EditProfileDialog({ p, onClose }: { p: UserProfile; onClose: () => void
       phone: f.phone,
       location: f.location,
       skills: f.skills.split(',').map((s) => s.trim()).filter(Boolean),
+      ...(p.isMe ? { phoneVisibility: f.phoneVisibility as 'leads' | 'everyone' } : {}),
       ...(p.canEditOrg ? { title: f.title, department: f.department, managerId: f.managerId || null } : {}),
     });
     onClose();
@@ -431,10 +426,19 @@ function EditProfileDialog({ p, onClose }: { p: UserProfile; onClose: () => void
           {input('phone', 'Phone')}
           {input('location', 'Location')}
         </div>
+        {p.isMe && (
+          <label className="block text-[12px] font-medium text-muted">
+            Who sees your phone and location
+            <select value={f.phoneVisibility} onChange={set('phoneVisibility')} aria-label="Phone visibility" className="mt-1 h-9 w-full rounded-lg border border-line-strong bg-surface px-2 text-[13px] text-ink">
+              <option value="leads">Leads of my teams and administrators</option>
+              <option value="everyone">Everyone in the organisation</option>
+            </select>
+          </label>
+        )}
         {input('skills', 'Skills', 'Comma separated, e.g. Design, Japanese')}
         {p.canEditOrg && (
           <div className="space-y-3 rounded-xl border border-line bg-canvas p-3">
-            <div className="text-[12px] font-semibold text-ink-2">Organization (workspace owners)</div>
+            <div className="text-[12px] font-semibold text-ink-2">Organization (administrators)</div>
             <div className="grid grid-cols-2 gap-3">
               {input('title', 'Position')}
               {input('department', 'Department')}

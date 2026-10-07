@@ -24,8 +24,9 @@ const profile = (id, user = claudia) => call('GET', `/contacts/${id}`, { user })
 
 const all = (await call('GET', '/contacts', { user: hana })).data;
 const f = all.find((c) => c.id === fujita);
-check('everyone in the workspace is in the directory', all.length === 10 && all.every((c, i) => i === 0 || all[i - 1].name.localeCompare(c.name) <= 0), all.map((c) => c.name));
-check('cards carry contact details and skills', f.location === 'Tokyo, Japan' && f.phone === '+81 90-1234-5678' && f.skills.includes('Japanese') && f.status === 'よろしくお願いします。' && f.joinedAt.startsWith('2024-01-15'), f);
+check('everyone in the workspace is in the directory', all.filter((c) => c.email.endsWith('@kaori.jp')).length === 10 && all.every((c, i) => i === 0 || all[i - 1].name.localeCompare(c.name) <= 0), all.map((c) => c.name));
+const fForOwner = (await call('GET', '/contacts', { user: claudia })).data.find((c) => c.id === fujita);
+check('cards carry skills; phone and location only for admins and leads (§79)', f.phone === null && f.phoneHidden && fForOwner.location === 'Tokyo, Japan' && fForOwner.phone === '+81 90-1234-5678' && f.skills.includes('Japanese') && f.status === 'よろしくお願いします。' && f.joinedAt.startsWith('2024-01-15'), f);
 check('search by skill', (await search('japanese')).join() === 'fujita');
 const fin = await search('finance');
 check('search by department (and by the Finance space its members belong to)', fin.includes('huong') && fin.includes('hana') && !fin.includes('ken'), fin);

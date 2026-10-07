@@ -316,6 +316,7 @@ function Timeline({ conv, onOpenThread, highlight }: { conv: ConversationDetail;
                 <MessageItem
                   m={m}
                   me={meId}
+                  spaceId={conv.spaceId}
                   people={people}
                   candidates={candidates}
                   grouped={grouped && !isNew}

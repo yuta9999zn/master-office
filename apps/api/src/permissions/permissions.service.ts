@@ -12,7 +12,8 @@ type Pick_ = Pick<ResourceRow, 'id' | 'ownerId' | 'spaceId' | 'path' | 'generalA
 /**
  * Effective role resolution — docs/ARCHITECTURE.md §6.3:
  *   max(owner, ACL on self or any ancestor, space role, general access on self or any ancestor)
- * Public spaces grant `viewer` to every workspace member; workspace owners are admins of every space.
+ * Public spaces grant `viewer` to every workspace member except guests; workspace owners and admins are admins of
+ * every space (§79).
  */
 @Injectable()
 export class PermissionsService {
@@ -29,11 +30,12 @@ export class PermissionsService {
         .where(and(eq(workspaceMembers.userId, actor.id), eq(workspaceMembers.workspaceId, actor.workspaceId))),
     ] as const);
     const member = new Map(mine.map((m) => [m.spaceId, m.role]));
-    const wsOwner = wsm?.role === 'owner';
+    const wsAdmin = wsm?.role === 'owner' || wsm?.role === 'admin';
+    const guest = wsm?.role === 'viewer';
     return new Map(
       all.map((s) => [
         s.id,
-        maxRole(member.get(s.id), s.visibility === 'public' ? 'viewer' : null, wsOwner ? 'admin' : null),
+        maxRole(member.get(s.id), s.visibility === 'public' && !guest ? 'viewer' : null, wsAdmin ? 'admin' : null),
       ]),
     );
   }
@@ -43,9 +45,9 @@ export class PermissionsService {
     const [s] = await this.db.select({ workspaceId: spaces.workspaceId, visibility: spaces.visibility }).from(spaces).where(eq(spaces.id, spaceId));
     if (!s) return [];
     const ws = await this.db.select({ id: workspaceMembers.userId, role: workspaceMembers.role }).from(workspaceMembers).where(eq(workspaceMembers.workspaceId, s.workspaceId));
-    if (s.visibility === 'public') return ws.map((m) => m.id);
     const members = await this.db.select({ id: spaceMembers.userId }).from(spaceMembers).where(eq(spaceMembers.spaceId, spaceId));
-    return [...new Set([...members.map((m) => m.id), ...ws.filter((m) => m.role === 'owner').map((m) => m.id)])];
+    const everyone = s.visibility === 'public' ? ws.filter((m) => m.role !== 'viewer') : ws.filter((m) => m.role === 'owner' || m.role === 'admin');
+    return [...new Set([...members.map((m) => m.id), ...everyone.map((m) => m.id)])];
   }
 
   async rolesFor(actor: Actor, items: Pick_[], tx: Tx = this.db): Promise<Map<string, Role | null>> {

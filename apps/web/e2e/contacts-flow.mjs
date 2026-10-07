@@ -96,7 +96,7 @@ await step('people edit their own profile from the user menu', claudia, async ()
   await ken.getByRole('menuitem', { name: 'Profile' }).click();
   await ken.getByTestId('profile-name').getByText('Ken Watanabe').waitFor({ timeout: 60000 });
   await ken.getByTestId('edit-profile').click();
-  if (await ken.getByText('Organization (workspace owners)').count()) throw new Error('org fields shown to a member');
+  if (await ken.getByText('Organization (administrators)').count()) throw new Error('org fields shown to a member');
   await ken.getByLabel('Status').fill('Inventory count all day');
   await ken.getByLabel('Skills').fill('Engineering, System, Inventory, Forklift');
   await ken.getByTestId('save-profile').click();

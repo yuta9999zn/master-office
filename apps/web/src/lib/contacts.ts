@@ -2,11 +2,18 @@
 
 import type { Contact, UpdateProfileInput, UserProfile } from '@workos/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { api } from './api';
 
 export const useContacts = (q: string) =>
   useQuery({ queryKey: ['contacts', 'list', q], queryFn: () => api<Contact[]>(`/contacts${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`), placeholderData: keepPreviousData, staleTime: 30_000 });
+
+/** Everyone the viewer may see, by id — with their teams and positions (§79), for chat name tags. */
+export function usePeople() {
+  const { data } = useContacts('');
+  return useMemo(() => new Map((data ?? []).map((c) => [c.id, c])), [data]);
+}
 
 export const useProfile = (id?: string | null) =>
   useQuery({ queryKey: ['contacts', 'profile', id], queryFn: () => api<UserProfile>(`/contacts/${id}`), enabled: !!id, retry: false });

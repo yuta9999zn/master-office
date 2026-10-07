@@ -21,6 +21,7 @@ import type {
   UpdateResourceInput,
   UserSummary,
   WorkspaceStats,
+  SpaceKind,
 } from '@workos/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -139,15 +140,22 @@ export function useSpaceActions() {
   const qc = useQueryClient();
   return {
     create: useMutation({
-      mutationFn: (input: { name: string; description?: string; parentId?: string | null; color?: string; visibility: 'public' | 'private' }) =>
+      mutationFn: (input: { name: string; description?: string; parentId?: string | null; color?: string; visibility: 'public' | 'private'; kind?: SpaceKind }) =>
         api<Space>('/spaces', { method: 'POST', json: input }),
       onSuccess: () => qc.invalidateQueries({ queryKey: ['spaces'] }),
       onError,
     }),
+    /** Name, kind, colour, visibility, place in the tree (§79). */
+    update: useMutation({
+      mutationFn: ({ id, ...b }: { id: string; name?: string; description?: string | null; kind?: SpaceKind; color?: string | null; visibility?: 'public' | 'private'; parentId?: string | null }) =>
+        api<Space>(`/spaces/${id}`, { method: 'PATCH', json: b }),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['spaces'] }),
+      onError,
+    }),
     setMember: useMutation({
-      mutationFn: ({ spaceId, userId, role }: { spaceId: string; userId: string; role: Role | null }) =>
-        api(`/spaces/${spaceId}/members`, { method: 'POST', json: { userId, role } }),
-      onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['spaces'] }), qc.invalidateQueries({ queryKey: ['resources'] })]),
+      mutationFn: ({ spaceId, userId, role, title }: { spaceId: string; userId: string; role: Role | null; title?: string | null }) =>
+        api(`/spaces/${spaceId}/members`, { method: 'POST', json: { userId, role, ...(title !== undefined ? { title } : {}) } }),
+      onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['spaces'] }), qc.invalidateQueries({ queryKey: ['resources'] }), qc.invalidateQueries({ queryKey: ['contacts'] })]),
       onError,
     }),
   };

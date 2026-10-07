@@ -45,6 +45,8 @@ export const users = pgTable('users', {
   status: text('status'),
   skills: text('skills').array().notNull().default(sql`'{}'::text[]`),
   managerId: uuid('manager_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  /** Who sees phone and location (§79): 'leads' (admins + leads of the person's teams) or 'everyone'. */
+  phoneVisibility: text('phone_visibility').notNull().default('leads'),
   createdAt: ts('created_at').notNull().default(sql`now()`),
 });
 
@@ -79,6 +81,8 @@ export const spaces = pgTable('spaces', {
   icon: text('icon'),
   color: text('color'),
   visibility: spaceVisibility('visibility').notNull().default('public'),
+  /** department | team | project | general (§79): how the organisation chart shows it. */
+  kind: text('kind').notNull().default('team'),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: ts('created_at').notNull().default(sql`now()`),
 });
@@ -89,6 +93,8 @@ export const spaceMembers = pgTable(
     spaceId: uuid('space_id').notNull().references(() => spaces.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     role: role('role').notNull(),
+    /** The person's position in this team (§79), e.g. "Team lead", "Designer" — one person, many teams, many positions. */
+    title: text('title'),
     addedAt: ts('added_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.spaceId, t.userId] })],

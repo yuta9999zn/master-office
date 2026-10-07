@@ -63,14 +63,36 @@ export interface Space {
   icon: string | null;
   color: string | null;
   visibility: 'public' | 'private';
+  /** How the organisation chart shows it (§79). */
+  kind: SpaceKind;
   createdAt: string;
   myRole: Role | null;
   memberCount?: number;
 }
 
+export type SpaceKind = 'department' | 'team' | 'project' | 'general';
+export const SPACE_KINDS: Record<SpaceKind, { label: string; note: string }> = {
+  department: { label: 'Department', note: 'A part of the organisation (Sales, HR…)' },
+  team: { label: 'Team', note: 'A group of people working together' },
+  project: { label: 'Project', note: 'Time-boxed work with its own people' },
+  general: { label: 'Company-wide', note: 'Everyone — news, policies, chat' },
+};
+
 export interface SpaceMember {
   user: UserSummary;
   role: Role;
+  /** Position in this team (§79), e.g. "Team lead", "Designer". */
+  title: string | null;
+}
+
+/** A team the person belongs to, as the viewer may see it (§79): owners and admins of a space are its leads. */
+export interface ContactTeam {
+  id: string;
+  name: string;
+  color: string | null;
+  kind: SpaceKind;
+  title: string | null;
+  lead: boolean;
 }
 
 export interface Resource {
@@ -458,9 +480,11 @@ export interface Contact extends UserSummary {
   status: string | null;
   skills: string[];
   managerId: string | null;
-  /** Spaces the person belongs to that the viewer can see ("Projects"). */
-  projects: { id: string; name: string; color: string | null }[];
+  /** Spaces the person belongs to that the viewer can see, with the position there (§79). */
+  projects: ContactTeam[];
   joinedAt: string | null;
+  /** Phone and location are hidden (null) unless the viewer is the person, an admin, a lead of one of their teams, or the person shares them with everyone. */
+  phoneHidden?: boolean;
 }
 
 export interface UserProfile extends Contact {
@@ -476,10 +500,14 @@ export interface UserProfile extends Contact {
   canEdit: boolean;
   /** Only workspace owners change title, department and manager of other people. */
   canEditOrg: boolean;
+  /** Your own profile only: who sees your phone and location. */
+  phoneVisibility?: 'leads' | 'everyone';
 }
 
 export interface UpdateProfileInput {
   phone?: string | null;
+  /** Who sees phone and location: admins + team leads (default) or everyone. */
+  phoneVisibility?: 'leads' | 'everyone';
   location?: string | null;
   status?: string | null;
   skills?: string[];

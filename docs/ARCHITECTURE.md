@@ -1338,7 +1338,7 @@ Mục tiêu bản open source: **một tổ chức ≈ 20 người**, đơn gi�
 | Đợt | Nội dung | Trạng thái |
 |---|---|---|
 | A | Đăng nhập thật (email + mật khẩu, phiên), trình cài đặt lần đầu `/setup`, email hệ thống (SMTP + app password, mã hoá, hướng dẫn Gmail / Outlook, gửi thử), mời người qua email + trang nhận lời mời, quên mật khẩu, trang Admin → Members (vai trò, khoá / mở, mời lại) | **xong** |
-| B | Nhóm / phòng ban: loại Space (department / team / project), cây cha-con, **trưởng nhóm** (vai trò admin của Space), **chức vụ theo từng nhóm** (một người nhiều nhóm, nhiều chức vụ), trưởng nhóm thêm người, lập kênh chat; danh bạ: quyền xem số điện thoại, nhãn nhóm + chức vụ khi chat | |
+| B | Nhóm / phòng ban: loại Space (department / team / project), cây cha-con, **trưởng nhóm** (vai trò admin của Space), **chức vụ theo từng nhóm** (một người nhiều nhóm, nhiều chức vụ), trưởng nhóm thêm người, lập kênh chat; danh bạ: quyền xem số điện thoại, nhãn nhóm + chức vụ khi chat | **xong** |
 | C | Dung lượng: quỹ của tổ chức, hạn mức mỗi người, hạn mức mỗi nhóm, tính dung lượng chuẩn, chặn upload khi đầy, trang Storage; hiệu năng mở / lưu file | |
 
 **Vai trò**
@@ -1372,7 +1372,10 @@ Mục tiêu bản open source: **một tổ chức ≈ 20 người**, đơn gi�
 | Nhóm | Dùng lại Space (đã có cây `parentId`, thành viên, vai trò, kênh chat, file, lịch, mailbox). Thêm `spaces.kind` department / team / project / general. Trang Admin → Teams: cây phòng ban → đội, kéo người vào. |
 | Chức vụ | `space_members.title` = chức vụ trong nhóm đó (vd. "Trưởng phòng", "Dev lead"); `users.title` = chức danh chính. Một người ở nhiều nhóm với nhiều chức vụ. |
 | Danh bạ | Ai cũng thấy: tên, chức danh chính, email, các nhóm mình cũng thấy + chức vụ trong đó. **Số điện thoại / địa điểm**: chính mình, Admin, trưởng nhóm của một nhóm người đó thuộc, hoặc khi người đó chọn "hiện với mọi người" (`users.phoneVisibility` everyone / leads, mặc định leads). Guest chỉ thấy người cùng nhóm. |
-| Chat | Thẻ người (hover tên trong tin nhắn, danh sách thành viên, đầu DM) hiện các nhóm + chức vụ, ưu tiên nhóm của kênh hiện tại và nhóm chung với người xem; "+n nhóm". |
+| Chat | Thẻ người (hover tên trong tin nhắn, danh sách thành viên, đầu DM) hiện các nhóm + chức vụ, ưu tiên nhóm của kênh hiện tại và nhóm chung với người xem; "+n nhóm". Cạnh tên người gửi: nhãn nhóm + chức vụ đầu tiên theo thứ tự đó. Dữ liệu lấy từ `/contacts` (đã lọc theo quyền), một lần cho cả ứng dụng (`usePeople`). |
+| Quyền theo vai trò tổ chức | Owner **và Admin** là admin của mọi Space (trước đây chỉ Owner); Guest (`viewer`) không nhận quyền xem Space công khai, chỉ thấy Space mình là thành viên và người cùng Space trong danh bạ (hồ sơ người khác → 404). Admin (không chỉ Owner) sửa chức danh / phòng ban / quản lý trong hồ sơ. |
+| Admin → Teams | Cây Space (thụt lề theo cha), tạo phòng ban / đội / dự án (loại, thuộc về, công khai / riêng tư, trưởng nhóm + chức vụ), sửa tên / mô tả / loại / cha (không vào cây con của chính nó) / màu, thành viên: chức vụ (sửa tại chỗ), vai trò Lead / Member / Commenter / Viewer, xoá, thêm người. `PATCH /spaces/:id`; `POST /spaces/:id/members` nhận `title` (đổi vai trò giữ nguyên chức vụ; owner chỉ sửa được chức vụ của mình). |
+| Test | `teams.mjs` (32), `contacts.mjs` cập nhật (số điện thoại ẩn với người không phải trưởng nhóm); `teams-flow.mjs` (10). |
 
 **Đợt C — dung lượng**
 

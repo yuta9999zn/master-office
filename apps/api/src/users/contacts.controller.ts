@@ -13,6 +13,7 @@ const updateBody = z.object({
   title: text(120),
   department: text(120),
   managerId: z.string().uuid().nullish(),
+  phoneVisibility: z.enum(['leads', 'everyone']).optional(),
 });
 
 @Controller('contacts')

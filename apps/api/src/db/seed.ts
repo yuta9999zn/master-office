@@ -134,6 +134,32 @@ async function main() {
   });
   await space('KAORI Brand', 'Brand identity, design system and assets', '#0f172a', 'sparkles', 'minh', { members: [['hana', 'editor']] });
 
+  // The organisation chart (§79): what each space is, and people's positions — one person, several teams and positions.
+  const kinds: Record<string, string> = { 'Natural Beauty': 'general', Marketing: 'department', Operations: 'department', HR: 'department', Finance: 'department', 'Branch 575': 'team', 'Branch 625': 'team', 'Branch S2': 'team', 'ITM Japan': 'project', 'KAORI Brand': 'team' };
+  for (const [name, kind] of Object.entries(kinds)) await db.update(s.spaces).set({ kind }).where(sql`id = ${sp[name].id}`);
+  const positions: [string, Who, string][] = [
+    ['Natural Beauty', 'claudia', 'CEO'],
+    ['Marketing', 'hana', 'Head of Marketing'],
+    ['Marketing', 'minh', 'Designer'],
+    ['Marketing', 'mika', 'Campaign support'],
+    ['Operations', 'mika', 'Head of Operations'],
+    ['Operations', 'yuki', 'Store lead'],
+    ['Operations', 'ken', 'Systems & inventory'],
+    ['HR', 'rina', 'HR Partner'],
+    ['Finance', 'huong', 'Finance Controller'],
+    ['Branch 575', 'yuki', 'Branch Manager'],
+    ['Branch 575', 'mika', 'Area Manager'],
+    ['Branch 625', 'sora', 'Branch Manager'],
+    ['Branch 625', 'mika', 'Area Manager'],
+    ['ITM Japan', 'fujita', 'Project Manager'],
+    ['ITM Japan', 'minh', 'UI Designer'],
+    ['ITM Japan', 'mika', 'Business Analyst'],
+    ['ITM Japan', 'claudia', 'Sponsor'],
+    ['KAORI Brand', 'minh', 'Brand Lead'],
+    ['KAORI Brand', 'hana', 'Marketing liaison'],
+  ];
+  for (const [name, who, title] of positions) await db.update(s.spaceMembers).set({ title }).where(sql`space_id = ${sp[name].id} AND user_id = ${u[who].id}`);
+
   // ── Resources ─────────────────────────────────────────────────────────────
   let clock = Date.now() - 1000 * 60 * 60 * 24 * 13;
   const tick = () => new Date((clock += 1000 * 60 * 20 + Math.floor(Math.random() * 1000 * 60 * 250))).toISOString();

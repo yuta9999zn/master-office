@@ -262,7 +262,7 @@ export class OrgService {
       const [u] = await tx.insert(users).values({ name, email: i.email, avatarColor: colorFor(i.email) }).returning();
       await tx.insert(workspaceMembers).values({ workspaceId: i.workspaceId, userId: u.id, role: i.role });
       await this.auth.setPassword(tx, u.id, input.password);
-      for (const t of i.teams) await tx.insert(spaceMembers).values({ spaceId: t.spaceId, userId: u.id, role: t.role as 'editor' }).onConflictDoNothing();
+      for (const t of i.teams) await tx.insert(spaceMembers).values({ spaceId: t.spaceId, userId: u.id, role: t.role as 'editor', title: t.title?.trim() || null }).onConflictDoNothing();
       await tx.update(invitations).set({ status: 'accepted', acceptedBy: u.id }).where(eq(invitations.id, i.id));
       return { u, token: await this.auth.createSession(tx, u.id, i.workspaceId, meta) };
     });

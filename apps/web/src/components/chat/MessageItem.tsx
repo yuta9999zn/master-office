@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useChatActions } from '@/lib/chat';
 import { formatShort } from '@/lib/format';
+import { usePeople } from '@/lib/contacts';
+import { orderTeams, PersonSummary, teamLabel } from '../contacts/TeamTags';
 import { Avatar, AvatarStack, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Tip } from '../ui/primitives';
 import { MeetingCard } from '../meetings/MeetingCard';
 import { TaskFromMessage } from '../tasks/TaskFromMessage';
@@ -42,6 +44,7 @@ export function MessageItem({
   readers,
   receipt,
   highlight,
+  spaceId,
 }: {
   m: ChatMessage;
   me?: string;
@@ -63,11 +66,17 @@ export function MessageItem({
   /** "Sent" / "Seen" under your latest message in a DM. */
   receipt?: string;
   highlight?: boolean;
+  /** The space of the channel: the sender's position there is shown first (§79). */
+  spaceId?: string | null;
 }) {
   const { react, edit, remove, pin } = useChatActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const [makingTask, setMakingTask] = useState(false);
   const mine = !!me && m.sender?.id === me;
+  const directory = usePeople();
+  const card = m.sender ? directory.get(m.sender.id) : undefined;
+  const prefer = [spaceId, ...(me ? (directory.get(me)?.projects.map((p) => p.id) ?? []) : [])];
+  const tag = card?.projects.length ? orderTeams(card.projects, prefer)[0] : null;
   const pending = m.id.startsWith('tmp-');
   const deleted = !!m.deletedAt;
   const toggle = (emoji: string) => !pending && canReact && react.mutate({ id: m.id, emoji });
@@ -97,7 +106,19 @@ export function MessageItem({
       <div className={cn('flex min-w-0 max-w-[72%] flex-col', mine ? 'items-end' : 'items-start')}>
         {!grouped && (
           <div className={cn('mb-1 flex items-baseline gap-2 text-[12px]', mine && 'flex-row-reverse')}>
-            {!mine && <span className="font-semibold text-ink-2">{m.sender?.name ?? 'Unknown'}</span>}
+            {!mine &&
+              (card ? (
+                <Tip label={<PersonSummary c={card} prefer={prefer} />}>
+                  <span className="cursor-default font-semibold text-ink-2" data-testid="message-author">{m.sender?.name}</span>
+                </Tip>
+              ) : (
+                <span className="font-semibold text-ink-2">{m.sender?.name ?? 'Unknown'}</span>
+              ))}
+            {!mine && tag && (
+              <span className="max-w-56 truncate rounded bg-canvas px-1.5 text-[11px] text-muted ring-1 ring-line" data-testid="author-team">
+                {teamLabel(tag)}
+              </span>
+            )}
             <Tip label={fullFmt.format(new Date(m.createdAt))}>
               <span className="text-subtle">{timeFmt.format(new Date(m.createdAt))}</span>
             </Tip>

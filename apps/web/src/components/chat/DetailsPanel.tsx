@@ -10,6 +10,8 @@ import { useMe, useUsers } from '@/lib/queries';
 import { useIsOnline } from '@/lib/realtime';
 import { Avatar, Button, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuTrigger } from '../ui/primitives';
 import { ConversationAvatar, MessageText } from './bits';
+import { usePeople } from '@/lib/contacts';
+import { TeamTags } from '../contacts/TeamTags';
 import { PeoplePicker } from './NewChatDialogs';
 
 function PanelShell({ title, onClose, children, testId }: { title: string; onClose: () => void; children: React.ReactNode; testId: string }) {
@@ -107,6 +109,7 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
               key={m.id}
               m={m}
               me={meId}
+              spaceId={conv.spaceId}
               canManage={isAdmin && m.id !== meId && m.role !== 'owner' && !(conv.kind === 'channel' && conv.visibility === 'public')}
               isChannel={conv.kind === 'channel'}
               onRole={(role) => setRole.mutate({ id: conv.id, userId: m.id, role })}
@@ -140,8 +143,9 @@ export function DetailsPanel({ conv, onClose }: { conv: ConversationDetail; onCl
   );
 }
 
-function MemberRow({ m, me, canManage, isChannel, onRole, onRemove }: { m: ConversationDetail['members'][number]; me?: string; canManage: boolean; isChannel: boolean; onRole: (r: 'admin' | 'member') => void; onRemove: () => void }) {
+function MemberRow({ m, me, canManage, isChannel, onRole, onRemove, spaceId }: { m: ConversationDetail['members'][number]; me?: string; canManage: boolean; isChannel: boolean; onRole: (r: 'admin' | 'member') => void; onRemove: () => void; spaceId?: string | null }) {
   const online = useIsOnline(m.id);
+  const card = usePeople().get(m.id);
   return (
     <li className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-hover" data-testid="member" data-name={m.name}>
       <span className="relative">
@@ -154,6 +158,7 @@ function MemberRow({ m, me, canManage, isChannel, onRole, onRemove }: { m: Conve
           {m.id === me && <span className="font-normal text-muted"> (you)</span>}
         </span>
         <span className="block truncate text-[11.5px] text-muted">{m.title ?? m.department ?? m.email}</span>
+        {card && card.projects.length > 0 && <TeamTags teams={card.projects} prefer={[spaceId]} max={2} className="mt-0.5" />}
       </span>
       {m.role !== 'member' && (
         <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium capitalize text-brand-700">
@@ -182,6 +187,7 @@ function MemberRow({ m, me, canManage, isChannel, onRole, onRemove }: { m: Conve
 function PeerCard({ conv, onClose }: { conv: ConversationDetail; onClose: () => void }) {
   const p = conv.peer!;
   const online = useIsOnline(p.id);
+  const card = usePeople().get(p.id);
   return (
     <PanelShell title="Profile" onClose={onClose} testId="details-panel">
       <div className="flex flex-col items-center px-5 py-6 text-center">
@@ -192,6 +198,7 @@ function PeerCard({ conv, onClose }: { conv: ConversationDetail; onClose: () => 
         <div className="mt-3 text-[17px] font-semibold text-ink">{p.name}</div>
         <div className="text-[13px] text-muted">{[p.title, p.department].filter(Boolean).join(' · ')}</div>
         <div className="mt-1 text-[12px] text-subtle">{online ? 'Active now' : 'Away'}</div>
+        {card && card.projects.length > 0 && <TeamTags teams={card.projects} max={8} links className="mt-3 justify-center" />}
         <Link href={`/contacts/${p.id}`} className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-hover" data-testid="view-profile">
           View profile
         </Link>
