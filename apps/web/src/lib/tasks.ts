@@ -1,6 +1,6 @@
 'use client';
 
-import { between, type CeremonyPlan, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type RetroItemView, type SprintReport, type SprintView, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView, type VelocityRow, type WorkflowId } from '@workos/shared';
+import { between, type CeremonyPlan, type IssueLinkKind, type IssueType, type Methodology, type Project, type ProjectStats, type RealtimeEvent, type RetroItemView, type SprintReport, type SprintView, type TaskDetail, type TaskInput, type TaskLinkView, type TaskStatus, type TaskView, type VelocityRow, type WorkflowId, type ProjectDocs, type TraceRow, type DocItem, type Resource } from '@workos/shared';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from './api';
@@ -18,6 +18,33 @@ export const useSprints = (projectId?: string | null) =>
 export const useSprintReport = (id?: string | null) => useQuery({ queryKey: ['tasks', 'report', id], queryFn: () => api<SprintReport>(`/tasks/sprints/${id}/report`), enabled: !!id });
 export const useVelocity = (projectId?: string | null) => useQuery({ queryKey: ['tasks', 'velocity', projectId], queryFn: () => api<VelocityRow[]>(`/tasks/projects/${projectId}/velocity`), enabled: !!projectId });
 export const useRetro = (sprintId?: string | null) => useQuery({ queryKey: ['tasks', 'retro', sprintId], queryFn: () => api<RetroItemView[]>(`/tasks/sprints/${sprintId}/retro`), enabled: !!sprintId });
+
+export const useProjectDocs = (projectId?: string | null) =>
+  useQuery({ queryKey: ['tasks', 'docs', projectId], queryFn: () => api<ProjectDocs>(`/tasks/projects/${projectId}/docs`), enabled: !!projectId });
+export const useTraceability = (projectId?: string | null) =>
+  useQuery({ queryKey: ['tasks', 'trace', projectId], queryFn: () => api<TraceRow[]>(`/tasks/projects/${projectId}/traceability`), enabled: !!projectId });
+export const useDocItems = (docId?: string | null) => useQuery({ queryKey: ['tasks', 'docitems', docId], queryFn: () => api<DocItem[]>(`/tasks/docs/${docId}/items`), enabled: !!docId, staleTime: 0 });
+
+/** The project documentation space and traceability (§76, batch 3). */
+export function useProjectDocActions() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['tasks'] });
+  return {
+    setup: useMutation({ mutationFn: ({ projectId, set }: { projectId: string; set?: string }) => api<ProjectDocs>(`/tasks/projects/${projectId}/docs/setup`, { method: 'POST', json: { set } }), onSuccess: refresh, onError }),
+    create: useMutation({
+      mutationFn: ({ projectId, ...body }: { projectId: string; template?: string | null; name?: string; folderId?: string | null }) => api<Resource>(`/tasks/projects/${projectId}/docs`, { method: 'POST', json: body }),
+      onSuccess: refresh,
+      onError,
+    }),
+    issues: useMutation({
+      mutationFn: ({ projectId, docId, ...body }: { projectId: string; docId: string; items: string[]; type?: string; parentId?: string | null }) => api<TaskView[]>(`/tasks/projects/${projectId}/docs/${docId}/issues`, { method: 'POST', json: body }),
+      onSuccess: refresh,
+      onError,
+    }),
+    link: useMutation({ mutationFn: ({ taskId, resourceId }: { taskId: string; resourceId: string }) => api(`/tasks/${taskId}/docs`, { method: 'POST', json: { resourceId } }), onSuccess: refresh, onError }),
+    unlink: useMutation({ mutationFn: ({ taskId, resourceId }: { taskId: string; resourceId: string }) => api(`/tasks/${taskId}/docs/${resourceId}`, { method: 'DELETE' }), onSuccess: refresh, onError }),
+  };
+}
 
 /** Sprints, planning and the retrospective (§76). */
 export function useSprintActions() {

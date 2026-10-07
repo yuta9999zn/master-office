@@ -4,6 +4,8 @@ import { ApprovalsController } from './approvals/approvals.controller';
 import { ApprovalsService } from './approvals/approvals.service';
 import { MeetingsController } from './meetings/meetings.controller';
 import { MeetingsService } from './meetings/meetings.service';
+import { ProjectDocsController } from './tasks/project-docs.controller';
+import { ProjectDocsService } from './tasks/project-docs.service';
 import { SprintsController } from './tasks/sprints.controller';
 import { SprintsService } from './tasks/sprints.service';
 import { TasksController } from './tasks/tasks.controller';
@@ -53,7 +55,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, MeetingsController, ApprovalsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -77,6 +79,7 @@ import { WorkspaceController } from './users/workspace.controller';
     CalendarService,
     TasksService,
     SprintsService,
+    ProjectDocsService,
     MeetingsService,
     ApprovalsService,
     DocsService,

@@ -1,13 +1,13 @@
 'use client';
 
 import { canTransition, childTypeOf, ISSUE_RANK, WORK_TYPES, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
-import { ArrowRight, Ban, Bug, CalendarDays, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
+import { ArrowRight, Ban, BookOpen, Bug, CalendarDays, Lock, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '@/lib/format';
 import { useUsers } from '@/lib/queries';
-import { LINK_LABEL, PRIORITY, shortDate, useProjects, useTask, useTaskActions, useTasks } from '@/lib/tasks';
-import { Avatar, AvatarStack, Button, cn, Dialog, EmptyState, IconButton, Skeleton } from '../ui/primitives';
+import { LINK_LABEL, PRIORITY, shortDate, useProjectDocActions, useProjectDocs, useProjects, useTask, useTaskActions, useTasks } from '@/lib/tasks';
+import { Avatar, AvatarStack, Button, cn, Dialog, EmptyState, FileIcon, IconButton, Skeleton } from '../ui/primitives';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 
 const FIELD: Record<string, string> = {
@@ -34,6 +34,10 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const { data: siblings } = useTasks(t?.projectId ?? null);
   const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug } = useTaskActions();
   const { data: projects } = useProjects();
+  const { data: projectDocs } = useProjectDocs(t?.projectId ?? null);
+  const docActions = useProjectDocActions();
+  const [linkingDoc, setLinkingDoc] = useState(false);
+  const [docQ, setDocQ] = useState('');
   const [bugging, setBugging] = useState(false);
   const [bugTitle, setBugTitle] = useState('');
   const [bugDesc, setBugDesc] = useState('');
@@ -364,6 +368,41 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
           </section>
         )}
 
+        {inProject && (
+          <section className="mt-4" data-testid="task-docs">
+            <div className="flex items-center text-[13px] font-semibold text-ink">
+              <span className="flex flex-1 items-center gap-1.5">
+                <BookOpen size={14} /> Documents
+              </span>
+              {!ro && (
+                <button onClick={() => (setLinkingDoc(true), setDocQ(''))} className="rounded-md px-1.5 py-0.5 text-[12px] font-medium text-brand-700 hover:bg-brand-50" data-testid="link-doc">
+                  + Document
+                </button>
+              )}
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {t.docs.map((d) => (
+                <li key={d.id} className="group flex items-center gap-2 rounded-md px-1 py-1 text-[13px] hover:bg-hover" data-testid="task-doc">
+                  {d.accessible ? <FileIcon r={{ type: d.type, metadata: {}, mimeType: null }} size={15} /> : <Lock size={14} className="text-subtle" />}
+                  {d.accessible ? (
+                    <a href={`/docs/${d.id}`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">
+                      {d.name}
+                    </a>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate text-muted">{d.name}</span>
+                  )}
+                  {!ro && (
+                    <button onClick={() => docActions.unlink.mutate({ taskId: t.id, resourceId: d.id })} className="hidden rounded p-0.5 text-muted hover:bg-white group-hover:block" aria-label="Unlink document">
+                      <X size={12} />
+                    </button>
+                  )}
+                </li>
+              ))}
+              {!t.docs.length && <li className="px-1 text-[12.5px] text-subtle">No documents — link the requirement or spec this implements</li>}
+            </ul>
+          </section>
+        )}
+
         <section className="mt-5">
           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
             <MessageSquare size={14} /> Activity
@@ -415,6 +454,22 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
             ))}
           </ul>
         </div>
+      </Dialog>
+      <Dialog open={linkingDoc} onOpenChange={setLinkingDoc} title="Link a document" description="Pages of the project docs (requirements, specs, use cases…)." width={480}>
+        <input value={docQ} onChange={(e) => setDocQ(e.target.value)} placeholder="Search pages" aria-label="Search pages" className="mb-2 h-9 w-full rounded-lg border border-line-strong px-3 text-[13px] outline-none focus:border-brand-500" />
+        <ul className="max-h-72 overflow-auto">
+          {(projectDocs?.nodes ?? [])
+            .filter((n) => n.type !== 'folder' && !t.docs.some((d) => d.id === n.id) && n.name.toLowerCase().includes(docQ.toLowerCase()))
+            .map((n) => (
+              <li key={n.id}>
+                <button onClick={() => docActions.link.mutate({ taskId: t.id, resourceId: n.id }, { onSuccess: () => setLinkingDoc(false) })} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-hover" data-testid="doc-candidate" data-name={n.name}>
+                  <FileIcon r={{ type: n.type, metadata: {}, mimeType: null }} size={15} />
+                  <span className="min-w-0 flex-1 truncate">{n.name}</span>
+                </button>
+              </li>
+            ))}
+          {!projectDocs?.folderId && <li className="px-2 py-3 text-[12.5px] text-muted">This project has no documentation space yet (Docs tab).</li>}
+        </ul>
       </Dialog>
       <Dialog
         open={bugging}

@@ -10,13 +10,14 @@ import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, us
 import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
 import { BacklogView } from './BacklogView';
+import { DocsView } from './DocsView';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 import { SprintsView } from './SprintsView';
 import { WorkflowSettings } from './WorkflowSettings';
 import { TaskDashboard } from './TaskDashboard';
 import { TaskDrawer } from './TaskDrawer';
 
-type View = 'backlog' | 'board' | 'list' | 'sprints' | 'gantt' | 'calendar' | 'dashboard' | 'intake';
+type View = 'backlog' | 'board' | 'list' | 'sprints' | 'gantt' | 'calendar' | 'dashboard' | 'docs' | 'intake';
 const PERSONAL: TaskStatus[] = [
   { id: 'todo', name: 'To Do', color: '#64748b', category: 'todo' },
   { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing' },
@@ -65,7 +66,7 @@ export function TasksApp() {
   const { data: sprints } = useSprints(agile ? project?.id : null);
   const activeSprint = agile ? sprints?.find((x) => x.state === 'active') ?? null : null;
   const views: View[] = project
-    ? [...(agile ? (['backlog'] as View[]) : []), 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
+    ? [...(agile ? (['backlog'] as View[]) : []), 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', 'docs', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
     : ['board', 'list', 'calendar'];
 
   if (!mounted) return <div className="h-full bg-canvas" />;
@@ -74,24 +75,24 @@ export function TasksApp() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5">
         <SquareCheckBig size={20} className="text-brand-600" />
         <h1 className="text-[17px] font-semibold text-ink">Tasks</h1>
-        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (['backlog', 'sprints'].includes(view) ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' ? 'board' : view })} onNew={() => setNewProject(true)} />
+        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (['backlog', 'sprints'].includes(view) ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' || view === 'docs' ? 'board' : view })} onNew={() => setNewProject(true)} />
         {project && (
           <span className="rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
             {METHODOLOGY[project.methodology].label}
           </span>
         )}
-        <nav className="ml-2 flex gap-1" role="tablist">
+        <nav className="ml-2 flex min-w-0 gap-0.5 overflow-x-auto" role="tablist">
           {views.map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn('flex items-center gap-1 rounded-md px-3 py-1.5 text-[13px] capitalize', view === v ? 'bg-selected font-semibold text-brand-700' : 'text-muted hover:bg-hover hover:text-ink')}>
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn('flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] capitalize', view === v ? 'bg-selected font-semibold text-brand-700' : 'text-muted hover:bg-hover hover:text-ink')}>
               {v}
               {v === 'intake' && triage.length > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10.5px] font-semibold text-white" data-testid="intake-count">{triage.length}</span>}
             </button>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <label className="flex h-8 items-center gap-2 rounded-lg bg-canvas px-2.5 text-[13px] ring-1 ring-line focus-within:ring-brand-500">
             <Search size={14} className="text-subtle" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks" className="w-36 bg-transparent outline-none" aria-label="Search tasks" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks" className="w-24 bg-transparent outline-none xl:w-36" aria-label="Search tasks" />
           </label>
           <AssigneeFilter value={who} onChange={setWho} />
           {project?.perms.manage && (
@@ -121,6 +122,8 @@ export function TasksApp() {
             <BacklogView project={project} tasks={shown} open={(id) => go({ task: id })} />
           ) : view === 'sprints' && project && agile ? (
             <SprintsView project={project} open={(id) => go({ task: id })} />
+          ) : view === 'docs' && project ? (
+            <DocsView project={project} tasks={tasks ?? []} open={(id) => go({ task: id })} />
           ) : view === 'intake' && project ? (
             <IntakeView tasks={triage} canEdit={canEdit} open={(id) => go({ task: id })} />
           ) : view === 'list' ? (

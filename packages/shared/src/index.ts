@@ -981,6 +981,37 @@ export interface TaskDetail extends TaskView {
   links: TaskLinkView[];
   watchers: UserSummary[];
   watching: boolean;
+  /** Documents it traces to (requirements, specs, use cases…). */
+  docs: { id: string; name: string; type: ResourceType; accessible: boolean }[];
+}
+
+/** A page or folder of a project's documentation space (§76). */
+export interface ProjectDocNode {
+  id: string;
+  name: string;
+  type: ResourceType;
+  parentId: string | null;
+  updatedAt: string;
+  updatedBy: UserSummary | null;
+  /** Issues linked to this page. */
+  linked: number;
+}
+
+export interface ProjectDocs {
+  folderId: string | null;
+  nodes: ProjectDocNode[];
+}
+
+/** Requirements traceability: a document and the issues that implement it. */
+export interface TraceRow {
+  doc: { id: string; name: string; inProjectDocs: boolean };
+  issues: { id: string; ref: string | null; title: string; type: IssueType; status: string; done: boolean }[];
+}
+
+/** A line of a document that can become an issue (a bullet, a checklist item, a table row's first cell). */
+export interface DocItem {
+  text: string;
+  section: string | null;
 }
 
 export interface ProjectStats {

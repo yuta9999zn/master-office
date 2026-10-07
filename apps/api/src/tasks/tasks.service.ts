@@ -27,7 +27,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { messages, projects, sprints, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
+import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, workspaceMembers } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -337,7 +337,20 @@ export class TasksService {
       links: await this.linksOf(actor, id),
       watchers: watchers.map((w) => people.get(w.id)!).filter(Boolean),
       watching: watchers.some((w) => w.id === actor.id),
+      docs: await this.docsOf(actor, id),
     };
+  }
+
+  /** Documents an issue traces to; ones the viewer cannot open show locked. */
+  async docsOf(actor: Actor, taskId: string) {
+    const rows = await this.db
+      .select({ r: resources })
+      .from(taskDocs)
+      .innerJoin(resources, eq(resources.id, taskDocs.resourceId))
+      .where(and(eq(taskDocs.taskId, taskId), isNull(resources.trashedAt)))
+      .orderBy(asc(taskDocs.createdAt));
+    const roles = await this.perms.rolesFor(actor, rows.map((x) => x.r));
+    return rows.map(({ r }) => ({ id: r.id, name: r.name, type: r.type, accessible: can(roles.get(r.id), 'viewer') }));
   }
 
   private statusesOf(p: Proj | null) {

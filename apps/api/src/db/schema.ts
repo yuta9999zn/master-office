@@ -828,6 +828,8 @@ export const projects = pgTable(
     /** Which professional workflow the statuses came from (§76), and whether its transitions are enforced. */
     workflow: text('workflow').$type<'software' | 'scrum' | 'basic' | 'bug' | 'waterfall' | 'custom'>().notNull().default('scrum'),
     strictWorkflow: boolean('strict_workflow').notNull().default(false),
+    /** The project's documentation space (a folder in its Space, §76 batch 3). */
+    docsFolderId: uuid('docs_folder_id').references((): AnyPgColumn => resources.id, { onDelete: 'set null' }),
     archivedAt: ts('archived_at'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(sql`now()`),
@@ -1167,4 +1169,20 @@ export const retroItems = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [index('retro_items_sprint_idx').on(t.sprintId)],
+);
+
+/** Traceability (§76): an issue implements / is described by a document (BRD, PRD, use case…). */
+export const taskDocs = pgTable(
+  'task_docs',
+  {
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    resourceId: uuid('resource_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.resourceId] }), index('task_docs_resource_idx').on(t.resourceId)],
 );

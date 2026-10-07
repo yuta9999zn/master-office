@@ -1,6 +1,7 @@
 // Document templates (Google Docs' template gallery): a filled-in starting point per kind of document.
 // docs/ARCHITECTURE.md §44.
 import type { JSONContent } from '@tiptap/core';
+import { PROJECT_DOC_TEMPLATES } from './project-templates';
 
 export interface DocTemplate {
   id: string;
@@ -198,6 +199,7 @@ export const DOC_TEMPLATES: DocTemplate[] = [
 
 /** The template's document, or null for a blank document / an unknown id. */
 export function templateDocument(id: string | null | undefined, title: string): JSONContent | null {
-  const tpl = DOC_TEMPLATES.find((x) => x.id === id);
+  // Project documentation templates (pd-…) are made the same way (§76).
+  const tpl = DOC_TEMPLATES.find((x) => x.id === id) ?? PROJECT_DOC_TEMPLATES.find((x) => x.id === id);
   return tpl ? tpl.build(title) : null;
 }
