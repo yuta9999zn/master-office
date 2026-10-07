@@ -27,6 +27,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationsService, resourcePath } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 import { COLLAB_TYPES, DocsService } from '../docs/docs.service';
+import { FlowService } from '../flow/flow.service';
 import { SheetsService } from '../sheets/sheets.service';
 import { SlidesService } from '../slides/slides.service';
 import { FormsService } from '../forms/forms.service';
@@ -52,6 +53,7 @@ export class ResourcesService {
     private readonly sheets: SheetsService,
     private readonly slides: SlidesService,
     private readonly forms: FormsService,
+    private readonly flow: FlowService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -277,6 +279,7 @@ export class ResourcesService {
     if (body) await this.docs.fillTemplate(dto.id, body, actor);
     if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name, templateDeck(input.template, dto.name));
     if (dto.type === 'form') await this.forms.init(dto.id, dto.name);
+    if (dto.type === 'flow') await this.flow.init(dto.id, input.template);
     return dto;
   }
 

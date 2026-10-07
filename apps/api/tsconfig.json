@@ -27,6 +27,9 @@
       ],
       "@workos/base-model": [
         "../../packages/base-model/src"
+      ],
+      "@workos/flow-model": [
+        "../../packages/flow-model/src"
       ]
     }
   },

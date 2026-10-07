@@ -7,6 +7,8 @@ import { SEED_DOCS, seedDocState } from './seed-docs';
 import { blankWorkbook, SEED_SHEETS, seedSheetState } from './seed-sheets';
 import { blankDeck, SEED_DECKS, seedDeckState } from './seed-slides';
 import { blankForm } from '@workos/form-model';
+import { blankFlow, bookingFlow, writeFlow } from '@workos/flow-model';
+import * as Y from 'yjs';
 import { SEED_FORMS, seedFormState, surveyResponses } from './seed-forms';
 import { q4StrategyNote, seedNoteState, simpleNote } from './seed-notes';
 import { seedChat } from './seed-chat';
@@ -162,7 +164,7 @@ async function main() {
         createdAt: when,
         updatedAt: when,
         path: parent ? [...parent.path, parent.id] : [],
-        contentRef: ['document', 'spreadsheet', 'presentation', 'wiki', 'base', 'form'].includes(type) ? `res:${id}` : null,
+        contentRef: ['document', 'spreadsheet', 'presentation', 'wiki', 'base', 'form', 'flow'].includes(type) ? `res:${id}` : null,
         ...extra,
       })
       .returning();
@@ -255,6 +257,8 @@ async function main() {
   await addBlob('Autumn Banner.svg', 'minh', images, art('#60a5fa', '#8b5cf6', 'Autumn Sale 2026'), 'image/svg+xml');
   await add('Lead Tracker', 'base', 'hana', 'Marketing');
   await add('Event Registration', 'form', 'hana', 'Marketing');
+  await add('Customer Booking Approval Workflow', 'flow', 'claudia', 'Natural Beauty', { tags: ['Booking'] });
+  await add('Lead Handling Flow', 'flow', 'hana', 'Marketing');
   await add('Customer Satisfaction Survey', 'form', 'mika', 'Natural Beauty', { tags: ['Customers'] });
 
   // Operations / Branches
@@ -351,6 +355,17 @@ async function main() {
       .update(s.resources)
       .set({ sizeBytes: state.length, contentText: text, metadata: sql`${s.resources.metadata} || ${JSON.stringify({ slideCount })}::jsonb` })
       .where(sql`id = ${r.id}`);
+  }
+
+  // Flows (§77): the booking workflow from the reference design; others start blank.
+  const flowRows = (await db.execute<{ id: string; name: string }>(sql`SELECT id, name FROM resources WHERE type = 'flow'`)).rows;
+  for (const r of flowRows) {
+    const doc = new Y.Doc();
+    const flow = r.name === 'Customer Booking Approval Workflow' ? bookingFlow() : blankFlow();
+    writeFlow(doc, flow);
+    const state = Buffer.from(Y.encodeStateAsUpdate(doc));
+    await db.insert(s.ydocStates).values({ resourceId: r.id, state });
+    await db.update(s.resources).set({ sizeBytes: state.length, contentText: flow.nodes.map((n) => n.text).join(' · ') }).where(sql`id = ${r.id}`);
   }
 
   // Forms (Phase 8): every native form gets its definition; the survey also gets a few responses.

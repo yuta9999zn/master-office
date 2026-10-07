@@ -1,7 +1,7 @@
 'use client';
 
 import type { ResourceType } from '@workos/shared';
-import { BookOpen, ClipboardList, Database, FileText, FolderPlus, Link2, NotebookPen, Play, Table2, Upload } from 'lucide-react';
+import { BookOpen, ClipboardList, Database, FileText, FolderPlus, Link2, NotebookPen, Play, Table2, Upload, Workflow } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useResourceActions } from '@/lib/queries';
@@ -17,6 +17,7 @@ const ITEMS: { type: ResourceType; label: string; icon: ReactNode; color: string
   { type: 'form', label: 'Form', icon: <ClipboardList />, color: '#4f46e5', untitled: 'Untitled form' },
   { type: 'wiki', label: 'Wiki page', icon: <BookOpen />, color: '#0d9488', untitled: 'Untitled page' },
   { type: 'base', label: 'Base (Database)', icon: <Database />, color: '#7c3aed', untitled: 'Untitled base' },
+  { type: 'flow', label: 'Flow (Diagram)', icon: <Workflow />, color: '#6366f1', untitled: 'Untitled flow' },
 ];
 
 /**

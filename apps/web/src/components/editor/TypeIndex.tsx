@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { SlideTemplates } from '../slides/SlideTemplates';
 import { DocTemplates, SheetTemplates } from './TemplateGallery';
+import { FlowTemplates } from '../flow/FlowTemplates';
 import { appById } from '@/lib/apps';
 import { useResourceActions, useResources } from '@/lib/queries';
 import { hrefFor, TYPE_META } from '@/lib/resources';
@@ -63,6 +64,8 @@ export function TypeIndex({ appId, type }: { appId: string; type: ResourceType }
           <DocTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
         ) : type === 'spreadsheet' ? (
           <SheetTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
+        ) : type === 'flow' ? (
+          <FlowTemplates onPick={(t, n) => void fromTemplate(t, n)} busy={busy} />
         ) : (
         <button onClick={createNew} className="card mt-6 flex w-56 flex-col items-center gap-3 p-6 transition hover:-translate-y-px hover:shadow-[var(--shadow-pop)]">
           <span className="flex size-14 items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: app.to, color: app.to }}>

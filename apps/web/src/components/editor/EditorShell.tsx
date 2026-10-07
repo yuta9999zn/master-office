@@ -6,12 +6,13 @@ import { SheetsWorkspace } from '../sheets/SheetsWorkspace';
 import { SlidesWorkspace } from '../slides/SlidesWorkspace';
 import { FormsWorkspace } from '../forms/FormsWorkspace';
 import { BaseWorkspace } from '../base/BaseWorkspace';
+import { FlowWorkspace } from '../flow/FlowWorkspace';
 import { useResource, useResourceActions } from '@/lib/queries';
 import { EmptyState, Skeleton } from '../ui/primitives';
 
-export type EditorKind = 'docs' | 'sheets' | 'slides' | 'wiki' | 'base' | 'forms';
+export type EditorKind = 'docs' | 'sheets' | 'slides' | 'wiki' | 'base' | 'forms' | 'flow';
 
-/** Opens a native file in its editor (Docs, Sheets, Slides, Wiki, Forms, Base) and records the visit. */
+/** Opens a native file in its editor (Docs, Sheets, Slides, Wiki, Forms, Base, Flow) and records the visit. */
 export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
   const { data: r, error } = useResource(id);
   const acts = useResourceActions();
@@ -28,5 +29,6 @@ export function EditorShell({ id, kind }: { id: string; kind: EditorKind }) {
   if (kind === 'sheets') return <SheetsWorkspace key={id} r={r} />;
   if (kind === 'slides') return <SlidesWorkspace key={id} r={r} />;
   if (kind === 'forms') return <FormsWorkspace key={id} r={r} />;
+  if (kind === 'flow') return <FlowWorkspace key={id} r={r} />;
   return <BaseWorkspace key={id} r={r} />;
 }

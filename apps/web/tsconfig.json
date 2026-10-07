@@ -43,6 +43,9 @@
       ],
       "@workos/base-model": [
         "../../packages/base-model/src/index.ts"
+      ],
+      "@workos/flow-model": [
+        "../../packages/flow-model/src/index.ts"
       ]
     }
   },

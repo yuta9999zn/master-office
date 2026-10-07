@@ -37,6 +37,7 @@ import { QaService } from './slides/qa.service';
 import { MacroTriggersService } from './sheets/macro-triggers.service';
 import { SlidesService } from './slides/slides.service';
 import { BaseController } from './base/base.controller';
+import { FlowService } from './flow/flow.service';
 import { BaseService } from './base/base.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
@@ -76,6 +77,7 @@ import { WorkspaceController } from './users/workspace.controller';
     SlidesService,
     FormsService,
     BaseService,
+    FlowService,
     MailService,
     MailboxService,
     InboundMailService,

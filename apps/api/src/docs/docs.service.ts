@@ -29,10 +29,12 @@ import { PdfRenderer } from './pdf-renderer';
 import { cellValue } from '@workos/sheet-model';
 import { SheetsService, type SheetExportFormat } from '../sheets/sheets.service';
 import { deckImages, SlidesService, type SlideExportFormat } from '../slides/slides.service';
+import { FlowService } from '../flow/flow.service';
+import { EDGES_MAP as FLOW_EDGES, INFO_MAP as FLOW_INFO, NODES_MAP as FLOW_NODES, PAGE_ORDER as FLOW_ORDER, PAGES_MAP as FLOW_PAGES, writeFlow } from '@workos/flow-model';
 import type { ImageLoader } from '../slides/pptx-export';
 import { FORM_MAP, ITEMS_MAP, ORDER_ARRAY as FORM_ORDER, readForm as readFormFromDoc, writeForm, type PlainForm } from '@workos/form-model';
 
-export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation', 'form'];
+export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation', 'form', 'flow'];
 export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png';
 /** Published pages: a thin top bar, and slides scaled to the window (presentations). */
 const PUBLISH_CSS = `.mo-pub-bar{position:sticky;top:0;z-index:10;font:13px/1.4 Inter,Arial,sans-serif;color:#475569;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 16px}@media screen{main{max-width:860px;margin:0 auto;padding:24px 16px 48px}}`;
@@ -81,6 +83,7 @@ export class DocsService {
     private readonly events: EventsService,
     private readonly sheets: SheetsService,
     private readonly slides: SlidesService,
+    private readonly flow: FlowService,
   ) {}
 
   private async requireDoc(actor: Actor, id: string, role: Parameters<PermissionsService['require']>[2]) {
@@ -96,6 +99,7 @@ export class DocsService {
     // Opening the editor counts as a view (Activity dashboard). Never blocks opening.
     await this.recordView(actor, id).catch((e) => this.log.warn(`view not recorded: ${(e as Error).message}`));
     if (row.type === 'presentation' && !row.blobId && !(await this.store.load(id))) await this.slides.init(id, row.name);
+    if (row.type === 'flow') await this.flow.ensure(id);
     const [u] = await this.db.select({ color: users.avatarColor }).from(users).where(eq(users.id, actor.id));
     return {
       token: signCollabToken({ uid: actor.id, name: actor.name, color: u?.color ?? '#2563eb', rid: id, ws: actor.workspaceId, role }),
@@ -591,6 +595,7 @@ export class DocsService {
     if (row.type === 'spreadsheet') return { workbook: SheetsService.preview(state) };
     if (row.type === 'presentation') return { deck: SlidesService.preview(state) };
     if (row.type === 'form') return { form: readFormState(state) };
+    if (row.type === 'flow') return { flow: FlowService.preview(state) };
     return { content: stateToJSON(state) };
   }
 
@@ -616,7 +621,18 @@ export class DocsService {
         writeForm(doc, { ...form, settings: { ...form.settings, sheetId } });
       });
     }
-    else await this.collab.replaceDocument(id, state, { id: actor.id, name: actor.name });
+    else if (row.type === 'flow') {
+      const flow = FlowService.preview(state);
+      await this.collab.transact(id, { id: actor.id, name: actor.name }, (doc) => {
+        for (const name of [FLOW_INFO, FLOW_PAGES, FLOW_NODES, FLOW_EDGES]) {
+          const m = doc.getMap(name);
+          for (const k of [...m.keys()]) m.delete(k);
+        }
+        const order = doc.getArray(FLOW_ORDER);
+        order.delete(0, order.length);
+        writeFlow(doc, flow);
+      });
+    } else await this.collab.replaceDocument(id, state, { id: actor.id, name: actor.name });
     await this.events.emit(this.db, actor, 'resource.version_restored', { resourceId: id, spaceId: row.spaceId }, { name: row.name, versionId });
   }
 }

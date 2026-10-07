@@ -21,7 +21,8 @@
     "test:tasks": "node test/tasks.mjs && node test/issues.mjs && node test/sprints.mjs && node test/workflows.mjs && node test/project-docs.mjs && node test/quality.mjs && node test/gates.mjs && node test/aidlc.mjs && node test/planning.mjs",
     "test:meetings": "node test/meetings.mjs",
     "test:approvals": "node test/approvals.mjs",
-    "test:base": "npx tsx test/base-model.ts && node test/base.mjs"
+    "test:base": "npx tsx test/base-model.ts && node test/base.mjs",
+    "test:flow": "node test/flow.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",
