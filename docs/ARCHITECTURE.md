@@ -1330,3 +1330,55 @@ Theo bộ tài liệu tham chiếu ở D:\chuyển (BA toolkit, mẫu yêu cầu
 | Cây trang | Kéo thả: nửa trên / dưới của dòng = trước / sau, giữa = vào trong; client gửi cả `afterId` và `beforeId` để vị trí phân số nằm đúng giữa hai trang kề. Không cho đặt trang vào trang con của chính nó (400). Xoá trang → cả cây con vào thùng rác Drive; trang chủ không xoá được. Sao chép: trang trên cùng thành "X (Copy)", trang con giữ tên. |
 | Giao diện | `/wiki`: danh sách space, tạo space (tên, key, ai thấy, bộ khởi đầu), trang cập nhật gần đây. `/wiki/s/:spaceId?page=`: thanh bên (tìm theo tên / nhãn, cây trang, + trang con, ⋯ sao chép / sao chép kèm trang con / chép link / lên cấp cao nhất / đặt làm trang chủ / xoá), đầu trang (breadcrumb, trạng thái, nhãn, số issue liên kết, owner, sửa lần cuối) rồi trình soạn Docs. `/wiki/:id` chuyển vào space của trang. Tab Docs của dự án dùng cùng cây trang và có nút "Open in Wiki". |
 | Test | `wiki.mjs` (25), `project-docs.mjs` cập nhật; `wiki-flow.mjs` (10): tạo space với BA toolkit, trang mục, trang từ mẫu + trang con, kéo để sắp xếp / lồng, trạng thái + nhãn, tìm, sao chép kèm trang con + xoá, cài đặt space, trang chủ Wiki, link `/wiki/:id`. |
+
+## 79. Phase 8 — Tổ chức, quản trị, dung lượng: quyết định
+
+Mục tiêu bản open source: **một tổ chức ≈ 20 người**, đơn giản trước. Khách hàng mở hệ thống lần đầu → tạo tài khoản admin + gắn email hệ thống → tạo các nhóm / phòng ban (workspace của đội) → mời người. Bộ chính sách cho khách hàng: `docs/ORG-POLICY.md`.
+
+| Đợt | Nội dung | Trạng thái |
+|---|---|---|
+| A | Đăng nhập thật (email + mật khẩu, phiên), trình cài đặt lần đầu `/setup`, email hệ thống (SMTP + app password, mã hoá, hướng dẫn Gmail / Outlook, gửi thử), mời người qua email + trang nhận lời mời, quên mật khẩu, trang Admin → Members (vai trò, khoá / mở, mời lại) | **xong** |
+| B | Nhóm / phòng ban: loại Space (department / team / project), cây cha-con, **trưởng nhóm** (vai trò admin của Space), **chức vụ theo từng nhóm** (một người nhiều nhóm, nhiều chức vụ), trưởng nhóm thêm người, lập kênh chat; danh bạ: quyền xem số điện thoại, nhãn nhóm + chức vụ khi chat | |
+| C | Dung lượng: quỹ của tổ chức, hạn mức mỗi người, hạn mức mỗi nhóm, tính dung lượng chuẩn, chặn upload khi đầy, trang Storage; hiệu năng mở / lưu file | |
+
+**Vai trò**
+
+| Cấp | Vai trò | Quyền |
+|---|---|---|
+| Tổ chức | **Owner** (người cài đặt, 1 người, chuyển được) | mọi quyền Admin + chuyển quyền sở hữu, không bị khoá |
+| | **Admin** | email hệ thống, mời / khoá người, vai trò, nhóm, hạn mức, xem mọi nhóm (admin của mọi Space như hiện nay) |
+| | **Member** (`editor`) | dùng mọi ứng dụng, tạo DM / nhóm chat ≤ 10 người, thấy nhóm công khai |
+| | **Guest** (`viewer`) | chỉ thấy thứ được chia sẻ trực tiếp, không thấy nhóm công khai, không xem danh bạ đầy đủ |
+| Nhóm (Space) | **Trưởng nhóm** (`owner` / `admin` của Space) | thêm / bớt thành viên, đặt chức vụ, tạo kênh chat, quản lý file của nhóm, xem liên hệ đầy đủ của thành viên |
+| | Thành viên (`editor`), người xem (`viewer` / `commenter`) | như §68 |
+
+**Đợt A — quyết định**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Danh tính | Bảng `auth_credentials` (userId, scrypt hash N=16384, đổi lần cuối), `auth_sessions` (sha256 của token, user, hết hạn 30 ngày trượt, user agent, IP), cookie `mo_session` httpOnly SameSite=Lax. `workspace_members.status` active / suspended (khoá = xoá mọi phiên). Middleware: phiên hợp lệ → actor; không có phiên và **chế độ dev** (`AUTH_DEV=1`, mặc định khi không phải production) → bộ chọn người dùng cũ (`mo_uid`, `x-user-id`) để seed + test chạy như cũ; còn lại → 401 và web chuyển `/login`. |
+| Cài đặt lần đầu | `GET /setup/status` → `{ needsSetup }` (chưa có workspace nào). `POST /setup` (chỉ khi needsSetup, trong một transaction có khoá): tên tổ chức, miền email (tuỳ chọn), tên + email + mật khẩu admin → workspace, user Owner, Space "General" công khai, phiên. Trình cài đặt web: 1 Tổ chức → 2 Tài khoản admin → 3 Email hệ thống (bỏ qua được) → 4 Nhóm đầu tiên + mời người (bỏ qua được). |
+| Email hệ thống | `system_settings` (workspaceId, key, value jsonb). Khoá `smtp`: provider gmail / outlook / custom, host, port, secure, user (địa chỉ email), **password mã hoá AES-256-GCM** bằng khoá `SETTINGS_KEY` (env) hoặc khoá ngẫu nhiên sinh lần đầu lưu ở `apps/api/.secrets/settings.key`; API không bao giờ trả mật khẩu (chỉ `hasPassword`). Tên người gửi. `MailService` dùng cấu hình này trước `SMTP_URL`. Gửi thử. Hướng dẫn từng bước lấy app password ngay trong trang. Không bao giờ hỏi mật khẩu qua chat / log. |
+| Mời người | `invitations` (email, vai trò, nhóm + chức vụ ban đầu, token sha256, hết hạn 7 ngày, người mời, trạng thái). Admin mời (email gửi link `/invite/:token`); người nhận đặt tên + mật khẩu → tài khoản + vào nhóm. Mời lại / huỷ. Email đã là thành viên → 400. |
+| Quên mật khẩu | `/forgot` → email link `/reset/:token` (1 giờ, 1 lần), không tiết lộ email có tồn tại hay không. Admin cũng gửi được link đặt lại. |
+| Không có email hệ thống | Lời mời / link vẫn tạo được: API trả link cho admin (hộp thoại mời, bước 4 của cài đặt, nút Resend chép link) để gửi tay. |
+| Địa chỉ hệ thống | `general.appUrl` (lưu từ `location.origin` lúc cài đặt, sửa ở Admin → General) cho link trong email; không lấy từ header Origin của request chưa đăng nhập (chống đầu độc link đặt lại mật khẩu). |
+| Test | `auth.mjs` (41): cài đặt chỉ một lần, chỉ admin, mời (link khi chưa có email, bỏ qua người đã là thành viên, nhóm + chức vụ), nhận lời mời → phiên httpOnly, đăng nhập / sai mật khẩu / email không phân biệt hoa thường, đổi mật khẩu đăng xuất nơi khác, đăng xuất, khoá → mất phiên + không đăng nhập được, mở lại, chỉ owner đặt admin, quên mật khẩu, SMTP (mật khẩu không bao giờ trả về, giữ mật khẩu khi đổi nhà cung cấp, lỗi gửi thử), địa chỉ hệ thống. `admin-flow.mjs` (10). `setup-flow.mjs` (8) chạy với API thứ hai trên DB trống, `AUTH_DEV=0` (xem đầu file). |
+
+**Đợt B — nhóm, chức vụ, danh bạ**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Nhóm | Dùng lại Space (đã có cây `parentId`, thành viên, vai trò, kênh chat, file, lịch, mailbox). Thêm `spaces.kind` department / team / project / general. Trang Admin → Teams: cây phòng ban → đội, kéo người vào. |
+| Chức vụ | `space_members.title` = chức vụ trong nhóm đó (vd. "Trưởng phòng", "Dev lead"); `users.title` = chức danh chính. Một người ở nhiều nhóm với nhiều chức vụ. |
+| Danh bạ | Ai cũng thấy: tên, chức danh chính, email, các nhóm mình cũng thấy + chức vụ trong đó. **Số điện thoại / địa điểm**: chính mình, Admin, trưởng nhóm của một nhóm người đó thuộc, hoặc khi người đó chọn "hiện với mọi người" (`users.phoneVisibility` everyone / leads, mặc định leads). Guest chỉ thấy người cùng nhóm. |
+| Chat | Thẻ người (hover tên trong tin nhắn, danh sách thành viên, đầu DM) hiện các nhóm + chức vụ, ưu tiên nhóm của kênh hiện tại và nhóm chung với người xem; "+n nhóm". |
+
+**Đợt C — dung lượng**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Đơn vị tính | Dung lượng **logic** (như Google Drive): kích thước file hiện tại + các phiên bản cũ + tệp đính kèm mail + ảnh / tệp trong tài liệu; khử trùng lặp nội dung (blob theo sha256) là tiết kiệm nội bộ, không trừ của ai. Tài liệu cộng tác (Docs / Sheets…) tính theo kích thước trạng thái Yjs. Thùng rác vẫn tính cho tới khi xoá hẳn. |
+| Ai chịu | File trong **My Files** → chủ sở hữu; file trong **Space của nhóm** → nhóm (như shared drive); đính kèm mail → người gửi / mailbox. |
+| Hạn mức | Quỹ tổ chức (mặc định: không giới hạn ở bản open source, admin đặt theo ổ đĩa máy chủ), mặc định mỗi người (vd. 10 GB), mỗi nhóm (vd. 50 GB), ghi đè từng người / nhóm. Trang Storage: tổng / đã cấp / đã dùng, từng người, từng nhóm, file lớn nhất. Cảnh báo 80 %, chặn upload (413 "Storage full") khi vượt người / nhóm / tổ chức. |
+| Hiệu năng | Kiểm tra hạn mức bằng một truy vấn SUM có index (`resources_owner_idx`, `resources_space_idx`) — vài ms với quy mô 20 người; bản doanh nghiệp: bảng đếm cập nhật trong cùng transaction + đối soát định kỳ. Mở file: stream từ S3, ETag = sha256 + `Cache-Control: private, max-age` cho nội dung bất biến; tài liệu cộng tác tải trạng thái Yjs một lần rồi đồng bộ tăng dần; lưu = cập nhật Yjs gộp, snapshot định kỳ. |

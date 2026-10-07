@@ -63,6 +63,8 @@ export const workspaceMembers = pgTable(
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     role: role('role').notNull().default('editor'),
+    /** active | suspended (§79: a suspended member cannot sign in; their sessions are revoked). */
+    status: text('status').notNull().default('active'),
     joinedAt: ts('joined_at').notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })],
@@ -1349,4 +1351,91 @@ export const wikiPages = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
   (t) => [index('wiki_pages_space_idx').on(t.spaceId, t.parentId, t.position)],
+);
+
+// ── Organisation & admin (§79): sign-in, system settings, invitations ──────
+
+/** A password sign-in (scrypt). Users without a row can only be picked in dev mode. */
+export const authCredentials = pgTable('auth_credentials', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  hash: text('hash').notNull(),
+  changedAt: ts('changed_at').notNull().default(sql`now()`),
+});
+
+/** A signed-in browser: the cookie holds a random token, the row its sha256. */
+export const authSessions = pgTable(
+  'auth_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    lastSeenAt: ts('last_seen_at').notNull().default(sql`now()`),
+    expiresAt: ts('expires_at').notNull(),
+  },
+  (t) => [uniqueIndex('auth_sessions_token_idx').on(t.tokenHash), index('auth_sessions_user_idx').on(t.userId)],
+);
+
+/** One-time links: password resets (1 hour). */
+export const authTokens = pgTable(
+  'auth_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    kind: text('kind').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: ts('expires_at').notNull(),
+    usedAt: ts('used_at'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('auth_tokens_token_idx').on(t.tokenHash)],
+);
+
+/** Workspace settings by key (e.g. `smtp`); secrets inside are encrypted (AES-256-GCM). */
+export const systemSettings = pgTable(
+  'system_settings',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    value: jsonb('value').$type<Record<string, unknown>>().notNull(),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
+);
+
+/** An invitation to join a workspace (link valid 7 days), with the teams to join and the position in each. */
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: role('role').notNull().default('editor'),
+    teams: jsonb('teams').$type<{ spaceId: string; role: string; title?: string | null }[]>().notNull().default([]),
+    message: text('message'),
+    tokenHash: text('token_hash').notNull(),
+    /** pending | accepted | revoked */
+    status: text('status').notNull().default('pending'),
+    invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+    acceptedBy: uuid('accepted_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    expiresAt: ts('expires_at').notNull(),
+  },
+  (t) => [uniqueIndex('invitations_token_idx').on(t.tokenHash), index('invitations_ws_idx').on(t.workspaceId, t.status)],
 );

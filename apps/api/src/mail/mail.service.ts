@@ -5,6 +5,7 @@ import { config } from '../config';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { mailOutbox } from '../db/schema';
+import { SettingsService } from '../admin/settings.service';
 
 export interface MailMessage {
   kind: string; // e.g. form.response, form.copy, form.score
@@ -52,12 +53,38 @@ ${o.button ? `<p style="margin:20px 0 0"><a href="${esc(o.button.url)}" style="d
 @Injectable()
 export class MailService {
   private readonly log = new Logger('Mail');
-  private transport: Transporter | null = config.mail.smtpUrl ? createTransport(config.mail.smtpUrl) : null;
+  private readonly envTransport: Transporter | null = config.mail.smtpUrl ? createTransport(config.mail.smtpUrl) : null;
+  private saved: { rev: number; transport: Transporter | null; from: string | null } | null = null;
 
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly settings: SettingsService,
+  ) {}
+
+  /** The system mailbox saved in Admin → System email (§79) wins over SMTP_URL. Rebuilt when the settings change. */
+  private async current(): Promise<{ transport: Transporter | null; from: string }> {
+    if (this.saved?.rev !== this.settings.revision) {
+      const rev = this.settings.revision;
+      const s = await this.settings.smtpForSending().catch(() => null);
+      this.saved = {
+        rev,
+        transport: s ? createTransport({ host: s.host, port: s.port, secure: s.secure, auth: { user: s.user, pass: s.password } }) : null,
+        from: s ? `"${s.fromName.replace(/"/g, '')}" <${s.user}>` : null,
+      };
+    }
+    return this.saved.transport ? { transport: this.saved.transport, from: this.saved.from! } : { transport: this.envTransport, from: config.mail.from };
+  }
 
   get delivering() {
-    return !!this.transport;
+    return !!(this.saved?.transport ?? this.envTransport);
+  }
+
+  /** Admin → System email → Send test: delivers right away and reports the SMTP error, if any. */
+  async test(to: string) {
+    const { transport, from } = await this.current();
+    if (!transport) throw new Error('The system e-mail is not set up');
+    await transport.verify();
+    await transport.sendMail({ from, to, subject: 'Master Office — test e-mail', text: 'The system e-mail of Master Office works. Invitations and password resets will be sent from this address.', html: mailHtml({ title: 'It works', intro: 'The system e-mail of Master Office works. Invitations and password resets will be sent from this address.' }) });
   }
 
   forResource(resourceId: string, limit = 50) {
@@ -73,12 +100,13 @@ export class MailService {
     try {
       const [row] = await this.db
         .insert(mailOutbox)
-        .values({ kind: m.kind, to: m.to, subject: m.subject, text: m.text, html: m.html ?? null, resourceId: m.resourceId ?? null, status: this.transport ? 'queued' : 'logged' })
+        .values({ kind: m.kind, to: m.to, subject: m.subject, text: m.text, html: m.html ?? null, resourceId: m.resourceId ?? null, status: (await this.current()).transport ? 'queued' : 'logged' })
         .returning({ id: mailOutbox.id });
-      if (this.transport) {
+      const { transport, from } = await this.current();
+      if (transport) {
         try {
-          await this.transport.sendMail({
-            from: m.from ?? config.mail.from,
+          await transport.sendMail({
+            from: m.from ?? from,
             to: m.to,
             cc: m.cc,
             bcc: m.bcc,
@@ -90,14 +118,14 @@ export class MailService {
             inReplyTo: m.inReplyTo ? `<${m.inReplyTo}>` : undefined,
             references: m.references?.length ? m.references.map((r) => `<${r}>`) : undefined,
             attachments: m.attachments,
-            envelope: m.envelopeTo ? { from: (m.from ?? config.mail.from).replace(/^.*<([^>]+)>.*$/, '$1'), to: m.envelopeTo } : undefined,
+            envelope: m.envelopeTo ? { from: (m.from ?? from).replace(/^.*<([^>]+)>.*$/, '$1'), to: m.envelopeTo } : undefined,
           });
           await this.db.update(mailOutbox).set({ status: 'sent', sentAt: sql`now()` }).where(eq(mailOutbox.id, row.id));
         } catch (e) {
           this.log.warn(`delivery to ${m.to} failed: ${(e as Error).message}`);
           await this.db.update(mailOutbox).set({ status: 'failed', error: (e as Error).message.slice(0, 500) }).where(eq(mailOutbox.id, row.id));
         }
-      } else this.log.log(`(not delivered, SMTP_URL unset) ${m.kind} → ${m.to}: ${m.subject}`);
+      } else this.log.log(`(not delivered, no system e-mail / SMTP_URL) ${m.kind} → ${m.to}: ${m.subject}`);
       return row.id;
     } catch (e) {
       this.log.warn(`could not record mail ${m.kind} → ${m.to}: ${(e as Error).message}`);

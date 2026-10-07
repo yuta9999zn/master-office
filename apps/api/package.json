@@ -23,7 +23,8 @@
     "test:approvals": "node test/approvals.mjs",
     "test:base": "npx tsx test/base-model.ts && node test/base.mjs",
     "test:flow": "node test/flow.mjs",
-    "test:wiki": "node test/wiki.mjs"
+    "test:wiki": "node test/wiki.mjs",
+    "test:auth": "node test/auth.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",

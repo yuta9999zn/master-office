@@ -56,7 +56,7 @@ check('… the retro looks at prompts and reviews', retro.title.endsWith('Bolt R
 
 // ── Documentation ───────────────────────────────────────────────────────────
 const docs = await call('POST', `/tasks/projects/${proj.id}/docs/setup`, { user: fujita, body: {} });
-const pages = (docs.data?.nodes ?? []).filter((x) => x.type === 'document').map((x) => x.name);
+const pages = (docs.data?.nodes ?? []).filter((x) => x.type === 'wiki' && x.name.includes(' — ')).map((x) => x.name);
 check('the docs space starts with the AI-DLC set', pages.length === 8 && pages.some((x) => x.includes('Intent')) && pages.some((x) => x.includes('Bolt Plan')), pages);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall AI-DLC checks passed');

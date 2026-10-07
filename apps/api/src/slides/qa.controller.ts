@@ -9,7 +9,7 @@ const token = z.string().regex(/^[\w-]{6,32}$/);
 // Phase 1 gives every request a user (the default one without a cookie): on the public audience page only a
 // request that names its user counts as signed in; everyone else is anonymous, with a random id per browser
 // (kept by the page) so each person votes once per question.
-const signedIn = (req: Request) => (req.header('x-user-id') || /(?:^|;\s*)mo_uid=/.test(req.header('cookie') ?? '') ? req.actor : undefined);
+const signedIn = (req: Request) => (req.header('x-user-id') || /(?:^|;\s*)(?:mo_uid|mo_session)=/.test(req.header('cookie') ?? '') ? req.actor : undefined);
 const voterOf = (req: Request, given: unknown) => signedIn(req)?.id ?? parse(z.string().uuid(), given);
 
 /** Audience Q&A (docs/ARCHITECTURE.md §55). */

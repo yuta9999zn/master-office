@@ -57,10 +57,15 @@ import { ContactsController } from './users/contacts.controller';
 import { ContactsService } from './users/contacts.service';
 import { UsersController } from './users/users.controller';
 import { WorkspaceController } from './users/workspace.controller';
+import { AuthController } from './auth/auth.controller';
+import { AuthService } from './auth/auth.service';
+import { AdminController } from './admin/admin.controller';
+import { OrgService } from './admin/org.service';
+import { SettingsService } from './admin/settings.service';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -81,6 +86,9 @@ import { WorkspaceController } from './users/workspace.controller';
     BaseService,
     FlowService,
     WikiService,
+    SettingsService,
+    AuthService,
+    OrgService,
     MailService,
     MailboxService,
     InboundMailService,

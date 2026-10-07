@@ -11,7 +11,10 @@ export class ApiError extends Error {
 
 type Init = Omit<RequestInit, 'body'> & { json?: unknown; body?: BodyInit };
 
-/** All calls go through the Next.js `/api` rewrite → apps/api. Identity rides on the `mo_uid` cookie. */
+/** Pages anyone may open; a 401 there is shown, not redirected to sign-in. */
+const PUBLIC = /^\/(login|setup|forgot|reset|invite|f|bf|pub|present|qa)(\/|$)/;
+
+/** All calls go through the Next.js `/api` rewrite → apps/api. Identity rides on the `mo_session` cookie (dev: `mo_uid`). */
 export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
   const { json, headers, ...rest } = init;
   const res = await fetch(`/api${path}`, {
@@ -20,6 +23,9 @@ export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
     headers: { ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
+  if (res.status === 401 && typeof window !== 'undefined' && !PUBLIC.test(location.pathname)) {
+    location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+  }
   if (!res.ok) {
     let message = res.statusText;
     let body: unknown;

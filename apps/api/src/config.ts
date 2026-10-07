@@ -29,6 +29,10 @@ export const config = {
   meetings: {
     iceServers: JSON.parse(process.env.MEETING_ICE_SERVERS || '[]') as { urls: string | string[]; username?: string; credential?: string }[],
   },
+  // Sign-in (§79). Dev mode keeps the user switcher (mo_uid cookie / x-user-id header) next to real sessions.
+  auth: {
+    dev: process.env.AUTH_DEV ? process.env.AUTH_DEV === '1' : process.env.NODE_ENV !== 'production',
+  },
   maxUploadBytes: 200 * 1024 * 1024,
   collab: {
     port: Number(process.env.COLLAB_PORT ?? 4001),

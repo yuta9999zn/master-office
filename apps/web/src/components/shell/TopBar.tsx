@@ -1,10 +1,13 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, UserRound } from 'lucide-react';
+import { Check, ChevronDown, CircleHelp, KeyRound, LogOut, Plus, Search, Settings, ShieldCheck, UserRound } from 'lucide-react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { setDevUser } from '@/lib/api';
+import { api, setDevUser } from '@/lib/api';
+import { useAdminRole, useSession } from '@/lib/admin';
+import { PasswordDialog } from './PasswordDialog';
 import { useMe, useUsers } from '@/lib/queries';
 import { useUi } from '@/lib/store';
 import { Avatar, Button, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Wordmark } from '../ui/primitives';
@@ -44,9 +47,7 @@ export function TopBar() {
         <IconButton label="Help">
           <CircleHelp size={19} />
         </IconButton>
-        <IconButton label="Settings">
-          <Settings size={19} />
-        </IconButton>
+        <AdminButton />
         <NotificationBell />
         <UserMenu name={me?.user.name} org={me?.workspace?.name} user={me?.user} />
       </div>
@@ -55,10 +56,20 @@ export function TopBar() {
 }
 
 function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Parameters<typeof Avatar>[0]['user'] & { id: string } }) {
+  const { data: session } = useSession();
   const { data: users } = useUsers();
+  const { data: admin } = useAdminRole();
   const qc = useQueryClient();
   const router = useRouter();
+  const [password, setPassword] = useState(false);
+  const signOut = async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    qc.clear();
+    window.location.href = '/login';
+  };
+  const isAdmin = admin?.role === 'owner' || admin?.role === 'admin';
   return (
+    <>
     <Menu>
       <MenuTrigger asChild>
         <button className="ml-2 flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2 hover:bg-hover">
@@ -74,9 +85,16 @@ function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Par
         <MenuItem icon={<UserRound />} onSelect={() => user && router.push(`/contacts/${user.id}`)}>
           Profile
         </MenuItem>
-        <MenuItem icon={<Settings />} disabled>
-          Preferences
+        <MenuItem icon={<KeyRound />} onSelect={() => setPassword(true)}>
+          Password & sign-in
         </MenuItem>
+        {isAdmin && (
+          <MenuItem icon={<ShieldCheck />} onSelect={() => router.push('/admin')}>
+            Admin console
+          </MenuItem>
+        )}
+        {session?.dev && (
+          <>
         <MenuSeparator />
         <MenuLabel>Switch user (dev)</MenuLabel>
         <div className="max-h-72 overflow-auto">
@@ -84,7 +102,9 @@ function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Par
             <MenuItem
               key={u.id}
               icon={<Avatar user={u} size={18} />}
-              onSelect={() => {
+              onSelect={async () => {
+                // A signed-in session would win over the switcher (sign-out also clears the dev cookie, so set it after).
+                if (session?.signedIn) await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
                 setDevUser(u.id);
                 qc.clear();
                 window.location.href = '/home';
@@ -97,11 +117,27 @@ function UserMenu({ name, org, user }: { name?: string; org?: string; user?: Par
             </MenuItem>
           ))}
         </div>
+          </>
+        )}
         <MenuSeparator />
-        <MenuItem icon={<LogOut />} disabled>
+        <MenuItem icon={<LogOut />} onSelect={() => void signOut()} data-testid="sign-out">
           Sign out
         </MenuItem>
       </MenuContent>
     </Menu>
+    {password && <PasswordDialog onClose={() => setPassword(false)} />}
+    </>
+  );
+}
+
+/** The gear opens the admin console for owners and admins. */
+function AdminButton() {
+  const { data } = useAdminRole();
+  const router = useRouter();
+  if (data?.role !== 'owner' && data?.role !== 'admin') return null;
+  return (
+    <IconButton label="Admin console" onClick={() => router.push('/admin')} data-testid="admin-button">
+      <Settings size={19} />
+    </IconButton>
   );
 }

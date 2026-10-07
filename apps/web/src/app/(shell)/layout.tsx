@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { IncomingCall } from '@/components/meetings/IncomingCall';
 import { RealtimeBridge } from '@/lib/realtime';
+import { AuthGate } from '@/components/shell/AuthGate';
 
 /** Rendered once — the sidebar and top bar persist while switching apps (docs/ARCHITECTURE.md §3.1). */
 export default function ShellLayout({ children }: { children: ReactNode }) {
@@ -17,6 +18,7 @@ export default function ShellLayout({ children }: { children: ReactNode }) {
       <CommandPalette />
       <RealtimeBridge />
       <IncomingCall />
+      <AuthGate />
     </div>
   );
 }
