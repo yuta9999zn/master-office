@@ -110,13 +110,18 @@ export function useBaseActions(baseId: string) {
     deleteField: useMutation({ mutationFn: (id: string) => api(`/base/fields/${id}`, { method: 'DELETE' }), onSuccess: schema, onError }),
     createView: useMutation({ mutationFn: ({ tableId, ...b }: { tableId: string; type: ViewType; name?: string; config?: Partial<ViewConfig> }) => api<BaseView>(`/base/tables/${tableId}/views`, { method: 'POST', json: b }), onSuccess: schema, onError }),
     updateView: useMutation({
+      mutationKey: ['base', 'view'],
       mutationFn: ({ id, ...b }: { id: string; name?: string; config?: Partial<ViewConfig>; position?: number }) => api<BaseView>(`/base/views/${id}`, { method: 'PATCH', json: b }),
       // The view changes at once (filters, widths…); the server's cleaned config replaces it.
       onMutate: ({ id, name, config }) =>
         qc.setQueryData<BaseSchema>(['base', 'schema', baseId], (s) =>
           s && { ...s, tables: s.tables.map((t) => ({ ...t, views: t.views.map((v) => (v.id === id ? { ...v, name: name ?? v.name, config: { ...v.config, ...config } } : v)) })) },
         ),
-      onSuccess: (v) => qc.setQueryData<BaseSchema>(['base', 'schema', baseId], (s) => s && { ...s, tables: s.tables.map((t) => ({ ...t, views: t.views.map((x) => (x.id === v.id ? v : x)) })) }),
+      // Quick successive changes: only the last answer is applied, so an early one cannot undo a later change.
+      onSuccess: (v) => {
+        if (qc.isMutating({ mutationKey: ['base', 'view'] }) > 1) return;
+        qc.setQueryData<BaseSchema>(['base', 'schema', baseId], (s) => s && { ...s, tables: s.tables.map((t) => ({ ...t, views: t.views.map((x) => (x.id === v.id ? v : x)) })) });
+      },
       onError: (e: Error) => (onError(e), void schema()),
     }),
     deleteView: useMutation({ mutationFn: (id: string) => api(`/base/views/${id}`, { method: 'DELETE' }), onSuccess: schema, onError }),

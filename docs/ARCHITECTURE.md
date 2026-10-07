@@ -397,7 +397,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | **8** | **Forms** (kéo lên trước Phase 5 theo lộ trình Google parity): trình soạn cộng tác, 12 loại câu hỏi + tiêu đề/ảnh/video/section, rẽ nhánh, kiểm tra hợp lệ, quiz, cài đặt, trang trả lời `/f/:id`, tab Responses (tóm tắt / theo câu / từng người), liên kết Sheets, CSV | **xong** — xem §25 |
 | **5** | Chat (conversation, message, resource card, WS) + Notifications | **xong** — chat & realtime §64, file & ghim §65, thông báo §66, Contacts & hồ sơ §67 |
 | 6 | Search (OpenSearch, outbox, indexer) + AI layer | |
-| 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | đang làm — Calendar §71, Tasks §72, Meetings §73, Approvals §74, Base §75 (đang làm), Tasks kiểu Jira §76 xong (Contacts §67 xong ở Phase 5) |
+| 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | đang làm — Calendar §71, Tasks §72, Meetings §73, Approvals §74, Base §75 xong, Tasks kiểu Jira §76 xong (Contacts §67 xong ở Phase 5) |
 
 ---
 
@@ -1137,7 +1137,7 @@ Base là một tài nguyên Drive loại `base` (quyền = quyền của tài ng
 |---|---|---|
 | 1 | Mô hình (21 kiểu trường, công thức, ép kiểu giá trị, lọc / sắp xếp / nhóm / tổng hợp, CSV), bảng Postgres, API: bảng, trường (đổi kiểu có chuyển dữ liệu), view, record (lô, chèn sau, kéo thứ tự), liên kết bảng, bình luận, CSV vào / ra, đính kèm, form view, realtime, seed | **xong** |
 | 2 | Giao diện Grid: ô sửa tại chỗ theo kiểu, chọn / dán nhiều ô, thêm / sửa trường, lọc / sắp xếp / nhóm / ẩn trường / chiều cao dòng, dòng tổng, drawer record + bình luận | **xong** |
-| 3 | View Kanban / Calendar / Gallery / Form (trình dựng + trang trả lời), import / export CSV trên UI, e2e | |
+| 3 | View Kanban / Calendar / Gallery / Form (trình dựng + trang trả lời), import / export CSV trên UI, e2e | **xong** |
 
 **Đợt 1 — quyết định**
 
@@ -1173,6 +1173,17 @@ Base là một tài nguyên Drive loại `base` (quyền = quyền của tài ng
 | Drawer record | Mọi trường (cả trường ẩn) sửa tại chỗ, trường tính toán có khoá, mô tả trường, thông tin tạo / sửa, Alt + ↑ / ↓ chuyển record, xoá; bình luận (commenter trở lên). |
 | Realtime | `useBaseLive`: gửi `base.watch` khi mở (0,3 s, 2 s, rồi mỗi 25 s), áp `base.changed` vào cache (upsert / xoá record, tải lại schema / bình luận / tiêu đề liên kết). |
 | Test | `base-flow.mjs` (14): mở bảng đầu, gõ đè + Enter / Tab, tiền tệ, chọn / thêm lựa chọn, checkbox, trường công thức (lỗi cú pháp, xem trước, giá trị), thêm record, dán khối (tạo dòng mới), dòng tổng, sắp xếp / lọc / nhóm / ẩn (lưu vào view), drawer (sửa + bình luận), người thứ hai thấy thay đổi tức thì, xoá nhiều dòng, import CSV. |
+
+**Đợt 3 — Kanban / Calendar / Gallery / Form: quyết định**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Kanban | Một cột cho mỗi lựa chọn của trường single select (`stackField`; chưa chọn thì hỏi), cột *No …* chỉ hiện khi có record trống; thẻ (`RecordCard`): tiêu đề + tối đa 4 trường đang hiện (bỏ trường stack), số bình luận; **kéo thẻ sang cột khác** đổi giá trị, kéo trong cột sắp thứ tự khi view không sắp xếp; *New record* ở cuối cột tạo record với giá trị cột (và giá trị khớp bộ lọc) rồi mở drawer. |
+| Calendar | Lưới tháng theo trường ngày (`dateField`: date hoặc created / modified time); chip tô màu theo single select đầu tiên, tối đa 4 / ngày (+N more), đếm record không có ngày; **kéo chip sang ngày khác** (giữ giờ nếu trường có giờ); nút + trên ngày tạo record ngày đó. |
+| Gallery | Lưới thẻ; chọn trường attachment làm **ảnh bìa** (ảnh đầu tiên), thẻ hiện tối đa 5 trường; ô *New record*. |
+| Form | Trình dựng trong view: tiêu đề, mô tả, câu hỏi = trường của bảng (thêm từ trường chưa hỏi, bắt buộc, lên / xuống, bỏ), nút gửi, lời cảm ơn, **mở cho cả workspace**, link `/bf/:viewId` (copy / mở). Trang trả lời `/bf/:viewId` ngoài khung app: ô nhập theo kiểu (radio / checkbox cho lựa chọn, danh sách người, chọn record liên kết, sao, tải file qua `POST /base/forms/:viewId/attachments` — người trả lời form mở không cần quyền với base), báo câu bắt buộc, màn hình cảm ơn + *Submit another answer*. Trạng thái trình dựng giữ cục bộ để thao tác hiện ngay. |
+| Cập nhật view | `updateView` có `mutationKey`: chỉ áp cấu hình server trả về khi đó là lần cập nhật cuối còn chờ (đổi tiêu đề rồi tích *Required* liền nhau không bị ghi đè). |
+| Test | `base.mjs` thêm 2 (58): form không có câu hỏi file thì từ chối file; người trả lời form mở đính kèm được. `base-views-flow.mjs` (7): kanban (cột theo trạng thái, kéo thẻ đổi trạng thái, thẻ mới trong cột), calendar (record đúng ngày, kéo sang ngày khác), gallery (ảnh bìa), form (dựng, bắt buộc, bỏ câu, mở cho workspace; người không có quyền trả lời → record xuất hiện trong grid). |
 
 ## 76. Phase 7.1 — Tasks kiểu Jira (Agile, Waterfall, Hybrid, AI-DLC): quyết định
 

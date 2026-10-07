@@ -13,7 +13,11 @@ import { ShareDialog } from '../drive/dialogs';
 import { TitleBar } from '../editor/TitleBar';
 import { Button, cn, EmptyState, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
 import { FieldDialog } from './FieldDialog';
+import { CalendarView } from './CalendarView';
+import { FormBuilder } from './FormBuilder';
+import { GalleryView } from './GalleryView';
 import { GridView } from './GridView';
+import { KanbanView } from './KanbanView';
 import { RecordDrawer } from './RecordDrawer';
 import { ViewToolbar } from './ViewToolbar';
 
@@ -230,10 +234,14 @@ export function BaseWorkspace({ r }: { r: ResourceDetail }) {
                   onAddField={(after) => setFieldDialog({ field: null, after })}
                   me={me?.user.id}
                 />
+              ) : view.type === 'kanban' ? (
+                <KanbanView baseId={r.id} table={table} config={config} setConfig={setConfig} records={result.records} ctx={ctx} editable={editable} manualOrder={!config.sorts.length} onOpen={(id) => nav({ record: id })} me={me?.user.id} />
+              ) : view.type === 'calendar' ? (
+                <CalendarView baseId={r.id} table={table} config={config} setConfig={setConfig} records={result.records} ctx={ctx} editable={editable} onOpen={(id) => nav({ record: id })} me={me?.user.id} />
+              ) : view.type === 'gallery' ? (
+                <GalleryView baseId={r.id} table={table} config={config} setConfig={setConfig} records={result.records} ctx={ctx} editable={editable} onOpen={(id) => nav({ record: id })} me={me?.user.id} />
               ) : (
-                <div className="flex-1 p-8">
-                  <EmptyState title={`${VIEW_META[view.type].label} view`}>This view type opens in the next update — the grid view shows the same records.</EmptyState>
-                </div>
+                <FormBuilder table={table} viewId={view.id} config={config} setConfig={setConfig} editable={editable} />
               )}
               {openRecord && (
                 <RecordDrawer

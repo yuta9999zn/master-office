@@ -46,6 +46,12 @@ export class BaseController {
     return this.svc.submitForm(a, id, parse(z.object({ values }), b).values);
   }
 
+  @Post('forms/:viewId/attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  formAttach(@CurrentUser() a: Actor, @Param('viewId', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
+    return this.svc.formAttach(a, id, file);
+  }
+
   // ── Tables ────────────────────────────────────────────────────────────────
 
   @Get(':id')

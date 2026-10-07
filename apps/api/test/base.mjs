@@ -181,6 +181,15 @@ list = (await call('GET', `/base/tables/${t1.id}/records`, { user: hana })).data
 const fromForm = list.find((r) => r.id === sub.data.id);
 check('a submission becomes a record (only asked fields kept)', sub.status === 200 && fromForm.values[F.Value.id] === 7000 && !(F.Seats.id in fromForm.values) && fromForm.createdBy === uid('rina'), fromForm);
 
+const fd2 = new FormData();
+fd2.append('file', new Blob(['hello'], { type: 'text/plain' }), 'note.txt');
+check('a form without file questions takes no files', (await call('POST', `/base/forms/${form.id}/attachments`, { user: uid('rina'), raw: fd2 })).status === 400);
+await call('PATCH', `/base/views/${form.id}`, { user: hana, body: { config: { form: { fields: [t1.fields[0].id, attF.id] } } } });
+const fd3 = new FormData();
+fd3.append('file', new Blob(['hello'], { type: 'text/plain' }), 'note.txt');
+const fa = await call('POST', `/base/forms/${form.id}/attachments`, { user: uid('rina'), raw: fd3 });
+check('people answering an open form attach files (without access to the base)', fa.status === 201 && fa.data.name === 'note.txt', fa.data);
+
 // ── Deleting ────────────────────────────────────────────────────────────────
 check('deleting records', (await call('POST', '/base/records/delete', { user: mika, body: { ids: [mid.id, sub.data.id] } })).status === 204 && (await call('GET', `/base/tables/${t1.id}/records`, { user: hana })).data.length === 3);
 check('the last view of a table stays', (await call('DELETE', `/base/views/${vt.views[0].id}`, { user: hana })).status === 400);

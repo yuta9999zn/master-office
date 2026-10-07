@@ -823,6 +823,18 @@ export class BaseService implements OnModuleInit {
 
   async attach(actor: Actor, baseId: string, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }): Promise<Attachment> {
     await this.base(actor, baseId, 'editor');
+    return this.storeAttachment(actor, baseId, file);
+  }
+
+  /** A file for a form answer (whoever may answer the form may attach). */
+  async formAttach(actor: Actor, viewId: string, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }): Promise<Attachment> {
+    const { t, v } = await this.formAccess(actor, viewId);
+    const fields = await this.fieldsOf(t.id);
+    if (!v.config.form!.fields.some((id) => fields.find((f) => f.id === id)?.type === 'attachment')) throw new BadRequestException('This form takes no files');
+    return this.storeAttachment(actor, t.baseId, file);
+  }
+
+  private async storeAttachment(actor: Actor, baseId: string, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }): Promise<Attachment> {
     if (!file?.buffer?.length) throw new BadRequestException('Choose a file');
     if (file.size > 50 * 1024 * 1024) throw new BadRequestException('Files can be up to 50 MB');
     const sha = StorageService.sha256(file.buffer);
