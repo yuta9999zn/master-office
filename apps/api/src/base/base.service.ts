@@ -447,6 +447,7 @@ export class BaseService implements OnModuleInit {
     if (c.hidden) out.hidden = c.hidden.filter(okId);
     if (c.order) out.order = c.order.filter(okId);
     if (c.widths) out.widths = Object.fromEntries(Object.entries(c.widths).filter(([k, v]) => ids.has(k) && typeof v === 'number').map(([k, v]) => [k, Math.max(60, Math.min(800, Math.round(v)))]));
+    if (c.summaries) out.summaries = Object.fromEntries(Object.entries(c.summaries).filter(([k, v]) => ids.has(k) && ['none', 'count', 'filled', 'empty', 'sum', 'avg', 'min', 'max', 'checked'].includes(v)));
     if (c.rowHeight) out.rowHeight = ['short', 'medium', 'tall'].includes(c.rowHeight) ? c.rowHeight : 'short';
     for (const k of ['stackField', 'dateField', 'coverField'] as const) if (c[k] !== undefined) out[k] = c[k] && okId(c[k]) ? c[k] : null;
     if (c.form) {

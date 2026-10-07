@@ -1,6 +1,6 @@
 import { FormulaError } from './formula';
 import { cellText, cellValue, choiceOf, isEmptyValue, type CellContext } from './cells';
-import { COMPUTED_TYPES, type BaseField, type BaseRecord, type BaseTable, type BaseView, type FieldType, type FilterCondition, type FilterOp } from './types';
+import { COMPUTED_TYPES, type BaseField, type BaseRecord, type BaseTable, type BaseView, type FieldType, type FilterCondition, type FilterOp, type ViewConfig } from './types';
 
 /** Filter operators that make sense for a field type, in menu order. */
 export function filterOps(type: FieldType): FilterOp[] {
@@ -251,7 +251,7 @@ export function defaultsForView(table: Pick<BaseTable, 'fields'>, view: Pick<Bas
 }
 
 /** Summary row of the grid: per-field aggregate over the shown records. */
-export type Summary = 'none' | 'count' | 'filled' | 'empty' | 'sum' | 'avg' | 'min' | 'max' | 'checked';
+export type Summary = NonNullable<ViewConfig['summaries']>[string];
 export function summarize(field: BaseField, records: BaseRecord[], ctx: CellContext, how: Summary): string {
   if (how === 'none') return '';
   const vals = records.map((r) => cellValue(field, r, ctx));

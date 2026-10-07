@@ -1,7 +1,5 @@
-'use client';
+import { TypeIndex } from '@/components/editor/TypeIndex';
 
-import { ComingSoon } from '@/components/shell/ComingSoon';
-
-export default function BasePage() {
-  return <ComingSoon id="base" />;
+export default function Page() {
+  return <TypeIndex appId="base" type="base" />;
 }

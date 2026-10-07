@@ -1136,7 +1136,7 @@ Base là một tài nguyên Drive loại `base` (quyền = quyền của tài ng
 | Đợt | Nội dung | Trạng thái |
 |---|---|---|
 | 1 | Mô hình (21 kiểu trường, công thức, ép kiểu giá trị, lọc / sắp xếp / nhóm / tổng hợp, CSV), bảng Postgres, API: bảng, trường (đổi kiểu có chuyển dữ liệu), view, record (lô, chèn sau, kéo thứ tự), liên kết bảng, bình luận, CSV vào / ra, đính kèm, form view, realtime, seed | **xong** |
-| 2 | Giao diện Grid: ô sửa tại chỗ theo kiểu, chọn / dán nhiều ô, thêm / sửa trường, lọc / sắp xếp / nhóm / ẩn trường / chiều cao dòng, dòng tổng, drawer record + bình luận | |
+| 2 | Giao diện Grid: ô sửa tại chỗ theo kiểu, chọn / dán nhiều ô, thêm / sửa trường, lọc / sắp xếp / nhóm / ẩn trường / chiều cao dòng, dòng tổng, drawer record + bình luận | **xong** |
 | 3 | View Kanban / Calendar / Gallery / Form (trình dựng + trang trả lời), import / export CSV trên UI, e2e | |
 
 **Đợt 1 — quyết định**
@@ -1158,6 +1158,21 @@ Base là một tài nguyên Drive loại `base` (quyền = quyền của tài ng
 | Seed | *Lead Tracker* (Marketing): bảng Leads 12 record (stage, nguồn, giá trị, owner, follow-up, fit, sản phẩm, công thức số ngày) với view All leads / Pipeline (kanban) / Follow-ups (calendar) / My hot leads (lọc is me + hot) / By source (nhóm) / Lead capture (form mở); bảng Campaigns link tới Leads + công thức cost per lead. *Vendor List* (Operations): 7 nhà cung cấp, view grid / kanban theo loại / calendar gia hạn. |
 | Test | `base-model.ts` (30, chạy `npx tsx test/base-model.ts`): công thức, ép kiểu, lọc / sắp xếp / nhóm / tìm / tổng hợp, CSV. `base.mjs` (56): schema mặc định, quyền theo vai trò, 10 kiểu trường, ép kiểu khi tạo, lựa chọn mới, rating, auto number, trường tính toán không ghi được, sửa lô, chèn sau, kéo thứ tự, đổi tên viết lại công thức, đổi kiểu (text → select, number ↔ text), ràng buộc primary, view kanban / calendar / config, CSV xuất theo view, xoá trường, link (tiêu đề, cùng base, xoá record, xoá bảng), bình luận, import CSV đoán kiểu, nối CSV, đính kèm, form đóng / mở / bắt buộc / nộp, xoá. |
 | Chưa làm | Sao chép base chưa chép bảng (bản sao mở ra với Table 1 mới); link hai chiều, lookup / rollup, dashboard và automation để sau (Flow). |
+
+**Đợt 2 — Giao diện Grid: quyết định**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Bố cục | `/base/:id` (và `/base` liệt kê các base như các app khác): thanh tiêu đề chung (sao, vị trí, người, Share); trái là **danh sách bảng** (thêm, đổi tên, xoá, Import CSV); trên là **tab view** (thêm Grid / Kanban / Calendar / Gallery / Form, đổi tên, xoá); thanh công cụ (**+ Record**, Fields, Filter, Group, Sort, chiều cao dòng, tìm kiếm, Download CSV); bên phải là **drawer record** khi mở (`?table=&view=&record=` trên URL). EditorShell chỉ còn điều phối các workspace (bỏ khung placeholder chung). |
+| Lưới | Ảo hoá theo dòng (chỉ vẽ dòng gần màn hình, chiều cao cố định 32 / 56 / 88 px theo short / medium / tall); cột số thứ tự + primary **cố định bên trái**; kéo mép tiêu đề để đổi độ rộng (lưu vào view); menu cột: sửa trường, chèn trường bên phải, sắp xếp A→Z / Z→A, lọc, nhóm, ẩn, xoá; nút **+** thêm trường; nhóm có tiêu đề (màu lựa chọn, số lượng, thu gọn) và dòng *Add to …* điền sẵn giá trị nhóm; **dòng tổng** chọn theo cột (count, filled, empty, sum, average, min, max, checked) lưu trong `config.summaries`. |
+| Bàn phím & chọn | Ô đang chọn viền xanh; mũi tên / Tab di chuyển, Shift + mũi tên hoặc Shift + click chọn vùng, Ctrl + A chọn hết; **gõ là sửa** (ký tự đầu thay nội dung), Enter sửa / xuống dòng, Esc huỷ, Delete xoá vùng, Shift + Enter mở record; **Ctrl + C** chép vùng dạng TSV, **Ctrl + V** dán khối từ lưới / Sheets / Excel (dòng thừa thành record mới, tên lựa chọn / người / record liên kết được nhận diện như khi gõ). |
+| Sửa ô | Text / số / tiền / % / url / email / phone: ô nhập tại chỗ; long text: khung lớn (Ctrl + Enter lưu); ngày: date / datetime-local; checkbox và rating: bấm trực tiếp; select / multi / người / link: danh sách tìm kiếm thả xuống (Enter chọn, *Add “…”* tạo lựa chọn mới); attachment: danh sách file + tải lên / kéo thả. Sửa hiện **ngay** (ép kiểu phía client bằng cùng `coerceValue`), câu trả lời của server thay thế sau. |
+| Dòng | Tích chọn nhiều dòng → thanh *N selected · Delete*; chuột phải: mở, chèn trên / dưới, nhân bản, xoá; kéo tay cầm để **sắp thứ tự** khi view không sắp xếp / nhóm; số bình luận hiện ở đầu dòng. |
+| Trường | Hộp thoại trường: 21 kiểu theo nhóm (Basic / More / Computed), tuỳ chọn theo kiểu (số thập phân, tiền tệ, lựa chọn có màu, gồm giờ, nhiều người, bảng liên kết, số sao), cảnh báo khi đổi kiểu sẽ chuyển dữ liệu; **trình soạn công thức** chèn `{trường}` / hàm, kiểm tra cú pháp ngay và xem trước giá trị của record đầu tiên. |
+| Lọc / sắp xếp / nhóm / ẩn | Popover theo view: điều kiện and / or với toán tử và ô giá trị theo kiểu trường (lựa chọn dạng chip, ngày + *today*, checkbox), nhiều mức sắp xếp, nhóm theo một trường, ẩn / hiện từng trường. Editor lưu vào view cho mọi người; **viewer lọc / sắp xếp riêng cho mình** (không lưu). |
+| Drawer record | Mọi trường (cả trường ẩn) sửa tại chỗ, trường tính toán có khoá, mô tả trường, thông tin tạo / sửa, Alt + ↑ / ↓ chuyển record, xoá; bình luận (commenter trở lên). |
+| Realtime | `useBaseLive`: gửi `base.watch` khi mở (0,3 s, 2 s, rồi mỗi 25 s), áp `base.changed` vào cache (upsert / xoá record, tải lại schema / bình luận / tiêu đề liên kết). |
+| Test | `base-flow.mjs` (14): mở bảng đầu, gõ đè + Enter / Tab, tiền tệ, chọn / thêm lựa chọn, checkbox, trường công thức (lỗi cú pháp, xem trước, giá trị), thêm record, dán khối (tạo dòng mới), dòng tổng, sắp xếp / lọc / nhóm / ẩn (lưu vào view), drawer (sửa + bình luận), người thứ hai thấy thay đổi tức thì, xoá nhiều dòng, import CSV. |
 
 ## 76. Phase 7.1 — Tasks kiểu Jira (Agile, Waterfall, Hybrid, AI-DLC): quyết định
 

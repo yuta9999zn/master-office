@@ -127,6 +127,8 @@ export interface ViewConfig {
   order: string[];
   widths: Record<string, number>;
   rowHeight: 'short' | 'medium' | 'tall';
+  /** Grid footer: aggregate per field (count, sum, avg…). */
+  summaries?: Record<string, 'none' | 'count' | 'filled' | 'empty' | 'sum' | 'avg' | 'min' | 'max' | 'checked'>;
   /** Kanban: the single-select field that makes the columns. */
   stackField?: string | null;
   /** Calendar: the date field. */
