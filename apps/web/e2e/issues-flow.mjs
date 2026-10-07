@@ -31,7 +31,7 @@ const step = async (name, page, fn) => {
 };
 const card = (page, title) => page.locator(`[data-testid="task-card"][data-title="${title}"]`);
 // Issues outside the active sprint wait in the backlog (Scrum project).
-const inBacklog = (page, title) => page.locator('[data-testid="backlog-section"][data-name="Backlog"]').locator(`[data-testid="backlog-row"][data-title="${title}"]`);
+const inBacklog = (page, title) => page.locator('[data-testid="backlog-section"][data-name="Not Started"]').locator(`[data-testid="backlog-row"][data-title="${title}"]`);
 
 const fujita = await session('fujita@kaori.jp');
 const hana = await session('hana@kaori.jp');

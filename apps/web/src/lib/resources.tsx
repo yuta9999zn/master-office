@@ -39,10 +39,10 @@ export const TYPE_META: Record<ResourceType, TypeMeta> = {
   form: { label: 'Form', icon: ClipboardList, color: '#4f46e5', tint: '#eceafe' },
   shortcut: { label: 'Shortcut', icon: FolderInput, color: '#64748b', tint: '#eef1f5' },
   note: { label: 'Note', icon: NotebookPen, color: '#4f46e5', tint: '#eceafe' },
+  flow: { label: 'Flow', icon: Workflow, color: '#6366f1', tint: '#eceafe' },
 };
 
 export function typeMeta(r: Pick<Resource, 'type' | 'mimeType' | 'metadata'>): TypeMeta {
-  if (r.metadata?.app === 'flow') return { label: 'Flow', icon: Workflow, color: '#6366f1', tint: '#eceafe' };
   return TYPE_META[r.type];
 }
 
@@ -50,7 +50,6 @@ export function typeMeta(r: Pick<Resource, 'type' | 'mimeType' | 'metadata'>): T
 export function typeLabel(r: Pick<Resource, 'type' | 'name' | 'mimeType' | 'metadata'>): string {
   const ext = r.name.includes('.') ? r.name.split('.').pop()!.toUpperCase() : '';
   if (r.type === 'folder') return 'Folder';
-  if (r.metadata?.app === 'flow') return 'Flow';
   if (r.mimeType && ext && ext.length <= 4) return ext;
   if (r.type === 'note') return 'Note';
   return { document: 'DOCX', spreadsheet: 'XLSX', presentation: 'PPTX' }[r.type as string] ?? TYPE_META[r.type].label;
@@ -61,7 +60,6 @@ export function typeLabel(r: Pick<Resource, 'type' | 'name' | 'mimeType' | 'meta
  * Chat, Search and Home all go through this (docs/ARCHITECTURE.md §3.1, §10).
  */
 export function hrefFor(r: Pick<Resource, 'id' | 'type' | 'metadata'>): string {
-  if (r.metadata?.app === 'flow') return `/flow`;
   switch (r.type) {
     case 'folder':
       return `/drive/folder/${r.id}`;
@@ -79,6 +77,8 @@ export function hrefFor(r: Pick<Resource, 'id' | 'type' | 'metadata'>): string {
       return `/forms/${r.id}`;
     case 'base':
       return `/base/${r.id}`;
+    case 'flow':
+      return `/flow/${r.id}`;
     default:
       return `/preview/${r.id}`;
   }
@@ -93,7 +93,7 @@ export const TYPE_TABS: { id: string; label: string; types?: ResourceType[] }[] 
   { id: 'pdfs', label: 'PDFs', types: ['pdf'] },
   { id: 'videos', label: 'Videos', types: ['video'] },
   { id: 'folders', label: 'Folders', types: ['folder'] },
-  { id: 'knowledge', label: 'Wiki, Notes & Base', types: ['wiki', 'note', 'base', 'form'] },
+  { id: 'knowledge', label: 'Wiki, Notes & Base', types: ['wiki', 'note', 'base', 'form', 'flow'] },
 ];
 
 export const ROLE_LABEL: Record<string, string> = {

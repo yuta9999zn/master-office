@@ -6,7 +6,7 @@ import { useMemo, useState, type DragEvent } from 'react';
 import { toast } from 'sonner';
 import { useSprintActions, useSprints, useTaskActions } from '@/lib/tasks';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuTrigger, Skeleton } from '../ui/primitives';
-import { IssueIcon, Points } from './issue-bits';
+import { IssueIcon, issueLabel, Points } from './issue-bits';
 
 const DAY = 86_400_000;
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
@@ -27,21 +27,25 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
   const canEdit = project.perms.write;
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ list: string; index: number } | null>(null);
-  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const [closed, setClosed] = useState<Set<string>>(new Set(['outside']));
   const [editing, setEditing] = useState<SprintView | 'new' | null>(null);
   const [starting, setStarting] = useState<SprintView | null>(null);
   const [completing, setCompleting] = useState<SprintView | null>(null);
+  const [epicFor, setEpicFor] = useState<string | null>(null);
   // AI-DLC plans in bolts.
   const word = sprintWord(project.methodology);
   const w = word.toLowerCase();
 
   const work = useMemo(() => tasks.filter((t) => WORK_TYPES.includes(t.type) && !t.triage).sort((x, y) => (x.rank < y.rank ? -1 : x.rank > y.rank ? 1 : 0)), [tasks]);
   const open_ = (sprints ?? []).filter((s) => s.state !== 'closed').sort((x, y) => (x.state === 'active' ? -1 : y.state === 'active' ? 1 : x.startDate.localeCompare(y.startDate)));
-  const active = open_.find((s) => s.state === 'active');
+  const unplanned = work.filter((t) => (!t.sprintId || !open_.some((s) => s.id === t.sprintId)) && !t.completedAt);
+  const started = (t: TaskView) => project.statuses.find((x) => x.id === t.status)?.category !== 'todo';
   const lists: { id: string; sprint: SprintView | null; items: TaskView[] }[] = [
     ...open_.map((s) => ({ id: s.id, sprint: s, items: work.filter((t) => t.sprintId === s.id) })),
-    // The backlog: what is not planned and not finished (or sits in a closed sprint by mistake).
-    { id: 'backlog', sprint: null, items: work.filter((t) => (!t.sprintId || !open_.some((s) => s.id === t.sprintId)) && !t.completedAt && !(t.sprintId && (sprints ?? []).some((s) => s.id === t.sprintId && s.state === 'closed'))) },
+    // Not Started: what is not planned and not begun (or sits in a closed sprint by mistake); work already under way
+    // outside any sprint is listed apart.
+    { id: 'backlog', sprint: null, items: unplanned.filter((t) => !started(t)) },
+    { id: 'outside', sprint: null, items: unplanned.filter(started) },
   ];
 
   const indexAt = (e: DragEvent<HTMLElement>, list: string) => {
@@ -60,127 +64,193 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
     setOver(null);
   };
 
+  // Epics own sprints (§76 planning): Not Started on one side, each epic with its sprints on the other.
+  const epics = tasks.filter((t) => t.type === 'epic' && !t.triage).sort((x, y) => (x.rank < y.rank ? -1 : x.rank > y.rank ? 1 : 0));
+  const blocks: { epic: TaskView | null; sprints: SprintView[] }[] = [
+    ...epics.map((e) => ({ epic: e, sprints: open_.filter((s) => s.epicId === e.id) })),
+    ...(open_.some((s) => !s.epicId || !epics.some((e) => e.id === s.epicId)) ? [{ epic: null, sprints: open_.filter((s) => !s.epicId || !epics.some((e) => e.id === s.epicId)) }] : []),
+  ];
+  const [newEpic, setNewEpic] = useState('');
+  const { create } = useTaskActions();
+
+  const section = (l: (typeof lists)[number]) => {
+    const sp = l.sprint;
+    const pts = l.items.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
+    const folded = closed.has(l.id);
+    // One running sprint per epic.
+    const running = sp ? open_.find((x) => x.state === 'active' && (x.epicId ?? null) === (sp.epicId ?? null)) : undefined;
+    return (
+      <section
+        key={l.id}
+        className={cn('rounded-xl bg-surface ring-1 ring-line', over?.list === l.id && 'ring-2 ring-brand-300')}
+        onDragOver={(e) => {
+          if (!drag) return;
+          e.preventDefault();
+          setOver(indexAt(e, l.id));
+        }}
+        onDrop={(e) => (e.preventDefault(), drop(l.id, indexAt(e, l.id).index))}
+        data-testid="backlog-section"
+        data-sprint={sp?.id ?? 'backlog'}
+        data-name={sp?.name ?? (l.id === 'outside' ? 'Started outside a sprint' : 'Not Started')}
+      >
+        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+          <button
+            onClick={() =>
+              setClosed((v) => {
+                const n = new Set(v);
+                if (!n.delete(l.id)) n.add(l.id);
+                return n;
+              })
+            }
+            className="text-muted"
+            aria-label={folded ? 'Expand' : 'Collapse'}
+          >
+            {folded ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+          </button>
+          <h3 className="text-[14px] font-semibold text-ink">{sp ? sp.name : l.id === 'outside' ? 'Started outside a sprint' : 'Not Started'}</h3>
+          {sp && <span className="text-[12px] text-muted" data-testid="sprint-dates-label">{range(sp.startDate, sp.endDate)}</span>}
+          {sp?.state === 'active' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">Active · {Math.max(0, Math.round((Date.parse(sp.endDate) - Date.parse(todayStr())) / DAY))} days left</span>}
+          <span className="text-[12px] text-muted">
+            {l.items.length} issue{l.items.length === 1 ? '' : 's'}
+            {pts ? ` · ${pts} pts` : ''}
+          </span>
+          {sp?.goal && <span className="min-w-0 truncate text-[12px] italic text-ink-2">“{sp.goal}”</span>}
+          <span className="flex-1" />
+          {sp && canEdit && sp.state === 'planned' && (
+            <Button size="sm" variant={running ? 'ghost' : 'primary'} disabled={!!running || !l.items.length} icon={<Play size={13} />} onClick={() => setStarting(sp)} data-testid="start-sprint" title={running ? `Complete ${running.name} first` : !l.items.length ? 'Plan some issues first' : undefined}>
+              Start {w}
+            </Button>
+          )}
+          {sp && canEdit && sp.state === 'active' && (
+            <Button size="sm" onClick={() => setCompleting(sp)} data-testid="complete-sprint">
+              Complete {w}
+            </Button>
+          )}
+          {sp && canEdit && (
+            <Menu>
+              <MenuTrigger asChild>
+                <button className="rounded-md p-1 text-muted hover:bg-hover" aria-label={`${sp.name} options`}>
+                  <Ellipsis size={16} />
+                </button>
+              </MenuTrigger>
+              <MenuContent align="end">
+                <MenuItem icon={<Pencil size={15} />} onSelect={() => setEditing(sp)}>
+                  Edit {w}
+                </MenuItem>
+                {sp.state === 'planned' && (
+                  <MenuItem icon={<Trash2 size={15} />} danger onSelect={() => a.remove.mutate(sp.id)}>
+                    Delete {w}
+                  </MenuItem>
+                )}
+              </MenuContent>
+            </Menu>
+          )}
+        </header>
+        {!folded && (
+          <ul className="min-h-[44px] py-1">
+            {l.items.map((t, i) => (
+              <li key={t.id}>
+                {over?.list === l.id && over.index === i && drag && <div className="mx-4 h-0.5 rounded bg-brand-500" />}
+                <div
+                  draggable={canEdit}
+                  onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
+                  onDragEnd={() => (setDrag(null), setOver(null))}
+                  onClick={() => open(t.id)}
+                  className={cn('group flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-hover', drag === t.id && 'opacity-40')}
+                  data-testid="backlog-row"
+                  data-id={t.id}
+                  data-title={t.title}
+                >
+                  <GripVertical size={14} className={cn('shrink-0 text-subtle', canEdit ? 'cursor-grab opacity-0 group-hover:opacity-100' : 'opacity-0')} />
+                  <IssueIcon type={t.type} size={15} />
+                  <span className="w-[72px] shrink-0 font-mono text-[11.5px] text-subtle">{t.ref}</span>
+                  <span className={cn('min-w-[110px] flex-1 truncate text-ink', t.completedAt && 'text-muted line-through')} title={t.title}>{t.title}</span>
+                  {!sp && <EpicChip t={t} all={tasks} />}
+                  <StatusPill t={t} project={project} />
+                  <Points n={t.storyPoints} />
+                  {t.assignee ? <Avatar user={t.assignee} size={22} /> : <span className="size-[22px] rounded-full border border-dashed border-line-strong" />}
+                </div>
+              </li>
+            ))}
+            {over?.list === l.id && over.index === l.items.length && drag && <div className="mx-4 h-0.5 rounded bg-brand-500" />}
+            {!l.items.length && <li className="px-4 py-3 text-[12.5px] text-subtle">{sp ? `Drag issues from Not Started into this ${w}.` : 'Nothing waiting — create tasks here, then drag them into a sprint.'}</li>}
+          </ul>
+        )}
+        {!folded && canEdit && <QuickAdd project={project} sprintId={sp?.id ?? null} />}
+      </section>
+    );
+  };
+
   if (isLoading) return <Skeleton className="m-6 h-80" />;
+  const pool = lists.find((l) => l.id === 'backlog')!;
   return (
     <div className="h-full overflow-y-auto p-5" data-testid="backlog">
-      <div className="mx-auto max-w-[1100px] space-y-4">
-        {canEdit && (
-          <div className="flex justify-end">
-            <Button icon={<Plus size={15} />} onClick={() => setEditing('new')} data-testid="create-sprint">
-              Create {w}
-            </Button>
+      <div className="mx-auto grid max-w-[1400px] gap-5 xl:grid-cols-[minmax(340px,2fr)_3fr]">
+        <div className="xl:sticky xl:top-0 xl:self-start" data-testid="not-started">
+          <p className="mb-2 text-[12px] text-muted">Tasks that are not in a {w} yet. Drag them into an epic’s {w} — they become <b>Created</b> there and follow the workflow.</p>
+          {section(pool)}
+          {lists.find((l) => l.id === 'outside')!.items.length > 0 && <div className="mt-3">{section(lists.find((l) => l.id === 'outside')!)}</div>}
+        </div>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[15px] font-semibold text-ink">Epics and {w}s</h2>
+            <span className="flex-1" />
+            {canEdit && (
+              <form
+                className="flex gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newEpic.trim()) return;
+                  create.mutate({ projectId: project.id, title: newEpic.trim(), type: 'epic' }, { onSuccess: () => setNewEpic('') });
+                }}
+              >
+                <input value={newEpic} onChange={(e) => setNewEpic(e.target.value)} placeholder={`New ${issueLabel('epic', project.methodology).toLowerCase()}…`} aria-label="New epic" className="h-8 w-48 rounded-lg border border-line-strong bg-surface px-2.5 text-[13px] outline-none focus:border-brand-500" />
+                <Button size="sm" type="submit" icon={<Plus size={14} />} data-testid="add-epic">
+                  {issueLabel('epic', project.methodology)}
+                </Button>
+              </form>
+            )}
+            {canEdit && (
+              <Button size="sm" icon={<Plus size={14} />} onClick={() => (setEpicFor(null), setEditing('new'))} data-testid="create-sprint">
+                Create {w}
+              </Button>
+            )}
           </div>
-        )}
-        {lists.map((l) => {
-          const sp = l.sprint;
-          const pts = l.items.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
-          const folded = closed.has(l.id);
-          return (
-            <section
-              key={l.id}
-              className={cn('rounded-xl bg-surface ring-1 ring-line', over?.list === l.id && 'ring-2 ring-brand-300')}
-              onDragOver={(e) => {
-                if (!drag) return;
-                e.preventDefault();
-                setOver(indexAt(e, l.id));
-              }}
-              onDrop={(e) => (e.preventDefault(), drop(l.id, indexAt(e, l.id).index))}
-              data-testid="backlog-section"
-              data-sprint={sp?.id ?? 'backlog'}
-              data-name={sp?.name ?? 'Backlog'}
-            >
-              <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-                <button
-                  onClick={() =>
-                    setClosed((v) => {
-                      const n = new Set(v);
-                      if (!n.delete(l.id)) n.add(l.id);
-                      return n;
-                    })
-                  }
-                  className="text-muted"
-                  aria-label={folded ? 'Expand' : 'Collapse'}
-                >
-                  {folded ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-                </button>
-                <h3 className="text-[14px] font-semibold text-ink">{sp ? sp.name : 'Backlog'}</h3>
-                {sp && <span className="text-[12px] text-muted">{range(sp.startDate, sp.endDate)}</span>}
-                {sp?.state === 'active' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">Active · {Math.max(0, Math.round((Date.parse(sp.endDate) - Date.parse(todayStr())) / DAY))} days left</span>}
-                <span className="text-[12px] text-muted">
-                  {l.items.length} issue{l.items.length === 1 ? '' : 's'}
-                  {pts ? ` · ${pts} pts` : ''}
-                </span>
-                {sp?.goal && <span className="min-w-0 truncate text-[12px] italic text-ink-2">“{sp.goal}”</span>}
-                <span className="flex-1" />
-                {sp && canEdit && sp.state === 'planned' && (
-                  <Button size="sm" variant={active ? 'ghost' : 'primary'} disabled={!!active || !l.items.length} icon={<Play size={13} />} onClick={() => setStarting(sp)} data-testid="start-sprint" title={active ? `Complete ${active.name} first` : !l.items.length ? 'Plan some issues first' : undefined}>
-                    Start {w}
-                  </Button>
-                )}
-                {sp && canEdit && sp.state === 'active' && (
-                  <Button size="sm" onClick={() => setCompleting(sp)} data-testid="complete-sprint">
-                    Complete {w}
-                  </Button>
-                )}
-                {sp && canEdit && (
-                  <Menu>
-                    <MenuTrigger asChild>
-                      <button className="rounded-md p-1 text-muted hover:bg-hover" aria-label={`${sp.name} options`}>
-                        <Ellipsis size={16} />
-                      </button>
-                    </MenuTrigger>
-                    <MenuContent align="end">
-                      <MenuItem icon={<Pencil size={15} />} onSelect={() => setEditing(sp)}>
-                        Edit {w}
-                      </MenuItem>
-                      {sp.state === 'planned' && (
-                        <MenuItem icon={<Trash2 size={15} />} danger onSelect={() => a.remove.mutate(sp.id)}>
-                          Delete {w}
-                        </MenuItem>
-                      )}
-                    </MenuContent>
-                  </Menu>
-                )}
-              </header>
-              {!folded && (
-                <ul className="min-h-[44px] py-1">
-                  {l.items.map((t, i) => (
-                    <li key={t.id}>
-                      {over?.list === l.id && over.index === i && drag && <div className="mx-4 h-0.5 rounded bg-brand-500" />}
-                      <div
-                        draggable={canEdit}
-                        onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
-                        onDragEnd={() => (setDrag(null), setOver(null))}
-                        onClick={() => open(t.id)}
-                        className={cn('group flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-hover', drag === t.id && 'opacity-40')}
-                        data-testid="backlog-row"
-                        data-id={t.id}
-                        data-title={t.title}
-                      >
-                        <GripVertical size={14} className={cn('shrink-0 text-subtle', canEdit ? 'cursor-grab opacity-0 group-hover:opacity-100' : 'opacity-0')} />
-                        <IssueIcon type={t.type} size={15} />
-                        <span className="w-[72px] shrink-0 font-mono text-[11.5px] text-subtle">{t.ref}</span>
-                        <span className={cn('min-w-0 flex-1 truncate text-ink', t.completedAt && 'text-muted line-through')}>{t.title}</span>
-                        <EpicChip t={t} all={tasks} />
-                        <StatusPill t={t} project={project} />
-                        <Points n={t.storyPoints} />
-                        {t.assignee ? <Avatar user={t.assignee} size={22} /> : <span className="size-[22px] rounded-full border border-dashed border-line-strong" />}
-                      </div>
-                    </li>
-                  ))}
-                  {over?.list === l.id && over.index === l.items.length && drag && <div className="mx-4 h-0.5 rounded bg-brand-500" />}
-                  {!l.items.length && <li className="px-4 py-3 text-[12.5px] text-subtle">{sp ? `Drag issues here to plan them into this ${w}.` : 'Nothing waiting in the backlog.'}</li>}
-                </ul>
-              )}
-              {!folded && canEdit && <QuickAdd project={project} sprintId={sp?.id ?? null} />}
-            </section>
-          );
-        })}
-        {!lists.some((l) => l.items.length) && !open_.length && <EmptyState title="No issues yet" />}
+          {blocks.map((b) => {
+            const items = work.filter((t) => b.sprints.some((s) => s.id === t.sprintId));
+            const done = items.filter((t) => t.completedAt).length;
+            return (
+              <div key={b.epic?.id ?? 'none'} className="rounded-2xl bg-[#f3f0ff]/50 p-3 ring-1 ring-violet-200/70" data-testid="epic-block" data-epic={b.epic?.title ?? 'No epic'}>
+                <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+                  {b.epic ? <IssueIcon type="epic" size={16} /> : null}
+                  <button onClick={() => b.epic && open(b.epic.id)} className="text-[14px] font-semibold text-ink hover:underline">
+                    {b.epic ? b.epic.title : `${word}s outside any ${issueLabel('epic', project.methodology).toLowerCase()}`}
+                  </button>
+                  {b.epic?.ref && <span className="font-mono text-[11.5px] text-subtle">{b.epic.ref}</span>}
+                  <span className="text-[12px] text-muted">
+                    {b.sprints.length} {w}
+                    {b.sprints.length === 1 ? '' : 's'} · {done}/{items.length} done
+                  </span>
+                  <span className="flex-1" />
+                  {canEdit && b.epic && (
+                    <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={() => (setEpicFor(b.epic!.id), setEditing('new'))} data-testid="epic-add-sprint">
+                      {word}
+                    </Button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {b.sprints.map((s) => section(lists.find((l) => l.id === s.id)!))}
+                  {!b.sprints.length && <p className="px-1 pb-1 text-[12.5px] text-muted">No {w} yet — add one, then drag tasks from Not Started into it.</p>}
+                </div>
+              </div>
+            );
+          })}
+          {!blocks.length && <EmptyState title={`No ${issueLabel('epic', project.methodology).toLowerCase()}s yet`}>Create an {issueLabel('epic', project.methodology).toLowerCase()}, add {w}s to it and plan tasks from Not Started.</EmptyState>}
+        </div>
       </div>
-      <SprintDialog key={editing === 'new' ? 'new' : editing?.id ?? 'none'} project={project} sprint={editing} onClose={() => setEditing(null)} />
+      <SprintDialog key={editing === 'new' ? `new${epicFor ?? ''}` : editing?.id ?? 'none'} project={project} sprint={editing} epicId={editing === 'new' ? epicFor : undefined} epics={epics} onClose={() => setEditing(null)} />
       {starting && <StartDialog project={project} sprint={starting} items={work.filter((t) => t.sprintId === starting.id)} onClose={() => setStarting(null)} />}
-      {completing && <CompleteDialog word={word} sprint={completing} next={open_.filter((s) => s.state === 'planned')} items={work.filter((t) => t.sprintId === completing.id)} onClose={() => setCompleting(null)} />}
+      {completing && <CompleteDialog word={word} sprint={completing} next={open_.filter((s) => s.state === 'planned' && (s.epicId ?? null) === (completing.epicId ?? null))} items={work.filter((t) => t.sprintId === completing.id)} onClose={() => setCompleting(null)} />}
     </div>
   );
 }
@@ -189,7 +259,7 @@ function EpicChip({ t, all }: { t: TaskView; all: TaskView[] }) {
   let cur = all.find((x) => x.id === t.parentId);
   for (let i = 0; cur && cur.type !== 'epic' && i < 3; i++) cur = all.find((x) => x.id === cur!.parentId);
   if (!cur || cur.type !== 'epic') return null;
-  return <span className="hidden max-w-[150px] truncate rounded px-1.5 text-[11px] font-medium sm:inline" style={{ background: '#ede9fe', color: '#6d28d9' }}>{cur.title}</span>;
+  return <span className="hidden max-w-[110px] shrink-0 truncate rounded px-1.5 text-[11px] font-medium sm:inline" style={{ background: '#ede9fe', color: '#6d28d9' }}>{cur.title}</span>;
 }
 
 function StatusPill({ t, project }: { t: TaskView; project: Project }) {
@@ -228,19 +298,20 @@ const BOLT_DAYS = [1, 2, 3, 5];
 const durationsOf = (p: Project) => (p.methodology === 'ai-dlc' ? BOLT_DAYS : DURATIONS);
 const input = 'h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] outline-none focus:border-brand-500';
 
-export function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: SprintView | 'new' | null; onClose: () => void }) {
+export function SprintDialog({ project, sprint, onClose, epicId, epics }: { project: Project; sprint: SprintView | 'new' | null; onClose: () => void; epicId?: string | null; epics?: TaskView[] }) {
   const a = useSprintActions();
   const word = sprintWord(project.methodology);
   const existing = sprint && sprint !== 'new' ? sprint : null;
   const [name, setName] = useState(existing?.name ?? '');
   const [goal, setGoal] = useState(existing?.goal ?? '');
   const { data: all } = useSprints(project.id);
-  const last = [...(all ?? [])].sort((x, y) => y.endDate.localeCompare(x.endDate))[0];
+  const last = [...(all ?? [])].filter((x) => (x.epicId ?? null) === (epicId ?? null)).sort((x, y) => y.endDate.localeCompare(x.endDate))[0];
   const [start, setStart] = useState(existing?.startDate ?? (last ? addDays(last.endDate, 1) : todayStr()));
   const [days, setDays] = useState(existing ? lengthOf(existing) : project.sprintDays);
+  const [epic, setEpic] = useState(existing ? (existing.epicId ?? '') : (epicId ?? ''));
   const save = async () => {
-    if (existing) await a.update.mutateAsync({ id: existing.id, name: name || undefined, goal: goal || null, startDate: start || undefined, days });
-    else await a.create.mutateAsync({ projectId: project.id, name: name || undefined, goal: goal || null, startDate: start || undefined, days });
+    if (existing) await a.update.mutateAsync({ id: existing.id, name: name || undefined, goal: goal || null, startDate: start || undefined, days, epicId: epic || null });
+    else await a.create.mutateAsync({ projectId: project.id, name: name || undefined, goal: goal || null, startDate: start || undefined, days, epicId: epic || null });
     onClose();
   };
   return (
@@ -258,6 +329,19 @@ export function SprintDialog({ project, sprint, onClose }: { project: Project; s
       <div className="space-y-3 text-[13px]">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={existing ? '' : `${project.key} ${word} …`} aria-label="Sprint name" className={input} />
         <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder={`${word} goal`} aria-label="Sprint goal" className={cn(input, 'h-auto py-2')} />
+        {!!epics?.length && (
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-muted">{issueLabel('epic', project.methodology)}</span>
+            <select value={epic} onChange={(e) => setEpic(e.target.value)} aria-label="Sprint epic" className={input}>
+              <option value="">None (project-wide)</option>
+              {epics.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <SprintDates start={start} setStart={setStart} days={days} setDays={setDays} choices={durationsOf(project)} />
       </div>
     </Dialog>

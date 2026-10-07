@@ -75,8 +75,8 @@ await step('bolts: two days by default, kickoff / review / retro and no daily', 
   await fujita.getByLabel('Create issue in backlog').press('Enter');
   const row = fujita.locator('[data-testid="backlog-row"][data-title="Show free rooms"]');
   await row.waitFor();
-  await row.dragTo(fujita.locator('[data-sprint]').first());
-  await fujita.locator('[data-sprint]').first().locator('[data-testid="backlog-row"][data-title="Show free rooms"]').waitFor();
+  await row.dragTo(fujita.locator(`[data-testid="backlog-section"][data-name="${key} Bolt 1"]`));
+  await fujita.locator(`[data-testid="backlog-section"][data-name="${key} Bolt 1"]`).locator('[data-testid="backlog-row"][data-title="Show free rooms"]').waitFor();
   await fujita.getByTestId('start-sprint').click();
   const start = fujita.getByRole('dialog');
   await start.getByTestId('ceremony-plan').getByText('Bolt Kickoff').waitFor();

@@ -601,7 +601,8 @@ export class TasksService {
       const type: IssueType = input.type ?? (parent ? childTypeOf(parent.type) : 'task');
       this.checkHierarchy(type, parent, !p);
       const statuses = this.statusesOf(p);
-      const status = input.status && statuses.some((s) => s.id === input.status) ? input.status : statuses[0].id;
+      // Created straight into a sprint: it starts as Created when the workflow has that step (§76 planning).
+      const status = input.status && statuses.some((s) => s.id === input.status) ? input.status : input.sprintId && statuses.some((s) => s.id === 'created') ? 'created' : statuses[0].id;
       let number: number | null = null;
       if (p) {
         const [c] = await tx.update(projects).set({ counter: sql`${projects.counter} + 1` }).where(eq(projects.id, p.id)).returning({ n: projects.counter });
@@ -728,6 +729,17 @@ export class TasksService {
         const type = input.type ?? before.type;
         if (input.sprintId && !WORK_TYPES.includes(type)) throw new BadRequestException('Only stories, tasks and bugs go into sprints');
         put('sprintId', input.sprintId ? await this.checkSprint(tx, before.projectId, input.sprintId) : null);
+        // Planning (§76): an issue taken from Not Started into a sprint becomes Created and joins the sprint's epic;
+        // taken back out before work started, it is Not Started again.
+        if (set.sprintId !== undefined && input.status === undefined && statuses.some((x) => x.id === 'created')) {
+          const pool = statuses.find((x) => x.category === 'todo' && x.id !== 'created')?.id;
+          if (set.sprintId && pool && before.status === pool) put('status', 'created');
+          if (!set.sprintId && pool && before.status === 'created') put('status', pool);
+        }
+        if (set.sprintId && input.parentId === undefined && !before.parentId) {
+          const [sp] = await tx.select({ epicId: sprints.epicId }).from(sprints).where(eq(sprints.id, set.sprintId as string));
+          if (sp?.epicId) put('parentId', sp.epicId);
+        }
       }
       if (before.projectId && (input.rankAfter !== undefined || input.rankBefore !== undefined || set.sprintId !== undefined)) {
         set.rank = await this.rankFor(tx, before.projectId, input.rankAfter, input.rankBefore);

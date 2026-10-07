@@ -50,6 +50,7 @@ export class SprintsService {
       return {
         id: r.id,
         projectId: r.projectId,
+        epicId: r.epicId,
         name: r.name,
         goal: r.goal,
         startDate: r.startDate,
@@ -74,21 +75,35 @@ export class SprintsService {
   }
 
   /** A new sprint: the day after the last one ends (or today), for the project's usual length. */
-  async create(actor: Actor, projectId: string, input: { name?: string; goal?: string | null; startDate?: string; days?: number }) {
+  async create(actor: Actor, projectId: string, input: { name?: string; goal?: string | null; startDate?: string; days?: number; epicId?: string | null }) {
     const { p } = await this.tasksSvc.projectAccess(actor, projectId, 'write');
-    const all = await this.db.select().from(sprints).where(eq(sprints.projectId, projectId)).orderBy(desc(sprints.endDate));
+    const epic = input.epicId ? await this.epic(projectId, input.epicId) : null;
+    // An epic's sprints follow one another; numbering is per epic.
+    const all = await this.db
+      .select()
+      .from(sprints)
+      .where(and(eq(sprints.projectId, projectId), epic ? eq(sprints.epicId, epic.id) : isNull(sprints.epicId)))
+      .orderBy(desc(sprints.endDate));
     const start = input.startDate ?? (all[0] ? addDays(all[0].endDate, 1) : today());
     const days = input.days ?? p.sprintDays;
     if (days < 1 || days > 60) throw new BadRequestException('A sprint lasts 1 to 60 days');
+    const word = sprintWord(p.methodology);
     const [row] = await this.db
       .insert(sprints)
-      .values({ projectId, name: input.name?.trim() || `${p.key} ${sprintWord(p.methodology)} ${all.length + 1}`, goal: input.goal?.trim() || null, startDate: start, endDate: addDays(start, days - 1), createdBy: actor.id })
+      .values({ projectId, epicId: epic?.id ?? null, name: input.name?.trim() || (epic ? `${epic.title} · ${word} ${all.length + 1}` : `${p.key} ${word} ${all.length + 1}`), goal: input.goal?.trim() || null, startDate: start, endDate: addDays(start, days - 1), createdBy: actor.id })
       .returning();
     await this.tasksSvc.notifyProject(projectId);
     return (await this.dtos([row]))[0];
   }
 
-  async update(actor: Actor, id: string, input: { name?: string; goal?: string | null; startDate?: string; days?: number; endDate?: string }) {
+  /** An epic of the project (sprints belong to epics). */
+  private async epic(projectId: string, id: string) {
+    const [e] = await this.db.select({ id: tasks.id, title: tasks.title, type: tasks.type, projectId: tasks.projectId }).from(tasks).where(eq(tasks.id, id));
+    if (!e || e.projectId !== projectId || e.type !== 'epic') throw new BadRequestException('Sprints belong to an epic of this project');
+    return e;
+  }
+
+  async update(actor: Actor, id: string, input: { name?: string; goal?: string | null; startDate?: string; days?: number; endDate?: string; epicId?: string | null }) {
     const { sp } = await this.sprint(actor, id, 'write');
     if (sp.state === 'closed') throw new BadRequestException('That sprint is closed');
     const start = input.startDate ?? sp.startDate;
@@ -96,7 +111,13 @@ export class SprintsService {
     if (end < start) throw new BadRequestException('The sprint ends before it starts');
     const [row] = await this.db
       .update(sprints)
-      .set({ name: input.name?.trim() || sp.name, goal: input.goal !== undefined ? input.goal?.trim() || null : sp.goal, startDate: start, endDate: end })
+      .set({
+        name: input.name?.trim() || sp.name,
+        goal: input.goal !== undefined ? input.goal?.trim() || null : sp.goal,
+        startDate: start,
+        endDate: end,
+        ...(input.epicId !== undefined ? { epicId: input.epicId ? (await this.epic(sp.projectId, input.epicId)).id : null } : {}),
+      })
       .where(eq(sprints.id, id))
       .returning();
     await this.tasksSvc.notifyProject(sp.projectId);
@@ -122,7 +143,11 @@ export class SprintsService {
   async start(actor: Actor, id: string, input: { startDate?: string; days?: number; goal?: string | null; ceremonies?: CeremonyPlan }) {
     const { sp, p } = await this.sprint(actor, id, 'write');
     if (sp.state !== 'planned') throw new BadRequestException(`The sprint is already ${sp.state}`);
-    const [active] = await this.db.select({ id: sprints.id, name: sprints.name }).from(sprints).where(and(eq(sprints.projectId, sp.projectId), eq(sprints.state, 'active')));
+    // One running sprint per epic (and one for the sprints without an epic).
+    const [active] = await this.db
+      .select({ id: sprints.id, name: sprints.name })
+      .from(sprints)
+      .where(and(eq(sprints.projectId, sp.projectId), eq(sprints.state, 'active'), sp.epicId ? eq(sprints.epicId, sp.epicId) : isNull(sprints.epicId)));
     if (active) throw new BadRequestException(`Complete ${active.name} first`);
     const issues = await this.sprintIssues(id);
     if (!issues.length) throw new BadRequestException('Plan some issues into the sprint first');

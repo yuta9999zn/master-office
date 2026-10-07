@@ -60,7 +60,7 @@ export const APPS: AppDef[] = [
   { id: 'base', label: 'Base', tagline: 'Manage your data', href: '/base', icon: Database, from: '#a78bfa', to: '#6d28d9', opens: ['base'], phase: 7, primary: true },
   { id: 'meetings', label: 'Meetings', tagline: 'Video meetings', href: '/meetings', icon: Video, from: '#60a5fa', to: '#1d4ed8', phase: 7, primary: true },
   { id: 'tasks', label: 'Tasks', tagline: 'Track and get things done', href: '/tasks', icon: SquareCheckBig, from: '#818cf8', to: '#4f46e5', phase: 7, primary: true },
-  { id: 'flow', label: 'Flow', tagline: 'Design workflows & diagrams', href: '/flow', icon: Workflow, from: '#818cf8', to: '#7c3aed', phase: 7, primary: true },
+  { id: 'flow', label: 'Flow', tagline: 'Design workflows & diagrams', href: '/flow', icon: Workflow, from: '#818cf8', to: '#7c3aed', opens: ['flow'], phase: 7, primary: true },
   { id: 'notes', label: 'Notes', tagline: 'Capture ideas & meeting notes', href: '/notes', icon: NotebookPen, from: '#818cf8', to: '#4f46e5', opens: ['note'], phase: 2, primary: true },
   { id: 'mindmap', label: 'Mind Map', tagline: 'Turn notes into mind maps', href: '/notes?view=mindmaps', icon: Network, from: '#a78bfa', to: '#7c3aed', phase: 2, primary: true },
   { id: 'wiki', label: 'Wiki', tagline: 'Build knowledge', href: '/wiki', icon: BookOpen, from: '#2dd4bf', to: '#0d9488', opens: ['wiki'], phase: 2, primary: true },

@@ -63,12 +63,12 @@ await step('the backlog: active sprint, planned sprint, backlog', fujita, async 
   await fujita.goto(`${BASE}/tasks?project=${web.id}&view=backlog`);
   await row(P(2), 'Implement booking system').waitFor({ timeout: 90000 });
   await row(P(3), 'Build user authentication').waitFor();
-  await row('Backlog', 'Prepare marketing assets').waitFor();
+  await row('Not Started', 'Prepare marketing assets').waitFor();
   await section(P(2)).getByText(/Active · \d+ days left/).waitFor();
 });
 
 await step('drag an issue from the backlog into a sprint, above another one', fujita, async () => {
-  await row('Backlog', 'Prepare marketing assets').dragTo(row(P(3), 'Build user authentication'), { targetPosition: { x: 200, y: 4 } });
+  await row('Not Started', 'Prepare marketing assets').dragTo(row(P(3), 'Build user authentication'), { targetPosition: { x: 200, y: 4 } });
   await row(P(3), 'Prepare marketing assets').waitFor();
   await fujita.waitForFunction((name) => {
     const titles = [...document.querySelectorAll(`[data-testid="backlog-section"][data-name="${name}"] [data-testid="backlog-row"]`)].map((r) => r.getAttribute('data-title'));

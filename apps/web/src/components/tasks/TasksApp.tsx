@@ -106,11 +106,13 @@ export function TasksApp() {
   };
   const epics = (tasks ?? []).filter((t) => t.type === 'epic' && !t.triage);
   const openSprints = (sprints ?? []).filter((x) => x.state !== 'closed');
-  const sprintSel = agile ? (params.get('sprint') ?? activeSprint?.id ?? 'all') : 'all';
+  const activeIds = openSprints.filter((x) => x.state === 'active').map((x) => x.id);
+  const sprintSel = agile ? (params.get('sprint') ?? (activeIds.length ? 'active' : 'all')) : 'all';
   const epicSel = params.get('epic') ?? '';
   const lanesKind = params.get('lanes') ?? '';
   let boardTasks = shown;
   if (sprintSel === 'backlog') boardTasks = boardTasks.filter((t) => !t.sprintId);
+  else if (sprintSel === 'active') boardTasks = boardTasks.filter((t) => !!t.sprintId && activeIds.includes(t.sprintId));
   else if (sprintSel !== 'all') boardTasks = boardTasks.filter((t) => t.sprintId === sprintSel);
   if (epicSel === 'none') boardTasks = boardTasks.filter((t) => !epicOf(t, tasks ?? []));
   else if (epicSel) boardTasks = boardTasks.filter((t) => epicOf(t, tasks ?? [])?.id === epicSel);
@@ -134,7 +136,7 @@ export function TasksApp() {
             ]
           : null;
   const views: View[] = project
-    ? [...(agile ? (['backlog'] as View[]) : []), 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', 'docs', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
+    ? ['backlog', 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', 'docs', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
     : ['board', 'list', 'calendar'];
 
   if (!mounted) return <div className="h-full bg-canvas" />;
@@ -143,7 +145,7 @@ export function TasksApp() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5">
         <SquareCheckBig size={20} className="text-brand-600" />
         <h1 className="text-[17px] font-semibold text-ink">Tasks</h1>
-        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (['backlog', 'sprints'].includes(view) ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' || view === 'docs' ? 'board' : view })} onNew={() => setNewProject(true)} />
+        <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (view === 'sprints' ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' || view === 'docs' ? 'board' : view })} onNew={() => setNewProject(true)} />
         {project && (
           <span className="shrink-0 whitespace-nowrap rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
             {METHODOLOGY[project.methodology].label}
@@ -186,7 +188,7 @@ export function TasksApp() {
             <Skeleton className="m-6 h-80" />
           ) : view === 'dashboard' && project ? (
             <TaskDashboard projectId={project.id} />
-          ) : view === 'backlog' && project && agile ? (
+          ) : view === 'backlog' && project ? (
             <BacklogView project={project} tasks={shown} open={(id) => go({ task: id })} />
           ) : view === 'sprints' && project && agile ? (
             <SprintsView project={project} open={(id) => go({ task: id })} />
@@ -230,6 +232,7 @@ export function TasksApp() {
                     <label className="flex items-center gap-1.5 text-muted">
                       Sprint
                       <select value={sprintSel} onChange={(e) => setBoard({ sprint: e.target.value })} className="h-7 rounded-md border border-line-strong bg-surface px-1.5 text-[12.5px] text-ink" aria-label="Board sprint">
+                        {activeIds.length > 0 && <option value="active">Active {sprintWord(project.methodology).toLowerCase()}s</option>}
                         {openSprints.map((sp) => (
                           <option key={sp.id} value={sp.id}>
                             {sp.name}

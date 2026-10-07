@@ -5,7 +5,7 @@ import { parse } from '../common/validation';
 import { SprintsService } from './sprints.service';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const sprintBody = z.object({ name: z.string().max(80).optional(), goal: z.string().max(1000).nullish(), startDate: day.optional(), days: z.number().int().min(1).max(60).optional() });
+const sprintBody = z.object({ name: z.string().max(80).optional(), goal: z.string().max(1000).nullish(), startDate: day.optional(), days: z.number().int().min(1).max(60).optional(), epicId: z.string().uuid().nullish() });
 const startBody = z.object({
   startDate: day.optional(),
   days: z.number().int().min(1).max(60).optional(),

@@ -1144,6 +1144,8 @@ export const sprints = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
+    /** The epic this sprint delivers (§76: a project has epics, an epic has sprints). */
+    epicId: uuid('epic_id').references((): AnyPgColumn => tasks.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
     goal: text('goal'),
     startDate: date('start_date').notNull(),

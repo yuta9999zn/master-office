@@ -12,7 +12,6 @@ type Row = typeof notifications.$inferSelect;
 
 /** In-app path of a resource — the server's copy of the web app's hrefFor (docs/ARCHITECTURE.md §3.1). */
 export function resourcePath(r: { id: string; type: ResourceType; metadata?: Record<string, unknown> | null }) {
-  if (r.metadata?.app === 'flow') return '/flow';
   const route: Partial<Record<ResourceType, string>> = {
     folder: 'drive/folder',
     document: 'docs',
@@ -22,6 +21,7 @@ export function resourcePath(r: { id: string; type: ResourceType; metadata?: Rec
     note: 'notes',
     form: 'forms',
     base: 'base',
+    flow: 'flow',
   };
   return `/${route[r.type] ?? 'preview'}/${r.id}`;
 }

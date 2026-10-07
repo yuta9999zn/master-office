@@ -91,7 +91,7 @@ check('anyone keeps personal tasks', p2.status === 201 && p2.data.projectId === 
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 const st = (await call('GET', `/tasks/projects/${sys.id}/stats`, { user: claudia })).data;
-check('dashboard numbers (work items, not phases or milestones)', st.total === 10 && st.done === 2 && st.completionRate === 20 && st.byStatus.length === 7 && st.trend.length === 30 && st.people.length >= 1, st);
+check('dashboard numbers (work items, not phases or milestones)', st.total === 19 && st.done === 2 && st.completionRate === 11 && st.byStatus.length === 9 && st.byStatus.find((x) => x.status === 'created').count === 3 && st.trend.length === 30 && st.people.length >= 1, st);
 check('removing a task', (await call('DELETE', `/tasks/${p2.data.id}`, { user: ken })).status === 204 && (await call('GET', `/tasks/${p2.data.id}`, { user: ken })).status === 404);
 void claudia;
 

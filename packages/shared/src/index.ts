@@ -15,11 +15,12 @@ export const RESOURCE_TYPES = [
   'form',
   'shortcut',
   'note',
+  'flow',
 ] as const;
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
 /** Types whose content lives in a collaborative Yjs document rather than a blob. */
-export const NATIVE_TYPES: ResourceType[] = ['document', 'spreadsheet', 'presentation', 'wiki', 'base', 'form', 'note'];
+export const NATIVE_TYPES: ResourceType[] = ['document', 'spreadsheet', 'presentation', 'wiki', 'base', 'form', 'note', 'flow'];
 
 export const ROLES = ['viewer', 'commenter', 'editor', 'admin', 'owner'] as const;
 export type Role = (typeof ROLES)[number];
@@ -769,14 +770,16 @@ export const WORKFLOWS: { id: Exclude<WorkflowId, 'custom'>; name: string; note:
   {
     id: 'waterfall',
     name: 'Waterfall (stage gate)',
-    note: 'Not started, in progress, review, approval at the gate, completed; on hold and cancelled',
+    note: 'Not started (not in a sprint yet), created in a sprint, in progress, review, approval, on hold, recheck, completed, cancelled',
     statuses: [
-      { id: 'todo', name: 'Not Started', color: '#64748b', category: 'todo', next: ['doing', 'hold', 'cancelled'] },
+      { id: 'todo', name: 'Not Started', color: '#64748b', category: 'todo', next: ['created', 'doing', 'cancelled'] },
+      { id: 'created', name: 'Created', color: '#0ea5e9', category: 'todo', next: ['doing', 'hold', 'todo', 'cancelled'] },
       { id: 'doing', name: 'In Progress', color: '#2563eb', category: 'doing', next: ['review', 'hold', 'cancelled'] },
-      { id: 'review', name: 'In Review', color: '#8b5cf6', category: 'doing', next: ['approved', 'doing'] },
-      { id: 'approved', name: 'Approved', color: '#14b8a6', category: 'doing', next: ['done', 'doing'] },
+      { id: 'review', name: 'In Review', color: '#8b5cf6', category: 'doing', next: ['approved', 'recheck', 'doing'] },
+      { id: 'approved', name: 'Approved', color: '#14b8a6', category: 'doing', next: ['done', 'recheck'] },
       { id: 'hold', name: 'On Hold', color: '#f59e0b', category: 'doing', next: ['doing', 'cancelled'] },
-      { id: 'done', name: 'Completed', color: '#10b981', category: 'done', next: ['doing'] },
+      { id: 'recheck', name: 'Recheck', color: '#f97316', category: 'doing', next: ['doing', 'review'] },
+      { id: 'done', name: 'Completed', color: '#10b981', category: 'done', next: ['recheck', 'doing'] },
       { id: 'cancelled', name: 'Cancelled', color: '#94a3b8', category: 'done', resolution: 'cancelled', next: ['todo'] },
     ],
   },
@@ -956,6 +959,8 @@ export type CeremonyKind = 'planning' | 'daily' | 'review' | 'retro';
 export interface SprintView {
   id: string;
   projectId: string;
+  /** The epic it delivers (null = a project-wide sprint). */
+  epicId: string | null;
   name: string;
   goal: string | null;
   startDate: string;

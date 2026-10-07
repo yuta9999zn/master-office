@@ -55,11 +55,11 @@ export function useSprintActions() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['tasks'] });
   const m = <I,>(fn: (input: I) => Promise<unknown>) => useMutation({ mutationFn: fn, onSuccess: refresh, onError });
   return {
-    create: m((input: { projectId: string; name?: string; goal?: string | null; startDate?: string; days?: number }) => {
+    create: m((input: { projectId: string; name?: string; goal?: string | null; startDate?: string; days?: number; epicId?: string | null }) => {
       const { projectId, ...body } = input;
       return api<SprintView>(`/tasks/projects/${projectId}/sprints`, { method: 'POST', json: body });
     }),
-    update: m(({ id, ...body }: { id: string; name?: string; goal?: string | null; startDate?: string; days?: number }) => api<SprintView>(`/tasks/sprints/${id}`, { method: 'PATCH', json: body })),
+    update: m(({ id, ...body }: { id: string; name?: string; goal?: string | null; startDate?: string; days?: number; epicId?: string | null }) => api<SprintView>(`/tasks/sprints/${id}`, { method: 'PATCH', json: body })),
     remove: m((id: string) => api(`/tasks/sprints/${id}`, { method: 'DELETE' })),
     start: m(({ id, ...body }: { id: string; startDate?: string; days?: number; goal?: string | null; ceremonies?: CeremonyPlan }) => api<SprintView>(`/tasks/sprints/${id}/start`, { method: 'POST', json: body })),
     complete: m(({ id, moveTo }: { id: string; moveTo: string | null }) => api<{ sprint: SprintView; moved: number }>(`/tasks/sprints/${id}/complete`, { method: 'POST', json: { moveTo } })),

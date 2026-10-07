@@ -174,6 +174,31 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   ])
     await db.insert(s.taskLinks).values({ fromId: byTitle.get(a)!, toId: byTitle.get(b)!, kind: 'blocks', createdBy: u.sora.id });
 
+  // Planning (§76): epics with their own sprints; tasks wait in Not Started until they are planned into one.
+  const devPhase = (await db.select().from(s.tasks).where(and(eq(s.tasks.projectId, sys.id), eq(s.tasks.title, 'Development'))))[0];
+  const epic = (title: string) => task(sys, { title, type: 'epic', status: 'doing', parent: devPhase.id, by: 'sora', who: 'sora' });
+  const onlineEpic = await epic('Online booking');
+  const staffApp = await epic('Staff app');
+  const sprint = async (epicId: string, name: string, startDate: string, endDate: string, state: 'planned' | 'active') =>
+    (await db.insert(s.sprints).values({ projectId: sys.id, epicId, name, startDate, endDate, state, startedAt: state === 'active' ? new Date('2026-10-05T00:00:00Z').toISOString() : null, createdBy: u.sora.id }).returning())[0];
+  const b1 = await sprint(onlineEpic.id, 'Online booking · Sprint 1', '2026-10-05', '2026-10-16', 'active');
+  const b2 = await sprint(onlineEpic.id, 'Online booking · Sprint 2', '2026-10-19', '2026-10-30', 'planned');
+  const a1 = await sprint(staffApp.id, 'Staff app · Sprint 1', '2026-10-12', '2026-10-23', 'planned');
+  const planned = async (sp: typeof b1 | null, parent: string | null, title: string, status: string, who: string) => {
+    const t = await task(sys, { title, type: 'task', status, parent: parent ?? undefined, who, by: 'sora' });
+    if (sp) await db.update(s.tasks).set({ sprintId: sp.id }).where(eq(s.tasks.id, t.id));
+  };
+  await planned(b1, onlineEpic.id, 'Booking calendar screen', 'review', 'minh');
+  await planned(b1, onlineEpic.id, 'Slot availability API', 'doing', 'ken');
+  await planned(b1, onlineEpic.id, 'Booking confirmation e-mail', 'created', 'ken');
+  await planned(b1, onlineEpic.id, 'Cancel and reschedule flow', 'recheck', 'minh');
+  await planned(b2, onlineEpic.id, 'Deposit payment', 'created', 'ken');
+  await planned(a1, staffApp.id, 'Shift view for staff', 'created', 'minh');
+  // Not Started: created, not planned into a sprint yet.
+  await planned(null, null, 'Customer reminders by LINE', 'todo', 'mika');
+  await planned(null, null, 'Staff check-in with QR code', 'todo', 'ken');
+  await planned(null, null, 'Booking report for managers', 'todo', 'sora');
+
   // Personal tasks of Claudia.
   await task(null, { title: 'Review Q4 budget', status: 'todo', priority: 'high', who: 'claudia', due: '2026-10-07', by: 'claudia' });
   await task(null, { title: 'Prepare all-hands slides', status: 'doing', priority: 'medium', who: 'claudia', due: '2026-10-09', by: 'claudia' });
