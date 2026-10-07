@@ -1,9 +1,9 @@
 'use client';
 
-import { can, canTransition, isAgile, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
+import { can, canTransition, isAgile, sprintWord, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
 import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
 import { useSpaces, useUsers } from '@/lib/queries';
 import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, useTaskActions, useTasks } from '@/lib/tasks';
@@ -44,6 +44,11 @@ export function TasksApp() {
   const [settings, setSettings] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const statuses = project?.statuses ?? PERSONAL;
+  const boardQuery = useRef<string | null>(null);
+  const query = params.toString();
+  useEffect(() => {
+    if (boardQuery.current === query) boardQuery.current = null;
+  }, [query]);
   const mine = params.get('mine') === '1' || (!!taskId && !projectId);
   // /tasks opens the project you used last (or the first one): each project has its own workflow columns,
   // while My tasks folds every project into To do / In progress / Done.
@@ -78,6 +83,7 @@ export function TasksApp() {
     n.set('view', p.view ?? (cur.get('view') as View | null) ?? view);
     const t = p.task === undefined ? cur.get('task') : p.task;
     if (t) n.set('task', t);
+    boardQuery.current = null;
     router.push(`/tasks?${n.toString()}`);
   };
 
@@ -90,6 +96,43 @@ export function TasksApp() {
   const agile = isAgile(project?.methodology);
   const { data: sprints } = useSprints(agile ? project?.id : null);
   const activeSprint = agile ? sprints?.find((x) => x.state === 'active') ?? null : null;
+  // Board scope (§76): which sprint, which epic, and swimlanes — kept in the URL.
+  // Quick successive changes build on the last one even before the URL has caught up.
+  const setBoard = (patch: Record<string, string>) => {
+    const n = new URLSearchParams(boardQuery.current ?? window.location.search);
+    for (const [k, v] of Object.entries(patch)) (v ? n.set(k, v) : n.delete(k));
+    boardQuery.current = n.toString();
+    router.replace(`/tasks?${n.toString()}`);
+  };
+  const epics = (tasks ?? []).filter((t) => t.type === 'epic' && !t.triage);
+  const openSprints = (sprints ?? []).filter((x) => x.state !== 'closed');
+  const sprintSel = agile ? (params.get('sprint') ?? activeSprint?.id ?? 'all') : 'all';
+  const epicSel = params.get('epic') ?? '';
+  const lanesKind = params.get('lanes') ?? '';
+  let boardTasks = shown;
+  if (sprintSel === 'backlog') boardTasks = boardTasks.filter((t) => !t.sprintId);
+  else if (sprintSel !== 'all') boardTasks = boardTasks.filter((t) => t.sprintId === sprintSel);
+  if (epicSel === 'none') boardTasks = boardTasks.filter((t) => !epicOf(t, tasks ?? []));
+  else if (epicSel) boardTasks = boardTasks.filter((t) => epicOf(t, tasks ?? [])?.id === epicSel);
+  const lanes: Lane[] | null =
+    lanesKind === 'epic'
+      ? [
+          ...epics.filter((ep) => !epicSel || ep.id === epicSel).map((ep) => ({ key: `epic:${ep.id}`, label: ep.title, hint: ep.ref ?? undefined, match: (t: TaskView) => epicOf(t, tasks ?? [])?.id === ep.id, patch: { parentId: ep.id } })),
+          { key: 'epic:none', label: `No ${issueLabel('epic', project?.methodology).toLowerCase()}`, match: (t: TaskView) => !epicOf(t, tasks ?? []), patch: {} },
+        ]
+      : lanesKind === 'assignee'
+        ? [
+            ...[...new Map(boardTasks.filter((t) => isWork(t) && t.assignee).map((t) => [t.assignee!.id, t.assignee!])).values()]
+              .sort((x, y) => x.name.localeCompare(y.name))
+              .map((u) => ({ key: `assignee:${u.id}`, label: u.name, avatar: u, match: (t: TaskView) => t.assignee?.id === u.id, patch: { assigneeId: u.id } })),
+            { key: 'assignee:none', label: 'Unassigned', match: (t: TaskView) => !t.assignee, patch: { assigneeId: null } },
+          ]
+        : lanesKind === 'sprint' && agile
+          ? [
+              ...openSprints.map((sp) => ({ key: `sprint:${sp.id}`, label: sp.name, hint: `${shortDate(sp.startDate)} – ${shortDate(sp.endDate)}${sp.state === 'active' ? ' · active' : ''}`, match: (t: TaskView) => t.sprintId === sp.id, patch: { sprintId: sp.id } })),
+              { key: 'sprint:none', label: 'Backlog', match: (t: TaskView) => !t.sprintId || !openSprints.some((x) => x.id === t.sprintId), patch: { sprintId: null } },
+            ]
+          : null;
   const views: View[] = project
     ? [...(agile ? (['backlog'] as View[]) : []), 'board', 'list', ...(agile ? (['sprints'] as View[]) : []), 'gantt', 'calendar', 'dashboard', 'docs', ...(project.perms.write || triage.length ? (['intake'] as View[]) : [])]
     : ['board', 'list', 'calendar'];
@@ -181,8 +224,53 @@ export function TasksApp() {
                   My tasks folds your work from every project into To do / In progress / Done. Open a project to see its full workflow (Code Review, QA, Fixing, Retest, UAT…).
                 </div>
               )}
+              {project && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface px-5 py-1.5 text-[12.5px]" data-testid="board-controls">
+                  {agile && (
+                    <label className="flex items-center gap-1.5 text-muted">
+                      Sprint
+                      <select value={sprintSel} onChange={(e) => setBoard({ sprint: e.target.value })} className="h-7 rounded-md border border-line-strong bg-surface px-1.5 text-[12.5px] text-ink" aria-label="Board sprint">
+                        {openSprints.map((sp) => (
+                          <option key={sp.id} value={sp.id}>
+                            {sp.name}
+                            {sp.state === 'active' ? ' (active)' : ''}
+                          </option>
+                        ))}
+                        <option value="backlog">Backlog (no sprint)</option>
+                        <option value="all">All issues</option>
+                      </select>
+                    </label>
+                  )}
+                  {epics.length > 0 && (
+                    <label className="flex items-center gap-1.5 text-muted">
+                      {issueLabel('epic', project.methodology)}
+                      <select value={epicSel} onChange={(e) => setBoard({ epic: e.target.value })} className="h-7 max-w-[220px] rounded-md border border-line-strong bg-surface px-1.5 text-[12.5px] text-ink" aria-label="Board epic">
+                        <option value="">All</option>
+                        {epics.map((ep) => (
+                          <option key={ep.id} value={ep.id}>
+                            {ep.title}
+                          </option>
+                        ))}
+                        <option value="none">None</option>
+                      </select>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-1.5 text-muted">
+                    Swimlanes
+                    <select value={lanesKind} onChange={(e) => setBoard({ lanes: e.target.value })} className="h-7 rounded-md border border-line-strong bg-surface px-1.5 text-[12.5px] text-ink" aria-label="Swimlanes">
+                      <option value="">None</option>
+                      <option value="epic">By {issueLabel('epic', project.methodology).toLowerCase()}</option>
+                      <option value="assignee">By assignee</option>
+                      {agile && <option value="sprint">By {sprintWord(project.methodology).toLowerCase()}</option>}
+                    </select>
+                  </label>
+                  <span className="ml-auto text-muted" data-testid="board-count">
+                    {boardTasks.filter(isWork).length} issues
+                  </span>
+                </div>
+              )}
               <div className="min-h-0 flex-1">
-                <BoardView tasks={activeSprint ? shown.filter((t) => t.sprintId === activeSprint.id) : shown} all={tasks ?? []} statuses={statuses} strict={!!project?.strictWorkflow} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+                <BoardView lanes={project ? lanes : null} tasks={project ? boardTasks : shown} all={tasks ?? []} statuses={statuses} strict={!!project?.strictWorkflow} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
               </div>
             </div>
           )}
@@ -290,128 +378,221 @@ function epicOf(t: TaskView, all: TaskView[]) {
 
 // ── Board ───────────────────────────────────────────────────────────────────
 
-function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, projectId, open, onAdd }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; strict?: boolean; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void }) {
+/** A swimlane: the cards that match, and what a card dropped into it takes (its epic, assignee or sprint). */
+export interface Lane {
+  key: string;
+  label: string;
+  hint?: string;
+  avatar?: { name: string; avatarColor: string } | null;
+  match: (t: TaskView) => boolean;
+  patch: { parentId?: string | null; assigneeId?: string | null; sprintId?: string | null };
+}
+
+function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, projectId, open, onAdd, lanes }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; strict?: boolean; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void; lanes?: Lane[] | null }) {
   const { update } = useTaskActions();
   const [drag, setDrag] = useState<string | null>(null);
-  const [over, setOver] = useState<{ status: string; index: number } | null>(null);
+  const [over, setOver] = useState<{ status: string; index: number; lane: string } | null>(null);
+  const [folded, setFolded] = useState<Set<string>>(new Set());
   // A project board shows the work items (stories, tasks, bugs); My tasks shows top-level tasks.
   const top = tasks.filter((t) => (projectId ? isWork(t) : !t.parentId || !projectId));
-  const column = (s: string) => top.filter((t) => columnOf(t, statuses) === s).sort((a, b) => (a.position < b.position ? -1 : 1));
+  const column = (s: string, lane?: Lane) => top.filter((t) => columnOf(t, statuses) === s && (!lane || lane.match(t))).sort((a, b) => (a.position < b.position ? -1 : 1));
   // A strict workflow: only columns the dragged card may move to take it.
-  const dragFrom = drag ? tasks.find((t) => t.id === drag)?.status ?? null : null;
-  const allowed = (status: string) => !strict || !dragFrom || canTransition(statuses, dragFrom, status);
-  const drop = (status: string, index: number) => {
-    if (!drag || !allowed(status)) return;
-    const list = column(status).filter((t) => t.id !== drag);
+  const dragged = drag ? tasks.find((t) => t.id === drag) ?? null : null;
+  const allowed = (status: string) => !strict || !dragged || canTransition(statuses, dragged.status, status);
+  const drop = (status: string, index: number, lane?: Lane) => {
+    if (!drag || !dragged || !allowed(status)) return;
+    const list = column(status, lane).filter((t) => t.id !== drag);
     const after = list[index - 1]?.id ?? null;
     const before = list[index]?.id ?? null;
-    update.mutate({ id: drag, status, after, before });
+    // Into another lane: the card takes that lane's epic / assignee / sprint.
+    update.mutate({ id: drag, status, after, before, ...(lane && !lane.match(dragged) ? lane.patch : {}) });
     setDrag(null);
     setOver(null);
   };
-  const indexAt = (e: DragEvent<HTMLElement>, status: string) => {
+  const indexAt = (e: DragEvent<HTMLElement>, status: string, lane: string) => {
     const cards = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-testid="task-card"]')].filter((c) => c.dataset.id !== drag);
     const i = cards.findIndex((c) => e.clientY < c.getBoundingClientRect().top + c.offsetHeight / 2);
-    return { status, index: i < 0 ? cards.length : i };
+    return { status, index: i < 0 ? cards.length : i, lane };
   };
+  const width = statuses.length > 6 ? 'w-[250px]' : 'w-[290px]';
+
+  const card = (t: TaskView) => {
+    const epic = epicOf(t, all);
+    return (
+      <button
+        draggable={canEdit && t.canEdit}
+        onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
+        onDragEnd={() => (setDrag(null), setOver(null))}
+        onClick={() => open(t.id)}
+        className={cn('block w-full rounded-lg border border-line bg-surface p-3 text-left shadow-[var(--shadow-card)] hover:border-brand-200', drag === t.id && 'opacity-40')}
+        data-testid="task-card"
+        data-id={t.id}
+        data-title={t.title}
+      >
+        <div className="text-[13.5px] font-medium leading-snug text-ink">{t.title}</div>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {epic && lanes?.[0]?.key.startsWith('epic:') !== true && (
+            <span className="inline-flex h-5 max-w-[150px] items-center truncate rounded px-1.5 text-[11px] font-medium" style={{ background: '#ede9fe', color: '#6d28d9' }} data-testid="card-epic">
+              {epic.title}
+            </span>
+          )}
+          {t.tags.map((x) => (
+            <span key={x} className="inline-flex h-5 items-center rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-700">
+              {x}
+            </span>
+          ))}
+          <PriorityChip p={t.priority} />
+        </div>
+        <div className="mt-2 flex items-center gap-2.5">
+          {projectId && <IssueIcon type={t.type} size={15} />}
+          {t.blockedBy > 0 && (
+            <span className="flex items-center gap-0.5 text-[11.5px] font-medium text-red-600" title="Waiting on other issues" data-testid="card-blocked">
+              <Ban size={12} /> {t.blockedBy}
+            </span>
+          )}
+          <Due t={t} />
+          {t.subtasks.total > 0 && (
+            <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
+              <ListChecks size={12} /> {t.subtasks.done}/{t.subtasks.total}
+            </span>
+          )}
+          {t.comments > 0 && (
+            <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
+              <MessageSquare size={12} /> {t.comments}
+            </span>
+          )}
+          <span className="flex-1" />
+          <Points n={t.storyPoints} />
+          {t.ref && <span className="font-mono text-[10.5px] text-subtle">{t.ref}</span>}
+          {t.assignee && <Avatar user={t.assignee} size={22} />}
+        </div>
+      </button>
+    );
+  };
+
+  /** The cards of one status (in one lane), with the drop marker. */
+  const cell = (s: TaskStatus, lane?: Lane) => {
+    const list = column(s.id, lane);
+    const key = lane?.key ?? '';
+    return (
+      <div
+        className={cn('min-h-[56px] space-y-2', !lane && 'min-h-0 flex-1 overflow-y-auto')}
+        onDragOver={(e) => {
+          if (!drag || !allowed(s.id)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setOver(indexAt(e, s.id, key));
+        }}
+        onDrop={(e) => (e.preventDefault(), e.stopPropagation(), drop(s.id, indexAt(e, s.id, key).index, lane))}
+        data-testid="board-cell"
+        data-status={s.id}
+        data-lane={key || undefined}
+      >
+        {list.map((t, i) => (
+          <div key={t.id}>
+            {over?.status === s.id && over.lane === key && over.index === i && drag && <div className="mb-2 h-1 rounded bg-brand-500" />}
+            {card(t)}
+          </div>
+        ))}
+        {over?.status === s.id && over.lane === key && over.index === list.length && drag && <div className="h-1 rounded bg-brand-500" />}
+      </div>
+    );
+  };
+  const head = (s: TaskStatus) => {
+    const list = column(s.id);
+    const points = list.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
+    return (
+      <div className="flex items-center gap-2 px-1.5 pb-2 pt-1">
+        <span className="size-2.5 rounded-full" style={{ background: s.color }} />
+        <span className="text-[13px] font-semibold text-ink">{s.name}</span>
+        {wip[s.id] ? (
+          <span className={cn('rounded px-1 text-[12px]', list.length > wip[s.id] ? 'bg-red-100 font-semibold text-red-700' : 'text-muted')} title={`Work-in-progress limit ${wip[s.id]}`} data-testid="wip" data-over={list.length > wip[s.id] ? '1' : undefined}>
+            {list.length}/{wip[s.id]}
+          </span>
+        ) : (
+          <span className="text-[12px] text-muted">{list.length}</span>
+        )}
+        {points > 0 && (
+          <span className="ml-auto text-[11px] text-muted" title="Story points">
+            {points} pts
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  if (lanes?.length)
+    return (
+      <div className="h-full overflow-auto p-5" data-testid="board" data-lanes={lanes[0].key.split(':')[0]}>
+        <div className="w-max space-y-3">
+          <div className="sticky top-0 z-10 flex gap-4 bg-surface">
+            {statuses.map((s) => (
+              <div key={s.id} className={cn('shrink-0 rounded-t-xl bg-[#eef1f6] px-2 pt-1', width, drag && !allowed(s.id) && 'opacity-40')} data-testid="board-column" data-status={s.id}>
+                {head(s)}
+              </div>
+            ))}
+          </div>
+          {lanes.map((lane) => {
+            const count = top.filter(lane.match).length;
+            return (
+              <section key={lane.key} data-testid="swimlane" data-lane={lane.key} data-label={lane.label}>
+                <button
+                  onClick={() =>
+                    setFolded((v) => {
+                      const n = new Set(v);
+                      if (!n.delete(lane.key)) n.add(lane.key);
+                      return n;
+                    })
+                  }
+                  className="sticky left-0 mb-1.5 flex items-center gap-2 text-[13px]"
+                >
+                  {folded.has(lane.key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  {lane.avatar && <Avatar user={lane.avatar} size={20} />}
+                  <b className="font-semibold text-ink">{lane.label}</b>
+                  {lane.hint && <span className="text-[12px] text-muted">{lane.hint}</span>}
+                  <span className="text-[12px] text-muted">{count} {count === 1 ? 'issue' : 'issues'}</span>
+                </button>
+                {!folded.has(lane.key) && (
+                  <div className="flex gap-4">
+                    {statuses.map((s) => (
+                      <div key={s.id} className={cn('shrink-0 rounded-xl bg-[#eef1f6] p-2', width, over?.status === s.id && over.lane === lane.key && 'ring-2 ring-brand-200', drag && !allowed(s.id) && 'opacity-40')}>
+                        {cell(s, lane)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+
   return (
     <div className="flex h-full gap-4 overflow-x-auto p-5" data-testid="board">
-      {statuses.map((s) => {
-        const list = column(s.id);
-        const points = list.reduce((n, t) => n + (t.storyPoints ?? 0), 0);
-        return (
-          <section
-            key={s.id}
-            className={cn('flex shrink-0 flex-col rounded-xl bg-[#eef1f6] p-2 transition-opacity', statuses.length > 6 ? 'w-[250px]' : 'w-[290px]', over?.status === s.id && 'ring-2 ring-brand-200', drag && !allowed(s.id) && 'opacity-40')}
-            onDragOver={(e) => {
-              if (!drag || !allowed(s.id)) return;
-              e.preventDefault();
-              setOver(indexAt(e, s.id));
-            }}
-            onDrop={(e) => (e.preventDefault(), drop(s.id, indexAt(e, s.id).index))}
-            data-testid="board-column"
-            data-status={s.id}
-            data-allowed={drag ? (allowed(s.id) ? '1' : '0') : undefined}
-          >
-            <div className="flex items-center gap-2 px-1.5 pb-2 pt-1">
-              <span className="size-2.5 rounded-full" style={{ background: s.color }} />
-              <span className="text-[13px] font-semibold text-ink">{s.name}</span>
-              {wip[s.id] ? (
-                <span className={cn('rounded px-1 text-[12px]', list.length > wip[s.id] ? 'bg-red-100 font-semibold text-red-700' : 'text-muted')} title={`Work-in-progress limit ${wip[s.id]}`} data-testid="wip" data-over={list.length > wip[s.id] ? '1' : undefined}>
-                  {list.length}/{wip[s.id]}
-                </span>
-              ) : (
-                <span className="text-[12px] text-muted">{list.length}</span>
-              )}
-              {points > 0 && <span className="ml-auto text-[11px] text-muted" title="Story points">{points} pts</span>}
-            </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-              {list.map((t, i) => {
-                const epic = epicOf(t, all);
-                return (
-                  <div key={t.id}>
-                    {over?.status === s.id && over.index === i && drag && <div className="mb-2 h-1 rounded bg-brand-500" />}
-                    <button
-                      draggable={canEdit && t.canEdit}
-                      onDragStart={(e) => (setDrag(t.id), e.dataTransfer.setData('text/plain', t.id), (e.dataTransfer.effectAllowed = 'move'))}
-                      onDragEnd={() => (setDrag(null), setOver(null))}
-                      onClick={() => open(t.id)}
-                      className={cn('block w-full rounded-lg border border-line bg-surface p-3 text-left shadow-[var(--shadow-card)] hover:border-brand-200', drag === t.id && 'opacity-40')}
-                      data-testid="task-card"
-                      data-id={t.id}
-                      data-title={t.title}
-                    >
-                      <div className="text-[13.5px] font-medium leading-snug text-ink">{t.title}</div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {epic && (
-                          <span className="inline-flex h-5 max-w-[150px] items-center truncate rounded px-1.5 text-[11px] font-medium" style={{ background: '#ede9fe', color: '#6d28d9' }} data-testid="card-epic">
-                            {epic.title}
-                          </span>
-                        )}
-                        {t.tags.map((x) => (
-                          <span key={x} className="inline-flex h-5 items-center rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-700">
-                            {x}
-                          </span>
-                        ))}
-                        <PriorityChip p={t.priority} />
-                      </div>
-                      <div className="mt-2 flex items-center gap-2.5">
-                        {projectId && <IssueIcon type={t.type} size={15} />}
-                        {t.blockedBy > 0 && (
-                          <span className="flex items-center gap-0.5 text-[11.5px] font-medium text-red-600" title="Waiting on other issues" data-testid="card-blocked">
-                            <Ban size={12} /> {t.blockedBy}
-                          </span>
-                        )}
-                        <Due t={t} />
-                        {t.subtasks.total > 0 && (
-                          <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
-                            <ListChecks size={12} /> {t.subtasks.done}/{t.subtasks.total}
-                          </span>
-                        )}
-                        {t.comments > 0 && (
-                          <span className="flex items-center gap-0.5 text-[11.5px] text-muted">
-                            <MessageSquare size={12} /> {t.comments}
-                          </span>
-                        )}
-                        <span className="flex-1" />
-                        <Points n={t.storyPoints} />
-                        {t.ref && <span className="font-mono text-[10.5px] text-subtle">{t.ref}</span>}
-                        {t.assignee && <Avatar user={t.assignee} size={22} />}
-                      </div>
-                    </button>
-                  </div>
-                );
-              })}
-              {over?.status === s.id && over.index === list.length && drag && <div className="h-1 rounded bg-brand-500" />}
-            </div>
-            {canEdit && (
-              <button onClick={() => onAdd(s.id)} className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] text-muted hover:bg-white/60 hover:text-ink" aria-label={`Add task to ${s.name}`}>
-                <Plus size={14} /> Add task
-              </button>
-            )}
-          </section>
-        );
-      })}
+      {statuses.map((s) => (
+        <section
+          key={s.id}
+          className={cn('flex shrink-0 flex-col rounded-xl bg-[#eef1f6] p-2 transition-opacity', width, over?.status === s.id && 'ring-2 ring-brand-200', drag && !allowed(s.id) && 'opacity-40')}
+          onDragOver={(e) => {
+            if (!drag || !allowed(s.id)) return;
+            e.preventDefault();
+            setOver(indexAt(e, s.id, ''));
+          }}
+          onDrop={(e) => (e.preventDefault(), drop(s.id, indexAt(e, s.id, '').index))}
+          data-testid="board-column"
+          data-status={s.id}
+          data-allowed={drag ? (allowed(s.id) ? '1' : '0') : undefined}
+        >
+          {head(s)}
+          {cell(s)}
+          {canEdit && (
+            <button onClick={() => onAdd(s.id)} className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] text-muted hover:bg-white/60 hover:text-ink" aria-label={`Add task to ${s.name}`}>
+              <Plus size={14} /> Add task
+            </button>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
