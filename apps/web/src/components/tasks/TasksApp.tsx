@@ -3,7 +3,7 @@
 import { can, canTransition, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
 import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
 import { useSpaces, useUsers } from '@/lib/queries';
 import { METHODOLOGY, PRIORITY, shortDate, todayStr, useProjects, useSprints, useTaskActions, useTasks } from '@/lib/tasks';
@@ -11,6 +11,7 @@ import { useMounted } from '@/lib/use-mounted';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
 import { BacklogView } from './BacklogView';
 import { DocsView } from './DocsView';
+import { GanttView } from './GanttView';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
 import { SprintsView } from './SprintsView';
 import { WorkflowSettings } from './WorkflowSettings';
@@ -129,7 +130,7 @@ export function TasksApp() {
           ) : view === 'list' ? (
             <ListView tasks={shown.filter((t) => !t.triage)} all={tasks ?? []} statuses={statuses} hierarchy={!!project} open={(id) => go({ task: id })} />
           ) : view === 'gantt' && project ? (
-            <GanttView tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} />
+            <GanttView tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} projectId={project.id} />
           ) : view === 'calendar' ? (
             <DueCalendar tasks={shown.filter((t) => !t.triage)} statuses={statuses} open={(id) => go({ task: id })} />
           ) : (
@@ -545,150 +546,6 @@ function IntakeView({ tasks, canEdit, open }: { tasks: TaskView[]; canEdit: bool
       >
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Why not?" aria-label="Reason" className="w-full rounded-lg border border-line-strong px-3 py-2 text-[13.5px] outline-none focus:border-brand-500" />
       </Dialog>
-    </div>
-  );
-}
-
-// ── Gantt ───────────────────────────────────────────────────────────────────
-
-const DAY = 86_400_000;
-const dayOf = (s: string) => new Date(`${s}T00:00:00`).getTime();
-
-function GanttView({ tasks, statuses, open }: { tasks: TaskView[]; statuses: TaskStatus[]; open: (id: string) => void }) {
-  const dated = tasks.filter((t) => t.startDate || t.dueDate);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const scroller = useRef<HTMLDivElement>(null);
-  const px = 26;
-  const LEFT = 440;
-  const starts = dated.map((t) => dayOf(t.startDate ?? t.dueDate!));
-  const ends = dated.map((t) => dayOf(t.dueDate ?? t.startDate!));
-  const from = Math.min(...starts, Date.now()) - 3 * DAY;
-  const to = Math.max(...ends, Date.now()) + 7 * DAY;
-  const days = Math.round((to - from) / DAY);
-  const todayX = ((new Date(new Date().toDateString()).getTime() - from) / DAY) * px;
-  // Open on today rather than on the first phase.
-  useEffect(() => {
-    if (scroller.current) scroller.current.scrollLeft = Math.max(0, todayX - 7 * px);
-  }, [dated.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!dated.length) return <EmptyState icon={<CheckSquare size={32} />} title="Add start and due dates to see the plan" />;
-  // Any depth: phase › epic › work item › subtask; an item whose parent has no dates starts a branch.
-  const ids = new Set(dated.map((t) => t.id));
-  const byStart = (a: TaskView, b: TaskView) => (a.startDate ?? a.dueDate!).localeCompare(b.startDate ?? b.dueDate!);
-  const rows: { t: TaskView; depth: number }[] = [];
-  const walk = (t: TaskView, depth: number) => {
-    rows.push({ t, depth });
-    if (!collapsed.has(t.id)) for (const c of dated.filter((x) => x.parentId === t.id).sort(byStart)) walk(c, depth + 1);
-  };
-  for (const r of dated.filter((t) => !t.parentId || !ids.has(t.parentId)).sort(byStart)) walk(r, 0);
-  // A phase is as far along as its steps on average (the board counts finished subtasks instead).
-  const progressOf = (t: TaskView) => {
-    const kids = tasks.filter((x) => x.parentId === t.id);
-    return kids.length ? Math.round(kids.reduce((n, k) => n + k.progress, 0) / kids.length) : t.progress;
-  };
-  const colorOf = (t: TaskView) => statuses.find((s) => s.id === t.status)?.color ?? '#2563eb';
-  const months: { label: string; x: number }[] = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(from + i * DAY);
-    if (d.getDate() === 1 || i === 0) months.push({ label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(d), x: i * px });
-  }
-  const cols = 'grid-cols-[1fr_64px_64px_56px]';
-  return (
-    <div ref={scroller} className="h-full overflow-auto bg-surface" data-testid="gantt">
-      <div className="relative" style={{ width: LEFT + days * px }}>
-        <div className="sticky top-0 z-20 flex h-12 border-b border-line bg-surface">
-          <div className={cn('sticky left-0 z-30 grid shrink-0 items-end border-r border-line bg-surface px-3 pb-1.5 text-[11.5px] font-medium text-muted', cols)} style={{ width: LEFT }}>
-            <span>Task</span>
-            <span>Start</span>
-            <span>Due</span>
-            <span className="text-right">Progress</span>
-          </div>
-          <div className="relative" style={{ width: days * px }}>
-            {months.map((m) => (
-              <span key={m.x} className="absolute top-1 whitespace-nowrap text-[11.5px] font-medium text-ink-2" style={{ left: m.x + 4 }}>
-                {m.label}
-              </span>
-            ))}
-            {Array.from({ length: days }, (_, i) => {
-              const d = new Date(from + i * DAY);
-              return (
-                <span key={i} className={cn('absolute bottom-1 w-[26px] text-center text-[10px]', d.getDay() === 0 || d.getDay() === 6 ? 'text-subtle' : 'text-muted')} style={{ left: i * px }}>
-                  {d.getDate()}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-        <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0" style={{ left: LEFT, width: days * px }}>
-            {Array.from({ length: days }, (_, i) => {
-              const d = new Date(from + i * DAY);
-              return d.getDay() === 0 || d.getDay() === 6 ? <span key={i} className="absolute inset-y-0 bg-canvas" style={{ left: i * px, width: px }} /> : null;
-            })}
-            <span className="absolute inset-y-0 z-[5] w-0.5 bg-red-500" style={{ left: todayX }} data-testid="gantt-today">
-              <span className="absolute left-1 top-0 rounded bg-red-500 px-1 text-[10px] text-white">Today</span>
-            </span>
-          </div>
-          {rows.map(({ t, depth }) => {
-            const kids = dated.some((x) => x.parentId === t.id);
-            const progress = progressOf(t);
-            const s = dayOf(t.startDate ?? t.dueDate!);
-            const e = dayOf(t.dueDate ?? t.startDate!) + DAY;
-            const left = ((s - from) / DAY) * px;
-            const width = Math.max(px * 0.6, ((e - s) / DAY) * px - 4);
-            const c = t.type === 'phase' ? '#4f46e5' : t.type === 'epic' ? '#7c3aed' : colorOf(t);
-            const container = ISSUE_RANK[t.type] < 2;
-            return (
-              <div key={t.id} className="flex h-9 border-b border-line/60 hover:bg-hover/40" data-testid="gantt-row" data-title={t.title} data-type={t.type}>
-                <div className={cn('sticky left-0 z-10 grid shrink-0 items-center border-r border-line bg-surface px-3 text-[12.5px]', cols)} style={{ width: LEFT }}>
-                  <span className="flex min-w-0 items-center gap-1" style={{ paddingLeft: depth * 16 }}>
-                    {kids ? (
-                      <button
-                        onClick={() =>
-                          setCollapsed((v) => {
-                            const n = new Set(v);
-                            if (!n.delete(t.id)) n.add(t.id);
-                            return n;
-                          })
-                        }
-                        aria-label={collapsed.has(t.id) ? `Expand ${t.title}` : `Collapse ${t.title}`}
-                        className="text-muted"
-                      >
-                        {collapsed.has(t.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                      </button>
-                    ) : (
-                      <span className="w-[13px]" />
-                    )}
-                    <IssueIcon type={t.type} size={14} />
-                    <button onClick={() => open(t.id)} className={cn('truncate text-left hover:underline', depth === 0 || container ? 'font-semibold text-ink' : 'text-ink-2')}>
-                      {t.title}
-                    </button>
-                  </span>
-                  <span className="text-muted">{t.startDate ? shortDate(t.startDate) : '—'}</span>
-                  <span className="text-muted">{t.dueDate ? shortDate(t.dueDate) : '—'}</span>
-                  <span className="text-right tabular-nums text-ink-2" data-testid="gantt-progress">
-                    {t.type === 'milestone' ? (t.completedAt ? '✓' : '—') : `${progress}%`}
-                  </span>
-                </div>
-                <div className="relative" style={{ width: days * px }}>
-                  {t.type === 'milestone' ? (
-                    <button onClick={() => open(t.id)} className="absolute top-2.5 z-[6] size-4 rotate-45 rounded-[2px]" style={{ left: ((dayOf(t.dueDate ?? t.startDate!) - from) / DAY) * px + px / 2 - 8, background: t.completedAt ? '#10b981' : '#d97706' }} title={`${t.title} (milestone)`} data-testid="gantt-milestone" />
-                  ) : (
-                    <button
-                      onClick={() => open(t.id)}
-                      className={cn('absolute z-[6] overflow-hidden rounded-[4px] text-left', container ? 'top-2 h-5' : 'top-2.5 h-4')}
-                      style={{ left: left + 2, width, background: `${c}33`, borderLeft: `3px solid ${c}` }}
-                      title={`${t.title}: ${progress}%`}
-                      data-testid="gantt-bar"
-                    >
-                      <span className="block h-full" style={{ width: `${progress}%`, background: c, opacity: 0.85 }} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }

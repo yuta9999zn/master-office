@@ -18,7 +18,7 @@
     "test:chat": "node test/chat.mjs && node test/notifications.mjs && node test/contacts.mjs",
     "test:mail": "node test/mail.mjs && node test/mail-inbound.mjs",
     "test:calendar": "node test/calendar.mjs",
-    "test:tasks": "node test/tasks.mjs && node test/issues.mjs && node test/sprints.mjs && node test/workflows.mjs && node test/project-docs.mjs && node test/quality.mjs",
+    "test:tasks": "node test/tasks.mjs && node test/issues.mjs && node test/sprints.mjs && node test/workflows.mjs && node test/project-docs.mjs && node test/quality.mjs && node test/gates.mjs",
     "test:meetings": "node test/meetings.mjs",
     "test:approvals": "node test/approvals.mjs"
   },

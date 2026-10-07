@@ -159,7 +159,7 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   ]);
   await phase('Testing', '2026-10-15', '2026-10-30', [
     ['System testing', '2026-10-15', '2026-10-25', 0, 'mika'],
-    ['UAT', '2026-10-20', '2026-10-30', 0, 'sora'],
+    ['UAT', '2026-10-26', '2026-10-30', 0, 'sora'],
   ]);
   await phase('Deployment', '2026-11-01', '2026-11-05', [
     ['Production release', '2026-11-01', '2026-11-05', 0, 'ken'],

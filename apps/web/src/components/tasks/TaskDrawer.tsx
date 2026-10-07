@@ -1,11 +1,11 @@
 'use client';
 
 import { canTransition, childTypeOf, ISSUE_RANK, WORK_TYPES, type AcceptanceCriterion, type IssueLinkKind, type IssueType, type TaskEventView, type UserSummary } from '@workos/shared';
-import { ArrowRight, Ban, BookOpen, Bug, CalendarDays, CheckCheck, ListChecks, Lock, Timer, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
+import { ArrowRight, Ban, BookOpen, Bug, CalendarDays, CheckCheck, DoorOpen, ListChecks, Lock, Timer, ChevronRight, Clock, Eye, EyeOff, Flag, Gauge, Inbox, Link2, MessageSquare, MessagesSquare, Split, Tag, Trash2, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '@/lib/format';
-import { useUsers } from '@/lib/queries';
+import { useMe, useUsers } from '@/lib/queries';
 import { LINK_LABEL, PRIORITY, shortDate, useProjectDocActions, useProjectDocs, useProjects, useTask, useTaskActions, useTasks } from '@/lib/tasks';
 import { Avatar, AvatarStack, Button, cn, Dialog, EmptyState, FileIcon, IconButton, Skeleton } from '../ui/primitives';
 import { IssueIcon, ISSUE_META, Points } from './issue-bits';
@@ -32,7 +32,11 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
   const { data: t, error } = useTask(id);
   const { data: users } = useUsers();
   const { data: siblings } = useTasks(t?.projectId ?? null);
-  const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug, logWork, removeWork } = useTaskActions();
+  const { update, create, remove, comment, decline, breakdown, link, unlink, watch, logBug, logWork, removeWork, requestGate, decideGate } = useTaskActions();
+  const { data: me } = useMe();
+  const [gateWho, setGateWho] = useState<string[] | null>(null);
+  const [gateNote, setGateNote] = useState('');
+  const [gateComment, setGateComment] = useState('');
   const { data: projects } = useProjects();
   const { data: projectDocs } = useProjectDocs(t?.projectId ?? null);
   const docActions = useProjectDocActions();
@@ -383,10 +387,10 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
           </section>
         )}
 
-        {inProject && WORK_TYPES.includes(t.type) && (
+        {inProject && (WORK_TYPES.includes(t.type) || t.type === 'phase') && (
           <section className="mt-4" data-testid="criteria">
             <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <ListChecks size={14} /> Acceptance criteria {criteriaNow.length ? `· ${criteriaNow.filter((c) => c.done).length}/${criteriaNow.length}` : ''}
+              <ListChecks size={14} /> {t.type === 'phase' ? 'Exit criteria' : 'Acceptance criteria'} {criteriaNow.length ? `· ${criteriaNow.filter((c) => c.done).length}/${criteriaNow.length}` : ''}
             </div>
             <ul className="mt-1.5 space-y-1">
               {criteriaNow.map((c) => (
@@ -411,10 +415,95 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
                     setCriterion('');
                   }
                 }}
-                placeholder="+ Given … when … then …"
-                aria-label="Add acceptance criterion"
+                placeholder={t.type === 'phase' ? '+ e.g. Requirements signed off by the customer' : '+ Given … when … then …'}
+                aria-label={t.type === 'phase' ? 'Add exit criterion' : 'Add acceptance criterion'}
                 className="mt-1 h-8 w-full rounded-md px-2 text-[13px] outline-none hover:bg-hover focus:bg-hover"
               />
+            )}
+          </section>
+        )}
+
+        {inProject && t.gate && (
+          <section className="mt-4 rounded-lg p-3 ring-1 ring-line" data-testid="gate">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <DoorOpen size={14} /> Phase gate
+              <span
+                className={cn(
+                  'rounded px-1.5 text-[11px] font-medium',
+                  t.gate.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : t.gate.status === 'rejected' ? 'bg-red-50 text-red-700' : t.gate.status === 'requested' ? 'bg-amber-50 text-amber-700' : 'bg-hover text-muted',
+                )}
+                data-testid="gate-status"
+              >
+                {{ none: 'Not requested', requested: 'Waiting for approval', approved: 'Approved', rejected: 'Rejected' }[t.gate.status]}
+              </span>
+              {(project?.methodology === 'waterfall' || project?.methodology === 'hybrid') && <span className="ml-auto text-[11px] font-normal text-muted">required to close the phase</span>}
+            </div>
+            {t.gate.status !== 'none' && (
+              <ul className="mt-2 space-y-1.5">
+                {t.gate.approvers.map((u) => {
+                  const d = t.gate!.decisions.find((x) => x.user?.id === u.id);
+                  return (
+                    <li key={u.id} className="flex items-start gap-2 text-[12.5px]" data-testid="gate-approver">
+                      <Avatar user={u} size={18} />
+                      <span className="font-medium text-ink">{u.name}</span>
+                      <span className={cn(d?.decision === 'approve' ? 'text-emerald-700' : d?.decision === 'reject' ? 'text-red-700' : 'text-muted')}>{d ? (d.decision === 'approve' ? 'approved' : 'rejected') : 'pending'}</span>
+                      {d?.comment && <span className="min-w-0 flex-1 text-ink-2">— {d.comment}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {t.gate.status === 'requested' && me && t.gate.approvers.some((u) => u.id === me.user.id) && (
+              <div className="mt-2 flex gap-1.5">
+                <input value={gateComment} onChange={(e) => setGateComment(e.target.value)} placeholder="Comment (needed to reject)" aria-label="Gate comment" className={cn(field, 'flex-1')} />
+                <Button size="sm" variant="primary" onClick={() => decideGate.mutate({ id: t.id, decision: 'approve', comment: gateComment || null }, { onSuccess: () => setGateComment('') })} data-testid="gate-approve">
+                  Approve
+                </Button>
+                <Button size="sm" variant="secondary" disabled={!gateComment.trim()} onClick={() => decideGate.mutate({ id: t.id, decision: 'reject', comment: gateComment }, { onSuccess: () => setGateComment('') })} data-testid="gate-reject">
+                  Reject
+                </Button>
+              </div>
+            )}
+            {!ro && (t.gate.status === 'none' || t.gate.status === 'rejected') && (
+              <div className="mt-2 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+                  <span className="text-muted">Approvers</span>
+                  {(gateWho ?? (project?.lead ? [project.lead.id] : [])).map((uid) => (
+                    <span key={uid} className="flex items-center gap-1 rounded-full bg-hover py-0.5 pl-0.5 pr-1.5">
+                      {people.get(uid) && <Avatar user={people.get(uid)!} size={16} />} {people.get(uid)?.name ?? 'Someone'}
+                      <button onClick={() => setGateWho((gateWho ?? (project?.lead ? [project.lead.id] : [])).filter((x) => x !== uid))} aria-label={`Remove approver ${people.get(uid)?.name ?? ''}`} className="text-muted">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  <select
+                    value=""
+                    onChange={(e) => e.target.value && setGateWho([...new Set([...(gateWho ?? (project?.lead ? [project.lead.id] : [])), e.target.value])])}
+                    aria-label="Add approver"
+                    className="h-7 rounded-md border border-line-strong bg-surface px-1 text-[12px]"
+                  >
+                    <option value="">+ Add</option>
+                    {(users ?? []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-1.5">
+                  <input value={gateNote} onChange={(e) => setGateNote(e.target.value)} placeholder="Note for the approvers" aria-label="Gate note" className={cn(field, 'flex-1')} />
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={criteriaNow.some((c) => !c.done)}
+                    title={criteriaNow.some((c) => !c.done) ? 'Meet every exit criterion first' : undefined}
+                    onClick={() => requestGate.mutate({ id: t.id, approverIds: gateWho ?? undefined, note: gateNote || null }, { onSuccess: () => (setGateNote(''), setGateWho(null)) })}
+                    data-testid="gate-request"
+                  >
+                    Request approval
+                  </Button>
+                </div>
+              </div>
             )}
           </section>
         )}
@@ -686,6 +775,8 @@ function ActivityItem({ e, people, statuses }: { e: TaskEventView; people: Map<s
     if (e.data.created) return e.data.request ? 'filed the request' : e.data.fromChat ? 'created it from a chat message' : 'created the task';
     if (e.data.declined) return 'declined the request';
     if (e.data.linked) return `linked an issue (${String((e.data.linked as string[])[0])})`;
+    if (e.data.gate === 'requested') return 'asked for the phase gate approval';
+    if (e.data.gate) return `${e.data.gate} the phase gate${e.data.final === 'approved' ? ' — the gate is approved' : ''}`;
     return Object.entries(e.data)
       .map(([k, v]) => (k === 'accepted' ? 'accepted the request' : k === 'triage' ? null : `changed ${FIELD[k] ?? k} to ${show(k, (v as unknown[])[1])}`))
       .filter(Boolean)

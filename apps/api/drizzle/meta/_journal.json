@@ -169,6 +169,13 @@
       "when": 1791332780632,
       "tag": "0023_quality",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791334559473,
+      "tag": "0024_phase_gates",
+      "breakpoints": true
     }
   ]
 }

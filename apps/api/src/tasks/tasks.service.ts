@@ -279,7 +279,7 @@ export class TasksService {
       this.db.execute<{ to_id: string; n: string }>(sql`SELECT l.to_id, count(*) AS n FROM task_links l JOIN tasks b ON b.id = l.from_id WHERE l.kind = 'blocks' AND b.completed_at IS NULL AND l.to_id IN (${idList}) GROUP BY l.to_id`),
       this.db.execute<{ task_id: string; m: string }>(sql`SELECT task_id, sum(minutes) AS m FROM task_worklogs WHERE task_id IN (${idList}) GROUP BY task_id`),
     ]);
-    const people = await loadUsers(this.db, [...rows.map((r) => r.assigneeId), ...rows.map((r) => r.createdBy), ...rows.map((r) => r.reporterId)]);
+    const people = await loadUsers(this.db, [...rows.map((r) => r.assigneeId), ...rows.map((r) => r.createdBy), ...rows.map((r) => r.reporterId), ...rows.flatMap((r) => r.gateApprovers), ...rows.flatMap((r) => r.gateDecisions.map((d) => d.userId))]);
     const roles = canEditAll === undefined ? await this.perms.spaceRoles(actor) : null;
     return rows.map((t) => {
       const p = t.projectId ? projMap.get(t.projectId) : null;
@@ -310,6 +310,14 @@ export class TasksService {
         criteria: t.criteria,
         dodDone: t.dodDone,
         spentMinutes: Number(spent.rows.find((x) => x.task_id === t.id)?.m ?? 0),
+        gate:
+          t.type === 'phase'
+            ? {
+                status: t.gateStatus,
+                approvers: t.gateApprovers.map((u) => people.get(u)!).filter(Boolean),
+                decisions: t.gateDecisions.map((d) => ({ user: people.get(d.userId) ?? null, decision: d.decision, comment: d.comment, at: d.at })),
+              }
+            : null,
         tags: t.tags,
         startDate: t.startDate,
         dueDate: t.dueDate,
@@ -391,6 +399,59 @@ export class TasksService {
     await this.db.delete(taskWorklogs).where(eq(taskWorklogs.id, worklogId));
     await this.changed(t.projectId, t);
     return this.worklogsOf(t.id);
+  }
+
+  /** Asks for the exit approval of a phase: its exit criteria must all be met. */
+  async requestGate(actor: Actor, id: string, input: { approverIds?: string[]; note?: string | null }) {
+    const t = await this.load(id);
+    const p = await this.access(actor, t, 'write');
+    if (!p || t.type !== 'phase') throw new BadRequestException('Gates are for phases');
+    const open = t.criteria.filter((c) => !c.done).length;
+    if (open) throw new BadRequestException(`${open} exit criteria still open`);
+    const approvers = [...new Set(input.approverIds?.length ? input.approverIds : [p.leadId ?? p.createdBy].filter((x): x is string => !!x))];
+    if (!approvers.length) throw new BadRequestException('Choose who approves the gate');
+    for (const u of approvers) await this.checkAssignee(actor, p, u, this.db);
+    await this.db.transaction(async (tx) => {
+      await tx.update(tasks).set({ gateStatus: 'requested', gateApprovers: approvers, gateDecisions: [], updatedAt: new Date().toISOString() }).where(eq(tasks.id, id));
+      await tx.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', body: input.note?.trim() || null, data: { gate: 'requested' } });
+    });
+    await this.notifications
+      .notify(actor, approvers, { kind: 'task.gate', title: `${actor.name} asks you to approve the exit of phase "${t.title}"`, body: input.note?.trim() || null, url: `/tasks?project=${p.id}&view=gantt&task=${id}` })
+      .catch(() => undefined);
+    await this.changed(p.id, t);
+    return (await this.views(actor, [await this.load(id)]))[0];
+  }
+
+  /** An approver's decision: every approver approves → approved; one rejection → rejected. */
+  async decideGate(actor: Actor, id: string, input: { decision: 'approve' | 'reject'; comment?: string | null }) {
+    const t = await this.load(id);
+    const p = await this.access(actor, t, 'read');
+    if (t.type !== 'phase' || t.gateStatus !== 'requested') throw new BadRequestException('No gate approval is waiting');
+    if (!t.gateApprovers.includes(actor.id)) throw new ForbiddenException('You are not an approver of this gate');
+    if (input.decision === 'reject' && !input.comment?.trim()) throw new BadRequestException('Say why the gate is rejected');
+    const decisions = [...t.gateDecisions.filter((d) => d.userId !== actor.id), { userId: actor.id, decision: input.decision, comment: input.comment?.trim() || null, at: new Date().toISOString() }];
+    const status = decisions.some((d) => d.decision === 'reject') ? 'rejected' : t.gateApprovers.every((u) => decisions.some((d) => d.userId === u && d.decision === 'approve')) ? 'approved' : 'requested';
+    await this.db.transaction(async (tx) => {
+      await tx.update(tasks).set({ gateStatus: status, gateDecisions: decisions, updatedAt: new Date().toISOString() }).where(eq(tasks.id, id));
+      await tx.insert(taskEvents).values({ taskId: id, actorId: actor.id, kind: 'change', body: input.comment?.trim() || null, data: { gate: input.decision === 'approve' ? 'approved' : 'rejected', final: status } });
+    });
+    if (status !== 'requested' && p) {
+      const to = [p.leadId ?? p.createdBy, t.assigneeId].filter((x): x is string => !!x);
+      await this.notifications
+        .notify(actor, to, { kind: 'task.gate', title: `The gate of phase "${t.title}" was ${status}`, body: input.comment?.trim() || null, url: `/tasks?project=${p.id}&view=gantt&task=${id}` })
+        .catch(() => undefined);
+    }
+    await this.changed(t.projectId, t);
+    return (await this.views(actor, [await this.load(id)]))[0];
+  }
+
+  /** Finish-to-start dependencies inside a project (for the Gantt arrows). */
+  async projectLinks(actor: Actor, projectId: string) {
+    await this.project(actor, projectId);
+    const rows = await this.db.execute<{ id: string; from_id: string; to_id: string }>(sql`
+      SELECT l.id, l.from_id, l.to_id FROM task_links l JOIN tasks a ON a.id = l.from_id JOIN tasks b ON b.id = l.to_id
+      WHERE l.kind = 'blocks' AND a.project_id = ${projectId} AND b.project_id = ${projectId}`);
+    return rows.rows.map((r) => ({ id: r.id, fromId: r.from_id, toId: r.to_id }));
   }
 
   /** Quality of the process: defects, rework, flow, DoD compliance, time. */
@@ -642,6 +703,11 @@ export class TasksService {
       if (input.estimateMinutes !== undefined) put('estimateMinutes', this.estimate(input.estimateMinutes, 100_000, 'The estimate') ?? null);
       if (input.triage === false && before.triage) put('triage', false);
       if (input.criteria !== undefined) put('criteria', this.cleanCriteria(input.criteria)!);
+      // Reopening an exit criterion withdraws the phase gate: it has to be asked for again.
+      if (before.type === 'phase' && before.gateStatus !== 'none' && (set.criteria as AcceptanceCriterion[] | undefined)?.some((c) => !c.done)) {
+        set.gateStatus = 'none';
+        set.gateDecisions = [];
+      }
       if (input.dodDone !== undefined) put('dodDone', [...new Set(input.dodDone)].filter((x) => p?.dod.includes(x)));
       // Planning: into a sprint (or back to the backlog), and the order there.
       if (input.sprintId !== undefined && before.projectId) {
@@ -681,6 +747,9 @@ export class TasksService {
         }
         const target = statuses.find((s) => s.id === input.status)!;
         const done = target.category === 'done';
+        // Stage gate: in waterfall / hybrid projects a phase is Done only once its exit has been approved.
+        if (done && !before.completedAt && p && before.type === 'phase' && (p.methodology === 'waterfall' || p.methodology === 'hybrid') && (target.resolution ?? 'done') === 'done' && before.gateStatus !== 'approved')
+          throw new BadRequestException('Get the phase gate approved before closing the phase');
         // Quality gate: a work item is Done only when its acceptance criteria and the Definition of Done are met.
         if (done && !before.completedAt && p?.enforceDod && WORK_TYPES.includes((set.type as IssueType) ?? before.type) && (target.resolution ?? 'done') === 'done') {
           const openCriteria = ((set.criteria as AcceptanceCriterion[] | undefined) ?? before.criteria).filter((c) => !c.done).length;

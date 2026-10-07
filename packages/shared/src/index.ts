@@ -431,7 +431,7 @@ export type RealtimeEvent =
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'task.request' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'task.request' | 'task.gate' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
 
 export interface AppNotification {
   id: string;
@@ -860,6 +860,8 @@ export interface TaskView {
   dodDone: string[];
   /** Time logged on it. */
   spentMinutes: number;
+  /** Phases: the exit gate (approval needed before the phase is Done in waterfall / hybrid projects). */
+  gate: PhaseGate | null;
   tags: string[];
   startDate: string | null;
   dueDate: string | null;
@@ -995,6 +997,12 @@ export interface TaskDetail extends TaskView {
   /** Documents it traces to (requirements, specs, use cases…). */
   docs: { id: string; name: string; type: ResourceType; accessible: boolean }[];
   worklogs: WorklogView[];
+}
+
+export interface PhaseGate {
+  status: 'none' | 'requested' | 'approved' | 'rejected';
+  approvers: UserSummary[];
+  decisions: { user: UserSummary | null; decision: 'approve' | 'reject'; comment: string | null; at: string }[];
 }
 
 export interface AcceptanceCriterion {

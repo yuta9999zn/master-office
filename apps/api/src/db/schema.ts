@@ -868,6 +868,10 @@ export const tasks = pgTable(
     resolution: text('resolution'),
     /** Acceptance criteria (Given / When / Then…), each ticked when met. */
     criteria: jsonb('criteria').$type<{ id: string; text: string; done: boolean }[]>().notNull().default([]),
+    /** Phase gate (§76 waterfall): exit approval of a phase — none / requested / approved / rejected. */
+    gateStatus: text('gate_status').$type<'none' | 'requested' | 'approved' | 'rejected'>().notNull().default('none'),
+    gateApprovers: uuid('gate_approvers').array().notNull().default(sql`'{}'::uuid[]`),
+    gateDecisions: jsonb('gate_decisions').$type<{ userId: string; decision: 'approve' | 'reject'; comment: string | null; at: string }[]>().notNull().default([]),
     /** Definition of Done items of the project ticked on this issue (by text). */
     dodDone: jsonb('dod_done').$type<string[]>().notNull().default([]),
     /** The sprint it is planned in (Scrum, §76). */

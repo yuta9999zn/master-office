@@ -19,6 +19,8 @@ export const useSprintReport = (id?: string | null) => useQuery({ queryKey: ['ta
 export const useVelocity = (projectId?: string | null) => useQuery({ queryKey: ['tasks', 'velocity', projectId], queryFn: () => api<VelocityRow[]>(`/tasks/projects/${projectId}/velocity`), enabled: !!projectId });
 export const useRetro = (sprintId?: string | null) => useQuery({ queryKey: ['tasks', 'retro', sprintId], queryFn: () => api<RetroItemView[]>(`/tasks/sprints/${sprintId}/retro`), enabled: !!sprintId });
 
+export const useProjectLinks = (projectId?: string | null) =>
+  useQuery({ queryKey: ['tasks', 'links', projectId], queryFn: () => api<{ id: string; fromId: string; toId: string }[]>(`/tasks/projects/${projectId}/links`), enabled: !!projectId });
 export const useQuality = (projectId?: string | null) => useQuery({ queryKey: ['tasks', 'quality', projectId], queryFn: () => api<QualityStats>(`/tasks/projects/${projectId}/quality`), enabled: !!projectId });
 export const useProjectDocs = (projectId?: string | null) =>
   useQuery({ queryKey: ['tasks', 'docs', projectId], queryFn: () => api<ProjectDocs>(`/tasks/projects/${projectId}/docs`), enabled: !!projectId });
@@ -102,7 +104,11 @@ export function useTaskActions() {
       mutationFn: ({ id, ...input }: Partial<TaskInput> & { id: string }) => api<TaskView>(`/tasks/${id}`, { method: 'PATCH', json: input }),
       // Board moves feel instant: patch the cached list, then let the server's answer win.
       // A drop between two cards gets the key the server will give it (same between()), so it lands there at once.
-      onMutate: ({ id, status, after, before, criteria, dodDone }) => {
+      onMutate: ({ id, status, after, before, criteria, dodDone, startDate, dueDate }) => {
+        // Gantt drags move the bar at once.
+        if (startDate !== undefined || dueDate !== undefined)
+          for (const [key, list] of qc.getQueriesData<TaskView[]>({ queryKey: ['tasks', 'list'] }))
+            if (list) qc.setQueryData(key, list.map((t) => (t.id === id ? { ...t, ...(startDate !== undefined ? { startDate } : {}), ...(dueDate !== undefined ? { dueDate } : {}) } : t)));
         // Checklists (acceptance criteria, DoD) tick at once in the open panel; a refetch already on its way is dropped
         // (keeping the new value) so it cannot bring the old one back.
         if (criteria || dodDone) {
@@ -150,6 +156,16 @@ export function useTaskActions() {
     unlink: useMutation({ mutationFn: ({ id, linkId }: { id: string; linkId: string }) => api<TaskLinkView[]>(`/tasks/${id}/links/${linkId}`, { method: 'DELETE' }), onSuccess: refresh, onError }),
     logWork: useMutation({
       mutationFn: ({ id, ...body }: { id: string; minutes: number; day?: string; note?: string | null }) => api<WorklogView[]>(`/tasks/${id}/worklogs`, { method: 'POST', json: body }),
+      onSuccess: refresh,
+      onError,
+    }),
+    requestGate: useMutation({
+      mutationFn: ({ id, ...body }: { id: string; approverIds?: string[]; note?: string | null }) => api<TaskView>(`/tasks/${id}/gate/request`, { method: 'POST', json: body }),
+      onSuccess: refresh,
+      onError,
+    }),
+    decideGate: useMutation({
+      mutationFn: ({ id, ...body }: { id: string; decision: 'approve' | 'reject'; comment?: string | null }) => api<TaskView>(`/tasks/${id}/gate/decide`, { method: 'POST', json: body }),
       onSuccess: refresh,
       onError,
     }),

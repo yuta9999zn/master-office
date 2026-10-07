@@ -88,6 +88,11 @@ export class TasksController {
     return this.svc.request(a, id, parse(requestBody, b));
   }
 
+  @Get('projects/:id/links')
+  projectLinks(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.projectLinks(a, id);
+  }
+
   @Get('projects/:id/quality')
   quality(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.quality(a, id);
@@ -128,6 +133,18 @@ export class TasksController {
   @Post(':id/comments')
   comment(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     return this.svc.comment(a, id, parse(z.object({ body: z.string().max(10_000) }), b).body);
+  }
+
+  @Post(':id/gate/request')
+  @HttpCode(200)
+  requestGate(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.svc.requestGate(a, id, parse(z.object({ approverIds: z.array(z.string().uuid()).max(10).optional(), note: z.string().max(2000).nullish() }), b ?? {}));
+  }
+
+  @Post(':id/gate/decide')
+  @HttpCode(200)
+  decideGate(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.svc.decideGate(a, id, parse(z.object({ decision: z.enum(['approve', 'reject']), comment: z.string().max(2000).nullish() }), b));
   }
 
   @Post(':id/worklogs')
