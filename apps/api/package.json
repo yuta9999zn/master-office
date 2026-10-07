@@ -20,7 +20,8 @@
     "test:calendar": "node test/calendar.mjs",
     "test:tasks": "node test/tasks.mjs && node test/issues.mjs && node test/sprints.mjs && node test/workflows.mjs && node test/project-docs.mjs && node test/quality.mjs && node test/gates.mjs && node test/aidlc.mjs",
     "test:meetings": "node test/meetings.mjs",
-    "test:approvals": "node test/approvals.mjs"
+    "test:approvals": "node test/approvals.mjs",
+    "test:base": "npx tsx test/base-model.ts && node test/base.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",

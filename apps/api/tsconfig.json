@@ -24,6 +24,9 @@
       ],
       "@workos/form-model": [
         "../../packages/form-model/src"
+      ],
+      "@workos/base-model": [
+        "../../packages/base-model/src"
       ]
     }
   },

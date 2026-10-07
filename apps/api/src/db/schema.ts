@@ -1214,3 +1214,89 @@ export const taskWorklogs = pgTable(
   },
   (t) => [index('task_worklogs_task_idx').on(t.taskId, t.day)],
 );
+
+// ── Base (§75): tables, fields, views and records of a `base` resource ──────
+
+export const baseTables = pgTable(
+  'base_tables',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    baseId: uuid('base_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    position: integer('position').notNull().default(0),
+    /** The field that names a record (cannot be deleted or hidden). */
+    primaryFieldId: uuid('primary_field_id'),
+    /** Last auto number handed out. */
+    autoSeq: integer('auto_seq').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('base_tables_base_idx').on(t.baseId, t.position)],
+);
+
+export const baseFields = pgTable(
+  'base_fields',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableId: uuid('table_id')
+      .notNull()
+      .references(() => baseTables.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    options: jsonb('options').$type<Record<string, unknown>>().notNull().default({}),
+    description: text('description'),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [index('base_fields_table_idx').on(t.tableId, t.position)],
+);
+
+export const baseViews = pgTable(
+  'base_views',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableId: uuid('table_id')
+      .notNull()
+      .references(() => baseTables.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    position: integer('position').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [index('base_views_table_idx').on(t.tableId, t.position)],
+);
+
+export const baseRecords = pgTable(
+  'base_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableId: uuid('table_id')
+      .notNull()
+      .references(() => baseTables.id, { onDelete: 'cascade' }),
+    /** Values by field id. */
+    values: jsonb('values').$type<Record<string, unknown>>().notNull().default({}),
+    /** Fractional key: manual order. */
+    position: text('position').notNull(),
+    autoNumber: integer('auto_number').notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('base_records_table_idx').on(t.tableId, t.position)],
+);
+
+export const baseComments = pgTable(
+  'base_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recordId: uuid('record_id')
+      .notNull()
+      .references(() => baseRecords.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('base_comments_record_idx').on(t.recordId, t.createdAt)],
+);

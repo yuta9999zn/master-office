@@ -36,6 +36,8 @@ import { QaController } from './slides/qa.controller';
 import { QaService } from './slides/qa.service';
 import { MacroTriggersService } from './sheets/macro-triggers.service';
 import { SlidesService } from './slides/slides.service';
+import { BaseController } from './base/base.controller';
+import { BaseService } from './base/base.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { MailService } from './mail/mail.service';
@@ -55,7 +57,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -73,6 +75,7 @@ import { WorkspaceController } from './users/workspace.controller';
     QaService,
     SlidesService,
     FormsService,
+    BaseService,
     MailService,
     MailboxService,
     InboundMailService,

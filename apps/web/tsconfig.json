@@ -40,6 +40,9 @@
       ],
       "@workos/form-model": [
         "../../packages/form-model/src/index.ts"
+      ],
+      "@workos/base-model": [
+        "../../packages/base-model/src/index.ts"
       ]
     }
   },

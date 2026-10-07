@@ -427,6 +427,8 @@ export type RealtimeEvent =
   | { type: 'calendar.changed' }
   | { type: 'tasks.changed'; projectId: string | null }
   | { type: 'approvals.changed'; requestId: string | null }
+  /** Base (§75): records / schema / comments changed — sent to people who have the base open. */
+  | { type: 'base.changed'; baseId: string; change: { kind: 'records' | 'schema' | 'comments'; tableId?: string; upserted?: unknown[]; deleted?: string[]; recordId?: string } }
   | MeetingEvent;
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────

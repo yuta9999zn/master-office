@@ -15,6 +15,7 @@ import { seedCalendar } from './seed-calendar';
 import { seedTasks } from './seed-tasks';
 import { seedMeetings } from './seed-meetings';
 import { seedApprovals } from './seed-approvals';
+import { seedBase } from './seed-base';
 import { config } from '../config';
 
 /**
@@ -413,6 +414,7 @@ async function main() {
   await seedTasks(db, ws.id, u, (name) => sp[name].id);
   await seedMeetings(db, ws.id, u);
   await seedApprovals(db, ws.id, u);
+  await seedBase(db, u, ref);
 
   await pool.end();
   console.log(`✓ seeded ${inserted.length} users, ${Object.keys(sp).length} spaces`);
