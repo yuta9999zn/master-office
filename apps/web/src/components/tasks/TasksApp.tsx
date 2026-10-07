@@ -1,6 +1,6 @@
 'use client';
 
-import { can, canTransition, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
+import { can, canTransition, isAgile, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
 import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, type DragEvent } from 'react';
@@ -12,7 +12,7 @@ import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, Me
 import { BacklogView } from './BacklogView';
 import { DocsView } from './DocsView';
 import { GanttView } from './GanttView';
-import { IssueIcon, ISSUE_META, Points } from './issue-bits';
+import { IssueIcon, issueLabel, Points } from './issue-bits';
 import { SprintsView } from './SprintsView';
 import { WorkflowSettings } from './WorkflowSettings';
 import { TaskDashboard } from './TaskDashboard';
@@ -62,8 +62,8 @@ export function TasksApp() {
     return (tasks ?? []).filter((t) => (!needle || t.title.toLowerCase().includes(needle) || t.ref?.toLowerCase().includes(needle) || t.tags.some((x) => x.toLowerCase().includes(needle))) && (!who || t.assignee?.id === who));
   }, [tasks, q, who]);
   const triage = (tasks ?? []).filter((t) => t.triage);
-  // Scrum and Hybrid plan in sprints: Backlog and Sprints tabs, and the board shows the active sprint.
-  const agile = project?.methodology === 'scrum' || project?.methodology === 'hybrid';
+  // Scrum, Hybrid and AI-DLC plan in sprints (bolts): Backlog and Sprints tabs, and the board shows the active one.
+  const agile = isAgile(project?.methodology);
   const { data: sprints } = useSprints(agile ? project?.id : null);
   const activeSprint = agile ? sprints?.find((x) => x.state === 'active') ?? null : null;
   const views: View[] = project
@@ -78,14 +78,14 @@ export function TasksApp() {
         <h1 className="text-[17px] font-semibold text-ink">Tasks</h1>
         <ProjectPicker projects={projects ?? []} current={project} onPick={(id) => go({ project: id, task: null, view: id ? (['backlog', 'sprints'].includes(view) ? 'board' : view) : view === 'gantt' || view === 'dashboard' || view === 'intake' || view === 'backlog' || view === 'sprints' || view === 'docs' ? 'board' : view })} onNew={() => setNewProject(true)} />
         {project && (
-          <span className="rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-hover px-2 py-0.5 text-[11.5px] font-medium text-ink-2" title={METHODOLOGY[project.methodology].note} data-testid="methodology">
             {METHODOLOGY[project.methodology].label}
           </span>
         )}
         <nav className="ml-2 flex min-w-0 gap-0.5 overflow-x-auto" role="tablist">
           {views.map((v) => (
             <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn('flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] capitalize', view === v ? 'bg-selected font-semibold text-brand-700' : 'text-muted hover:bg-hover hover:text-ink')}>
-              {v}
+              {v === 'sprints' && project?.methodology === 'ai-dlc' ? 'bolts' : v}
               {v === 'intake' && triage.length > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10.5px] font-semibold text-white" data-testid="intake-count">{triage.length}</span>}
             </button>
           ))}
@@ -641,7 +641,7 @@ function NewTaskDialog({ open, onClose, project, tasks, status, sprintId, onCrea
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Issue type">
             {CREATE_TYPES.map((t) => (
               <button key={t} role="radio" aria-checked={type === t} onClick={() => (setType(t), setParent(''))} className={cn('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] ring-1', type === t ? 'bg-selected font-semibold text-brand-700 ring-brand-200' : 'text-ink-2 ring-line hover:bg-hover')} data-testid={`type-${t}`}>
-                <IssueIcon type={t} size={14} /> {ISSUE_META[t].label}
+                <IssueIcon type={t} size={14} /> {issueLabel(t, project?.methodology)}
               </button>
             ))}
           </div>
@@ -671,7 +671,7 @@ function NewTaskDialog({ open, onClose, project, tasks, status, sprintId, onCrea
               <option value="">{parents.length ? 'No parent' : type === 'phase' ? 'Phases are at the top' : 'No epic or phase yet'}</option>
               {parents.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {ISSUE_META[p.type].label}: {p.title}
+                  {issueLabel(p.type, project?.methodology)}: {p.title}
                 </option>
               ))}
             </select>

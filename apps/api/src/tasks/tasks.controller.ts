@@ -41,7 +41,7 @@ const status = z.object({
   resolution: z.string().max(40).optional(),
 });
 const workflow = z.enum(['software', 'scrum', 'basic', 'bug', 'waterfall']);
-const methodology = z.enum(['scrum', 'kanban', 'waterfall', 'hybrid']);
+const methodology = z.enum(['scrum', 'kanban', 'waterfall', 'hybrid', 'ai-dlc']);
 const projectBody = z.object({ spaceId: z.string().uuid(), name: z.string().max(120), key: z.string().max(10).optional(), color: z.string().max(20).optional(), description: z.string().max(2000).nullish(), methodology: methodology.optional(), workflow: workflow.optional(), strictWorkflow: z.boolean().optional() });
 const projectUpdate = z.object({
   name: z.string().max(120).optional(),

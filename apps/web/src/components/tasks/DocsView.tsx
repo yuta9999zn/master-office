@@ -156,7 +156,7 @@ function StatusChip({ project, status }: { project: Project; status: string }) {
 
 function Setup({ project }: { project: Project }) {
   const a = useProjectDocActions();
-  const recommended: SetId = project.methodology === 'waterfall' ? 'waterfall' : project.methodology === 'hybrid' ? 'hybrid' : project.methodology === 'kanban' ? 'kanban' : 'scrum';
+  const recommended: SetId = project.methodology === 'ai-dlc' ? 'ai-dlc' : project.methodology === 'waterfall' ? 'waterfall' : project.methodology === 'hybrid' ? 'hybrid' : project.methodology === 'kanban' ? 'kanban' : 'scrum';
   const [set, setSet] = useState<SetId>(recommended);
   return (
     <div className="h-full overflow-y-auto bg-canvas p-8" data-testid="docs-setup">

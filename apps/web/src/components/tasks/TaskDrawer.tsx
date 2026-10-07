@@ -8,7 +8,7 @@ import { timeAgo } from '@/lib/format';
 import { useMe, useUsers } from '@/lib/queries';
 import { LINK_LABEL, PRIORITY, shortDate, useProjectDocActions, useProjectDocs, useProjects, useTask, useTaskActions, useTasks } from '@/lib/tasks';
 import { Avatar, AvatarStack, Button, cn, Dialog, EmptyState, FileIcon, IconButton, Skeleton } from '../ui/primitives';
-import { IssueIcon, ISSUE_META, Points } from './issue-bits';
+import { IssueIcon, ISSUE_META, issueLabel, Points } from './issue-bits';
 
 const FIELD: Record<string, string> = {
   title: 'title',
@@ -161,7 +161,7 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
               <select value={t.type} disabled={ro || typeChoices.length < 2} onChange={(e) => set({ type: e.target.value as IssueType })} className={field} aria-label="Issue type">
                 {typeChoices.map((x) => (
                   <option key={x} value={x}>
-                    {ISSUE_META[x].label}
+                    {issueLabel(x, project?.methodology)}
                   </option>
                 ))}
               </select>
@@ -216,7 +216,7 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
                     <option value="">{t.type === 'subtask' ? '—' : 'None'}</option>
                     {parentChoices.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {ISSUE_META[p.type].label}: {p.title}
+                        {issueLabel(p.type, project?.methodology)}: {p.title}
                       </option>
                     ))}
                   </select>
@@ -341,7 +341,7 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
                     setSub('');
                   }
                 }}
-                placeholder={containers ? `+ Add ${ISSUE_META[childType].label.toLowerCase()}` : '+ Add subtask'}
+                placeholder={containers ? `+ Add ${issueLabel(childType, project?.methodology).toLowerCase()}` : '+ Add subtask'}
                 aria-label={containers ? 'Add child issue' : 'Add subtask'}
                 className="mt-1 h-8 w-full rounded-md px-2 text-[13px] outline-none hover:bg-hover focus:bg-hover"
               />
@@ -626,7 +626,7 @@ export function TaskDrawer({ id, onClose, onOpen }: { id: string; onClose: () =>
         open={splitting}
         onOpenChange={setSplitting}
         title={`Break down "${t.title}"`}
-        description={`One ${ISSUE_META[childType].label.toLowerCase()} per line.`}
+        description={`One ${issueLabel(childType, project?.methodology).toLowerCase()} per line.`}
         footer={
           <Button variant="primary" loading={breakdown.isPending} disabled={!lines.trim()} onClick={() => breakdown.mutate({ id: t.id, titles: lines.split('\n') }, { onSuccess: () => setSplitting(false) })} data-testid="confirm-breakdown">
             Create {lines.split('\n').filter((x) => x.trim()).length || ''}

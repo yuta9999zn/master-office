@@ -1,6 +1,6 @@
 'use client';
 
-import { WORK_TYPES, type Project, type SprintView, type TaskView } from '@workos/shared';
+import { sprintWord, WORK_TYPES, type Project, type SprintView, type TaskView } from '@workos/shared';
 import { CalendarClock, ChevronDown, ChevronRight, Ellipsis, GripVertical, Pencil, Play, Plus, Trash2, Video } from 'lucide-react';
 import { useMemo, useState, type DragEvent } from 'react';
 import { toast } from 'sonner';
@@ -31,6 +31,9 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
   const [editing, setEditing] = useState<SprintView | 'new' | null>(null);
   const [starting, setStarting] = useState<SprintView | null>(null);
   const [completing, setCompleting] = useState<SprintView | null>(null);
+  // AI-DLC plans in bolts.
+  const word = sprintWord(project.methodology);
+  const w = word.toLowerCase();
 
   const work = useMemo(() => tasks.filter((t) => WORK_TYPES.includes(t.type) && !t.triage).sort((x, y) => (x.rank < y.rank ? -1 : x.rank > y.rank ? 1 : 0)), [tasks]);
   const open_ = (sprints ?? []).filter((s) => s.state !== 'closed').sort((x, y) => (x.state === 'active' ? -1 : y.state === 'active' ? 1 : x.startDate.localeCompare(y.startDate)));
@@ -64,7 +67,7 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
         {canEdit && (
           <div className="flex justify-end">
             <Button icon={<Plus size={15} />} onClick={() => setEditing('new')} data-testid="create-sprint">
-              Create sprint
+              Create {w}
             </Button>
           </div>
         )}
@@ -111,12 +114,12 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
                 <span className="flex-1" />
                 {sp && canEdit && sp.state === 'planned' && (
                   <Button size="sm" variant={active ? 'ghost' : 'primary'} disabled={!!active || !l.items.length} icon={<Play size={13} />} onClick={() => setStarting(sp)} data-testid="start-sprint" title={active ? `Complete ${active.name} first` : !l.items.length ? 'Plan some issues first' : undefined}>
-                    Start sprint
+                    Start {w}
                   </Button>
                 )}
                 {sp && canEdit && sp.state === 'active' && (
                   <Button size="sm" onClick={() => setCompleting(sp)} data-testid="complete-sprint">
-                    Complete sprint
+                    Complete {w}
                   </Button>
                 )}
                 {sp && canEdit && (
@@ -128,11 +131,11 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
                     </MenuTrigger>
                     <MenuContent align="end">
                       <MenuItem icon={<Pencil size={15} />} onSelect={() => setEditing(sp)}>
-                        Edit sprint
+                        Edit {w}
                       </MenuItem>
                       {sp.state === 'planned' && (
                         <MenuItem icon={<Trash2 size={15} />} danger onSelect={() => a.remove.mutate(sp.id)}>
-                          Delete sprint
+                          Delete {w}
                         </MenuItem>
                       )}
                     </MenuContent>
@@ -166,7 +169,7 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
                     </li>
                   ))}
                   {over?.list === l.id && over.index === l.items.length && drag && <div className="mx-4 h-0.5 rounded bg-brand-500" />}
-                  {!l.items.length && <li className="px-4 py-3 text-[12.5px] text-subtle">{sp ? 'Drag issues here to plan them into this sprint.' : 'Nothing waiting in the backlog.'}</li>}
+                  {!l.items.length && <li className="px-4 py-3 text-[12.5px] text-subtle">{sp ? `Drag issues here to plan them into this ${w}.` : 'Nothing waiting in the backlog.'}</li>}
                 </ul>
               )}
               {!folded && canEdit && <QuickAdd project={project} sprintId={sp?.id ?? null} />}
@@ -177,7 +180,7 @@ export function BacklogView({ project, tasks, open }: { project: Project; tasks:
       </div>
       <SprintDialog key={editing === 'new' ? 'new' : editing?.id ?? 'none'} project={project} sprint={editing} onClose={() => setEditing(null)} />
       {starting && <StartDialog project={project} sprint={starting} items={work.filter((t) => t.sprintId === starting.id)} onClose={() => setStarting(null)} />}
-      {completing && <CompleteDialog sprint={completing} next={open_.filter((s) => s.state === 'planned')} items={work.filter((t) => t.sprintId === completing.id)} onClose={() => setCompleting(null)} />}
+      {completing && <CompleteDialog word={word} sprint={completing} next={open_.filter((s) => s.state === 'planned')} items={work.filter((t) => t.sprintId === completing.id)} onClose={() => setCompleting(null)} />}
     </div>
   );
 }
@@ -220,10 +223,14 @@ function QuickAdd({ project, sprintId }: { project: Project; sprintId: string | 
 }
 
 const DURATIONS = [7, 14, 21, 28];
+// AI-DLC bolts last hours to days.
+const BOLT_DAYS = [1, 2, 3, 5];
+const durationsOf = (p: Project) => (p.methodology === 'ai-dlc' ? BOLT_DAYS : DURATIONS);
 const input = 'h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[13px] outline-none focus:border-brand-500';
 
 function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: SprintView | 'new' | null; onClose: () => void }) {
   const a = useSprintActions();
+  const word = sprintWord(project.methodology);
   const existing = sprint && sprint !== 'new' ? sprint : null;
   const [name, setName] = useState(existing?.name ?? '');
   const [goal, setGoal] = useState(existing?.goal ?? '');
@@ -238,8 +245,8 @@ function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: 
     <Dialog
       open={!!sprint}
       onOpenChange={(o) => !o && onClose()}
-      title={existing ? `Edit ${existing.name}` : 'Create sprint'}
-      description={existing ? undefined : 'Leave the start empty to begin the day after the last sprint.'}
+      title={existing ? `Edit ${existing.name}` : `Create ${word.toLowerCase()}`}
+      description={existing ? undefined : `Leave the start empty to begin the day after the last ${word.toLowerCase()}.`}
       footer={
         <Button variant="primary" loading={a.create.isPending || a.update.isPending} onClick={() => void save()} data-testid="save-sprint">
           {existing ? 'Save' : 'Create'}
@@ -247,15 +254,15 @@ function SprintDialog({ project, sprint, onClose }: { project: Project; sprint: 
       }
     >
       <div className="space-y-3 text-[13px]">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={existing ? '' : `${project.key} Sprint …`} aria-label="Sprint name" className={input} />
-        <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder="Sprint goal" aria-label="Sprint goal" className={cn(input, 'h-auto py-2')} />
-        <SprintDates start={start} setStart={setStart} days={days} setDays={setDays} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={existing ? '' : `${project.key} ${word} …`} aria-label="Sprint name" className={input} />
+        <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder={`${word} goal`} aria-label="Sprint goal" className={cn(input, 'h-auto py-2')} />
+        <SprintDates start={start} setStart={setStart} days={days} setDays={setDays} choices={durationsOf(project)} />
       </div>
     </Dialog>
   );
 }
 
-function SprintDates({ start, setStart, days, setDays }: { start: string; setStart: (s: string) => void; days: number; setDays: (n: number) => void }) {
+function SprintDates({ start, setStart, days, setDays, choices }: { start: string; setStart: (s: string) => void; days: number; setDays: (n: number) => void; choices: number[] }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <label>
@@ -264,16 +271,16 @@ function SprintDates({ start, setStart, days, setDays }: { start: string; setSta
       </label>
       <label>
         <span className="mb-1 block text-[12px] text-muted">Duration</span>
-        <select value={DURATIONS.includes(days) ? String(days) : 'custom'} onChange={(e) => setDays(e.target.value === 'custom' ? days : Number(e.target.value))} aria-label="Duration" className={input}>
-          {DURATIONS.map((d) => (
+        <select value={choices.includes(days) ? String(days) : 'custom'} onChange={(e) => setDays(e.target.value === 'custom' ? days : Number(e.target.value))} aria-label="Duration" className={input}>
+          {choices.map((d) => (
             <option key={d} value={d}>
-              {d / 7} week{d === 7 ? '' : 's'}
+              {d % 7 ? `${d} day${d === 1 ? '' : 's'}` : `${d / 7} week${d === 7 ? '' : 's'}`}
             </option>
           ))}
           <option value="custom">Custom ({days} days)</option>
         </select>
       </label>
-      {!DURATIONS.includes(days) && (
+      {!choices.includes(days) && (
         <label className="col-span-2">
           <span className="mb-1 block text-[12px] text-muted">Days</span>
           <input type="number" min={1} max={60} value={days} onChange={(e) => setDays(Math.max(1, Math.min(60, Number(e.target.value) || 1)))} aria-label="Days" className={input} />
@@ -293,9 +300,11 @@ function StartDialog({ project, sprint, items, onClose }: { project: Project; sp
   const end = addDays(start, days - 1);
   const weeks = Math.max(1, Math.round(days / 7));
   const people = [...new Map([...(project.lead ? [project.lead] : []), ...items.map((t) => t.assignee).filter((x): x is NonNullable<typeof x> => !!x)].map((u) => [u.id, u])).values()];
+  const bolt = project.methodology === 'ai-dlc';
+  const word = sprintWord(project.methodology);
   const go = async () => {
     await a.start.mutateAsync({ id: sprint.id, startDate: start, days, goal: goal || null, ceremonies: { schedule, dailyTime: daily } });
-    toast.success(`${sprint.name} started${schedule ? ' — ceremonies are in Calendar' : ''}`);
+    toast.success(`${sprint.name} started${schedule ? (bolt ? ' — the bolt rituals are in Calendar' : ' — ceremonies are in Calendar') : ''}`);
     onClose();
   };
   const f = (d: string) => new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`));
@@ -308,20 +317,33 @@ function StartDialog({ project, sprint, items, onClose }: { project: Project; sp
       width={560}
       footer={
         <Button variant="primary" icon={<Play size={14} />} loading={a.start.isPending} onClick={() => void go()} data-testid="confirm-start">
-          Start sprint
+          Start {bolt ? 'bolt' : 'sprint'}
         </Button>
       }
     >
       <div className="space-y-3 text-[13px]">
-        <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder="Sprint goal" aria-label="Sprint goal" className={cn(input, 'h-auto py-2')} />
-        <SprintDates start={start} setStart={setStart} days={days} setDays={setDays} />
+        <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder={`${word} goal`} aria-label="Sprint goal" className={cn(input, 'h-auto py-2')} />
+        <SprintDates start={start} setStart={setStart} days={days} setDays={setDays} choices={durationsOf(project)} />
         <p className="text-[12px] text-muted">Ends {f(end)}</p>
         <label className="flex items-center gap-2 font-medium text-ink-2">
           <input type="checkbox" checked={schedule} onChange={(e) => setSchedule(e.target.checked)} className="accent-brand-600" data-testid="schedule-ceremonies" />
-          <CalendarClock size={15} /> Put the Scrum ceremonies in Calendar (with Kaori Meet rooms)
+          <CalendarClock size={15} /> {bolt ? 'Put the bolt rituals in Calendar (with Kaori Meet rooms)' : 'Put the Scrum ceremonies in Calendar (with Kaori Meet rooms)'}
         </label>
         {schedule && (
           <div className="rounded-lg bg-canvas p-3 ring-1 ring-line" data-testid="ceremony-plan">
+            {bolt ? (
+              <ul className="space-y-1.5 text-[12.5px] text-ink-2">
+                <li className="flex items-center gap-2">
+                  <Video size={13} className="text-brand-600" /> <b>Bolt Kickoff</b> — {f(start)}, 10:00 · 30 min · approve the plan the AI proposes
+                </li>
+                <li className="flex items-center gap-2">
+                  <Video size={13} className="text-brand-600" /> <b>Bolt Review</b> — {f(end)}, 15:00 · 30 min · validate what was generated
+                </li>
+                <li className="flex items-center gap-2">
+                  <Video size={13} className="text-brand-600" /> <b>Bolt Retrospective</b> — {f(end)}, 15:30 · 15 min · prompts, context, reviews
+                </li>
+              </ul>
+            ) : (
             <ul className="space-y-1.5 text-[12.5px] text-ink-2">
               <li className="flex items-center gap-2">
                 <Video size={13} className="text-brand-600" /> <b>Sprint Planning</b> — {f(start)}, 10:00 · {weeks * 60} min · define and split the tasks
@@ -337,6 +359,7 @@ function StartDialog({ project, sprint, items, onClose }: { project: Project; sp
                 <Video size={13} className="text-brand-600" /> <b>Retrospective</b> — {f(end)}, 16:00 · {weeks * 45} min · lessons learned
               </li>
             </ul>
+            )}
             {people.length > 0 && <p className="mt-2 text-[12px] text-muted">Invites: {people.map((p) => p.name).join(', ')}</p>}
           </div>
         )}
@@ -345,7 +368,7 @@ function StartDialog({ project, sprint, items, onClose }: { project: Project; sp
   );
 }
 
-function CompleteDialog({ sprint, next, items, onClose }: { sprint: SprintView; next: SprintView[]; items: TaskView[]; onClose: () => void }) {
+function CompleteDialog({ word, sprint, next, items, onClose }: { word: string; sprint: SprintView; next: SprintView[]; items: TaskView[]; onClose: () => void }) {
   const a = useSprintActions();
   const done = items.filter((t) => t.completedAt);
   const open = items.length - done.length;
@@ -372,7 +395,7 @@ function CompleteDialog({ sprint, next, items, onClose }: { sprint: SprintView; 
           }
           data-testid="confirm-complete"
         >
-          Complete sprint
+          Complete {word.toLowerCase()}
         </Button>
       }
     >

@@ -94,7 +94,7 @@ export class ProjectDocsService {
   /** Sets the space up with the starter pages of a way of working. */
   async setup(actor: Actor, projectId: string, set?: DocSet): Promise<ProjectDocs> {
     const { p } = await this.tasksSvc.projectAccess(actor, projectId, 'write');
-    const chosen: DocSet = set ?? (p.methodology === 'waterfall' ? 'waterfall' : p.methodology === 'hybrid' ? 'hybrid' : p.methodology === 'kanban' ? 'kanban' : 'scrum');
+    const chosen: DocSet = set ?? (p.methodology === 'ai-dlc' ? 'ai-dlc' : p.methodology === 'waterfall' ? 'waterfall' : p.methodology === 'hybrid' ? 'hybrid' : p.methodology === 'kanban' ? 'kanban' : 'scrum');
     const existing = (await this.tree(actor, projectId)).nodes.map((n) => n.name);
     for (const id of PROJECT_DOC_SETS[chosen].templates) {
       const tpl = projectDocTemplate(id)!;

@@ -208,6 +208,7 @@ export const METHODOLOGY: Record<Methodology, { label: string; note: string }> =
   kanban: { label: 'Kanban', note: 'A continuous flow board with work-in-progress limits' },
   waterfall: { label: 'Waterfall', note: 'Phases with dates and dependencies on a Gantt chart' },
   hybrid: { label: 'Hybrid', note: 'Waterfall phases on the Gantt, agile sprints inside them' },
+  'ai-dlc': { label: 'AI-DLC', note: 'AI-driven: Inception → Construction → Operations, short bolts, people approve every phase' },
 };
 
 export const LINK_LABEL: Record<IssueLinkKind, { out: string; in: string }> = {

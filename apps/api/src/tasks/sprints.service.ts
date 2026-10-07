@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { WORK_TYPES, zonedToUtc, type CeremonyKind, type CeremonyPlan, type RetroItemView, type SprintReport, type SprintView, type TaskView, type VelocityRow } from '@workos/shared';
+import { sprintWord, WORK_TYPES, zonedToUtc, type CeremonyKind, type CeremonyPlan, type RetroItemView, type SprintReport, type SprintView, type TaskView, type VelocityRow } from '@workos/shared';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { CalendarService } from '../calendar/calendar.service';
 import type { Actor } from '../common/current-user';
@@ -82,7 +82,7 @@ export class SprintsService {
     if (days < 1 || days > 60) throw new BadRequestException('A sprint lasts 1 to 60 days');
     const [row] = await this.db
       .insert(sprints)
-      .values({ projectId, name: input.name?.trim() || `${p.key} Sprint ${all.length + 1}`, goal: input.goal?.trim() || null, startDate: start, endDate: addDays(start, days - 1), createdBy: actor.id })
+      .values({ projectId, name: input.name?.trim() || `${p.key} ${sprintWord(p.methodology)} ${all.length + 1}`, goal: input.goal?.trim() || null, startDate: start, endDate: addDays(start, days - 1), createdBy: actor.id })
       .returning();
     await this.tasksSvc.notifyProject(projectId);
     return (await this.dtos([row]))[0];
@@ -189,6 +189,13 @@ export class SprintsService {
     };
     const daily = plan.dailyTime ?? p.dailyTime;
     const out: [CeremonyKind, string][] = [];
+    // AI-DLC bolt: people validate the AI's plan at the kickoff and its output at the review; no daily for a bolt of days.
+    if (p.methodology === 'ai-dlc') {
+      out.push(await make('planning', 'Bolt Kickoff', at(sp.startDate, '10:00'), 30, `${goal.replace('Sprint goal', 'Bolt goal')}Review and approve the plan the AI proposes for this bolt: units, design steps, tests.\nBacklog: ${link}`));
+      out.push(await make('review', 'Bolt Review', at(sp.endDate, '15:00'), 30, `${goal.replace('Sprint goal', 'Bolt goal')}Validate what was generated: demo, code review findings, test results; accept or send back.\nReport: ${link}`));
+      out.push(await make('retro', 'Bolt Retrospective', at(sp.endDate, '15:30'), 15, `What worked with the AI (prompts, context, reviews), what to change for the next bolt.\nRetro board: ${link}&tab=retro`));
+      return Object.fromEntries(out);
+    }
     // Planning: first day, about 2 hours per two weeks (Scrum Guide: up to 8 hours for a month).
     out.push(await make('planning', 'Sprint Planning', at(sp.startDate, '10:00'), 60 * weeks, `${goal}Decide what the sprint delivers and how: define and split the tasks.\nBacklog: ${link}`));
     // Daily Scrum: 15 minutes, Monday to Friday, from the second day to the last.

@@ -397,7 +397,7 @@ Ghi vào bảng `outbox` trong cùng transaction → publisher đẩy sang Redis
 | **8** | **Forms** (kéo lên trước Phase 5 theo lộ trình Google parity): trình soạn cộng tác, 12 loại câu hỏi + tiêu đề/ảnh/video/section, rẽ nhánh, kiểm tra hợp lệ, quiz, cài đặt, trang trả lời `/f/:id`, tab Responses (tóm tắt / theo câu / từng người), liên kết Sheets, CSV | **xong** — xem §25 |
 | **5** | Chat (conversation, message, resource card, WS) + Notifications | **xong** — chat & realtime §64, file & ghim §65, thông báo §66, Contacts & hồ sơ §67 |
 | 6 | Search (OpenSearch, outbox, indexer) + AI layer | |
-| 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | đang làm — Calendar §71, Tasks §72, Meetings §73, Approvals §74, Tasks kiểu Jira §76 (Contacts §67 xong ở Phase 5) |
+| 7 | Calendar, Meetings, Tasks (Board/List/Timeline/Gantt/Dashboard), Flow designer, Base, Approvals, Contacts, Admin, Analytics, M365 connector | đang làm — Calendar §71, Tasks §72, Meetings §73, Approvals §74, Tasks kiểu Jira §76 xong (Contacts §67 xong ở Phase 5) |
 
 ---
 
@@ -1138,7 +1138,7 @@ Người dùng yêu cầu (2026-10-07): quản lý task như Jira — nhận vi�
 | 1 | Loại issue + cây phân cấp, tiếp nhận yêu cầu (intake / triage), chia nhỏ (break down), liên kết & phụ thuộc, người theo dõi, tạo task từ tin nhắn Chat, phương pháp + lead của dự án | **xong** |
 | 2 | Scrum: sprint (ngày bắt đầu, độ dài mặc định 2 tuần), Backlog kéo thả vào sprint, start / complete (chuyển việc dở), họp Planning / Daily / Review / Retro tự lên lịch (Calendar + Kaori Meet), bảng Retro → action item thành task, burndown, velocity, WIP | **xong** |
 | 3 | Tài liệu dự án kiểu Confluence: cây trang theo dự án, thư viện template BA + AI-DLC, liên kết tài liệu ↔ issue (truy vết yêu cầu), tạo story từ tài liệu | **xong** |
-| 4 | Chất lượng & Waterfall / Hybrid / AI-DLC: cổng duyệt phase, Definition of Done + luật chuyển trạng thái, log thời gian, chỉ số chất lượng (lỗi, mở lại, lead / cycle time, bị chặn), Gantt kéo dời + mũi tên phụ thuộc, phương pháp AI-DLC (Inception / Construction / Operations, Unit of Work, Bolt) | |
+| 4 | Chất lượng & Waterfall / Hybrid / AI-DLC: cổng duyệt phase, Definition of Done + luật chuyển trạng thái, log thời gian, chỉ số chất lượng (lỗi, mở lại, lead / cycle time, bị chặn), Gantt kéo dời + mũi tên phụ thuộc, phương pháp AI-DLC (Inception / Construction / Operations, Unit of Work, Bolt) | **xong** (4a chất lượng, 4b cổng duyệt + Gantt, 4c AI-DLC) |
 
 **Đợt 1 — quyết định**
 
@@ -1211,3 +1211,15 @@ Người dùng yêu cầu (2026-10-07): quản lý task như Jira — nhận vi�
 | Kéo để dời lịch | Người có quyền sửa kéo thanh (hoặc milestone) → dời cả ngày bắt đầu và hạn theo ngày nguyên; kéo **mép phải** → chỉ đổi hạn (không trước ngày bắt đầu). Trong lúc kéo: thanh, cột Start / Due và mũi tên đi theo; thả ra → `PATCH` (cập nhật lạc quan danh sách). Kéo thì không mở issue; bấm thì mở. |
 | Hiển thị | Drawer phase có khung **Phase gate**: trạng thái, người duyệt + quyết định + bình luận, ô bình luận + **Approve / Reject** cho người duyệt, chọn người duyệt + ghi chú + **Request approval** (khoá khi còn tiêu chí thoát mở). Gantt hiện nhãn *gate requested / approved / rejected* cạnh tên phase. |
 | Test | `gates.mjs` (26): chỉ phase có cổng, chờ đủ tiêu chí thoát, chặn đóng phase waterfall, viewer không gửi, gửi cho 2 người duyệt + bell (đường dẫn, ghi chú), chỉ người duyệt quyết, từ chối cần lý do, 1/2 duyệt vẫn chờ, một Reject → rejected + bell cho lead, gửi lại từ đầu, đủ duyệt → approved → đóng phase, lịch sử, mặc định lead duyệt, bỏ tick rút cổng, kanban không cần cổng, danh sách liên kết blocks, dời ngày. `gantt-flow.mjs` (5): mũi tên đỏ + đếm xung đột, kéo thanh dời lịch và hết xung đột (không mở issue), kéo mép phải chỉ đổi hạn, bấm vẫn mở issue, cổng phase: bị chặn → gửi → duyệt → đóng phase. |
+
+**Đợt 4c — AI-DLC (AI-Driven Development Lifecycle): quyết định**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Phương pháp | `Methodology` thêm `'ai-dlc'` (chỉ kiểu, không đổi cột). Helper chung: `isAgile` (scrum / hybrid / ai-dlc → tab Backlog + Sprints, board theo sprint đang chạy), `needsGate` (waterfall / hybrid / ai-dlc → phase cần cổng duyệt để đóng), `sprintWord` (ai-dlc gọi sprint là **Bolt**). Web: `issueLabel` — epic hiện là **Unit of work** trong dự án AI-DLC (chọn loại, drawer, cha, chia nhỏ). |
+| Ba phase | Tạo dự án AI-DLC → tự tạo `AIDLC_PHASES`: **Inception** (1 tuần, mob elaboration: AI soạn yêu cầu / story / unit, người hỏi lại, sửa và duyệt), **Construction** (3 tuần, mob construction theo bolt: domain model → logical design → code → test, người duyệt từng bước), **Operations** (1 tuần: IaC, triển khai, giám sát, runbook) — nối tiếp nhau từ hôm nay, mỗi phase có mô tả và 4 **tiêu chí thoát** làm cổng duyệt (đợt 4b): người quyết ở mỗi cổng. |
+| Bolt | `sprintDays` mặc định **2**; tên `KEY Bolt N`; chọn độ dài 1 / 2 / 3 / 5 ngày (hoặc tuỳ chỉnh); tab hiện **bolts**, nút *Create / Start / Complete bolt*. Bắt đầu bolt lên lịch **Bolt Kickoff** (ngày đầu 10:00, 30 phút — duyệt kế hoạch AI đề xuất), **Bolt Review** (ngày cuối 15:00, 30 phút — kiểm chứng thứ AI tạo ra: demo, review code, kết quả test), **Bolt Retrospective** (15:30, 15 phút — prompt, ngữ cảnh, cách review); **không có Daily** (bolt chỉ vài giờ – vài ngày). |
+| Tài liệu | Bộ tài liệu khuyến nghị = **AI-DLC** (Intent, Inception, Units of Work, Domain Design, Logical Design & ADRs, Bolt Plan, Operations Runbook, DoD) — cả API setup mặc định lẫn màn hình chọn bộ. |
+| Test | `aidlc.mjs` (14): dự án AI-DLC + bolt 2 ngày, 3 phase nối tiếp (1 / 3 / 1 tuần) có tiêu chí thoát + cổng + mô tả, cổng chặn đóng rồi cho đóng khi duyệt, unit of work trong Construction, tên + độ dài bolt, nghi thức bolt (kickoff / review / retro, không daily; kickoff 30 phút), bộ tài liệu AI-DLC (8 trang). `aidlc-flow.mjs` (4): tạo dự án AI-DLC trên UI → 3 phase trên Gantt, epic hiện *Unit of work*, bolt 2 ngày + kế hoạch nghi thức không daily, docs khuyến nghị AI-DLC. |
+
+§76 xong: `pnpm --filter api test:tasks` = tasks, issues, sprints, workflows, project-docs, quality, gates, aidlc; e2e thêm issues / sprints / workflows / project-docs / quality / gantt / aidlc-flow. `tasks.mjs` cần seed mới (`npx tsx src/db/seed.ts`) vì số đếm dự án WEB thay đổi sau các lần chạy e2e.

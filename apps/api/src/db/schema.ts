@@ -815,7 +815,7 @@ export const projects = pgTable(
     /** Next task number. */
     counter: integer('counter').notNull().default(0),
     /** How the project is run (§76): which views lead (board + sprints, flow board, Gantt with phases, or both). */
-    methodology: text('methodology').$type<'scrum' | 'kanban' | 'waterfall' | 'hybrid'>().notNull().default('kanban'),
+    methodology: text('methodology').$type<'scrum' | 'kanban' | 'waterfall' | 'hybrid' | 'ai-dlc'>().notNull().default('kanban'),
     /** Project lead: gets new requests from the intake queue. */
     leadId: uuid('lead_id').references(() => users.id, { onDelete: 'set null' }),
     /** Anyone who can see the project may file requests (they wait in Triage). */

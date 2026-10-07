@@ -1,6 +1,6 @@
 'use client';
 
-import type { IssueType } from '@workos/shared';
+import type { IssueType, Methodology } from '@workos/shared';
 import { Bookmark, Bug, Check, CornerDownRight, Diamond, Layers, Zap, type LucideIcon } from 'lucide-react';
 import { cn } from '../ui/primitives';
 
@@ -14,6 +14,9 @@ export const ISSUE_META: Record<IssueType, { label: string; icon: LucideIcon; co
   milestone: { label: 'Milestone', icon: Diamond, color: '#d97706' },
   subtask: { label: 'Subtask', icon: CornerDownRight, color: '#0ea5e9' },
 };
+
+/** The type's name in this project: AI-DLC calls an epic a unit of work. */
+export const issueLabel = (type: IssueType, m?: Methodology | null) => (type === 'epic' && m === 'ai-dlc' ? 'Unit of work' : ISSUE_META[type].label);
 
 export function IssueIcon({ type, size = 16, className }: { type: IssueType; size?: number; className?: string }) {
   const m = ISSUE_META[type];

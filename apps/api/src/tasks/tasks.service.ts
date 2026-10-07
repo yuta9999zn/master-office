@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AIDLC_PHASES,
+  needsGate,
   between,
   can,
   canTransition,
@@ -155,11 +157,23 @@ export class TasksService {
         description: input.description?.trim() || null,
         ...this.workflowFor(input.workflow ?? (input.methodology === 'waterfall' ? 'waterfall' : 'software'), input.strictWorkflow),
         methodology: input.methodology ?? 'kanban',
+        // AI-DLC works in bolts of hours to days rather than two-week sprints.
+        ...(input.methodology === 'ai-dlc' ? { sprintDays: 2 } : {}),
         dod: DEFAULT_DOD,
         leadId: actor.id,
         createdBy: actor.id,
       })
       .returning();
+    // AI-DLC starts with its three phases, each with exit criteria for its gate: Inception → Construction → Operations.
+    if (p.methodology === 'ai-dlc') {
+      let day = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime();
+      const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+      for (const ph of AIDLC_PHASES) {
+        const end = day + (ph.weeks * 7 - 1) * 86_400_000;
+        await this.create(actor, { projectId: p.id, title: ph.title, type: 'phase', description: ph.description, startDate: iso(day), dueDate: iso(end), criteria: ph.criteria.map((text) => ({ id: '', text, done: false })) });
+        day = end + 86_400_000;
+      }
+    }
     return this.projectDto(p, actor, role, await loadUsers(this.db, [actor.id]));
   }
 
@@ -747,8 +761,8 @@ export class TasksService {
         }
         const target = statuses.find((s) => s.id === input.status)!;
         const done = target.category === 'done';
-        // Stage gate: in waterfall / hybrid projects a phase is Done only once its exit has been approved.
-        if (done && !before.completedAt && p && before.type === 'phase' && (p.methodology === 'waterfall' || p.methodology === 'hybrid') && (target.resolution ?? 'done') === 'done' && before.gateStatus !== 'approved')
+        // Stage gate: in waterfall / hybrid / AI-DLC projects a phase is Done only once its exit has been approved.
+        if (done && !before.completedAt && p && before.type === 'phase' && needsGate(p.methodology) && (target.resolution ?? 'done') === 'done' && before.gateStatus !== 'approved')
           throw new BadRequestException('Get the phase gate approved before closing the phase');
         // Quality gate: a work item is Done only when its acceptance criteria and the Definition of Done are met.
         if (done && !before.completedAt && p?.enforceDod && WORK_TYPES.includes((set.type as IssueType) ?? before.type) && (target.resolution ?? 'done') === 'done') {

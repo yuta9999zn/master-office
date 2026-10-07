@@ -794,8 +794,39 @@ export type IssueType = (typeof ISSUE_TYPES)[number];
 export const ISSUE_RANK: Record<IssueType, number> = { phase: 0, epic: 1, story: 2, task: 2, bug: 2, milestone: 2, subtask: 3 };
 /** The work items of a board / sprint (not containers, not subtasks). */
 export const WORK_TYPES: IssueType[] = ['story', 'task', 'bug'];
-export type Methodology = 'scrum' | 'kanban' | 'waterfall' | 'hybrid';
+export type Methodology = 'scrum' | 'kanban' | 'waterfall' | 'hybrid' | 'ai-dlc';
 export type IssueLinkKind = 'blocks' | 'relates' | 'duplicates';
+/** Methodologies that plan in sprints (AI-DLC calls them bolts). */
+export const isAgile = (m?: Methodology | null) => m === 'scrum' || m === 'hybrid' || m === 'ai-dlc';
+/** Methodologies whose phases close only through an approved stage gate. */
+export const needsGate = (m?: Methodology | null) => m === 'waterfall' || m === 'hybrid' || m === 'ai-dlc';
+/** AI-DLC (AI-Driven Development Lifecycle) words: a sprint is a bolt (hours to days), an epic a unit of work. */
+export const sprintWord = (m?: Methodology | null) => (m === 'ai-dlc' ? 'Bolt' : 'Sprint');
+/**
+ * AI-DLC phases: AI proposes and executes, people decide at every gate. Inception turns the intent into units of
+ * work (mob elaboration), Construction designs, generates and tests each unit in bolts (mob construction),
+ * Operations deploys and watches it. Exit criteria become the phase gate.
+ */
+export const AIDLC_PHASES: { title: string; weeks: number; description: string; criteria: string[] }[] = [
+  {
+    title: 'Inception',
+    weeks: 1,
+    description: 'Mob elaboration: AI drafts requirements, stories and units of work from the intent; the team questions, corrects and approves them.',
+    criteria: ['Intent and business context captured', 'User stories with acceptance criteria approved', 'Units of work defined and approved', 'NFRs, risks and constraints reviewed'],
+  },
+  {
+    title: 'Construction',
+    weeks: 3,
+    description: 'Mob construction in bolts: per unit, AI proposes the domain model, logical design, code and tests; people validate each step.',
+    criteria: ['Domain and logical design approved for every unit', 'Generated code reviewed by a person', 'Automated tests pass', 'Security and quality checks pass'],
+  },
+  {
+    title: 'Operations',
+    weeks: 1,
+    description: 'AI prepares infrastructure as code, deployment and observability; people approve the release and the runbook.',
+    criteria: ['Infrastructure as code reviewed', 'Deployed to production', 'Monitoring and alerts in place', 'Runbook handed over'],
+  },
+];
 
 /** Default child type when breaking an item down. */
 export function childTypeOf(parent: IssueType): IssueType {
