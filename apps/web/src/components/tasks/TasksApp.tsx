@@ -1,7 +1,7 @@
 'use client';
 
 import { can, canTransition, isAgile, sprintWord, ISSUE_RANK, WORKFLOWS, WORK_TYPES, type IssueType, type Methodology, type Project, type SprintView, type TaskStatus, type TaskView, type WorkflowId } from '@workos/shared';
-import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Inbox, ListChecks, MessageSquare, Play, Plus, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
+import { Ban, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, Inbox, ListChecks, MessageSquare, Pencil, Play, Plus, Trash2, Search, Settings2, SquareCheckBig, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { formatShort } from '@/lib/format';
@@ -15,6 +15,7 @@ import { GanttView } from './GanttView';
 import { IssueIcon, issueLabel, Points } from './issue-bits';
 import { SprintsView } from './SprintsView';
 import { WorkflowSettings } from './WorkflowSettings';
+import { addStatus, moveStatus, recolorStatus, removeStatus, renameStatus, STATUS_COLORS } from './status-edit';
 import { TaskDashboard } from './TaskDashboard';
 import { TaskDrawer } from './TaskDrawer';
 
@@ -32,6 +33,7 @@ export function TasksApp() {
   const params = useSearchParams();
   const router = useRouter();
   const { data: projects } = useProjects();
+  const { updateProject } = useTaskActions();
   const projectId = params.get('project');
   const view = (params.get('view') as View) ?? 'board';
   const taskId = params.get('task');
@@ -41,7 +43,7 @@ export function TasksApp() {
   const [who, setWho] = useState<string>('');
   const [creating, setCreating] = useState<{ status?: string } | null>(null);
   const [requesting, setRequesting] = useState(false);
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<false | true | 'workflow'>(false);
   const [newProject, setNewProject] = useState(false);
   const statuses = project?.statuses ?? PERSONAL;
   const boardQuery = useRef<string | null>(null);
@@ -273,7 +275,7 @@ export function TasksApp() {
                 </div>
               )}
               <div className="min-h-0 flex-1">
-                <BoardView lanes={project ? lanes : null} tasks={project ? boardTasks : shown} all={tasks ?? []} statuses={statuses} strict={!!project?.strictWorkflow} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
+                <BoardView onStatuses={project?.perms.manage ? (next) => updateProject.mutate({ id: project.id, statuses: next }) : undefined} onEditWorkflow={project?.perms.manage ? () => setSettings('workflow') : undefined} lanes={project ? lanes : null} tasks={project ? boardTasks : shown} all={tasks ?? []} statuses={statuses} strict={!!project?.strictWorkflow} wip={project?.wipLimits ?? {}} canEdit={canEdit} projectId={projectId} open={(id) => go({ task: id })} onAdd={(status) => setCreating({ status })} />
               </div>
             </div>
           )}
@@ -282,7 +284,7 @@ export function TasksApp() {
       </div>
       <NewTaskDialog open={!!creating} onClose={() => setCreating(null)} project={project} tasks={tasks ?? []} status={creating?.status} sprintId={view === 'board' ? activeSprint?.id ?? null : null} onCreated={(id) => go({ task: id })} />
       {project && <RequestDialog open={requesting} onClose={() => setRequesting(false)} project={project} />}
-      {project && <ProjectSettingsDialog key={project.id + String(settings)} open={settings} onClose={() => setSettings(false)} project={project} />}
+      {project && <ProjectSettingsDialog key={project.id + String(settings)} open={!!settings} initialTab={settings === 'workflow' ? 'workflow' : 'general'} onClose={() => setSettings(false)} project={project} />}
       <NewProjectDialog open={newProject} onClose={() => setNewProject(false)} onCreated={(id) => go({ project: id, view: 'board', task: null })} />
     </div>
   );
@@ -391,7 +393,8 @@ export interface Lane {
   patch: { parentId?: string | null; assigneeId?: string | null; sprintId?: string | null };
 }
 
-function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, projectId, open, onAdd, lanes }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; strict?: boolean; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void; lanes?: Lane[] | null }) {
+function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, projectId, open, onAdd, lanes, onStatuses, onEditWorkflow }: { tasks: TaskView[]; all: TaskView[]; statuses: TaskStatus[]; strict?: boolean; wip: Record<string, number>; canEdit: boolean; projectId: string | null; open: (id: string) => void; onAdd: (status: string) => void; lanes?: Lane[] | null; onStatuses?: (s: TaskStatus[]) => void; onEditWorkflow?: () => void }) {
+  const [newStatus, setNewStatus] = useState('');
   const { update } = useTaskActions();
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ status: string; index: number; lane: string } | null>(null);
@@ -520,6 +523,55 @@ function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, project
             {points} pts
           </span>
         )}
+        {onStatuses && (
+          <Menu>
+            <MenuTrigger asChild>
+              <button className={cn('rounded p-0.5 text-muted hover:bg-white/70', points > 0 ? '' : 'ml-auto')} aria-label={`${s.name} column options`} data-testid="column-menu">
+                <Ellipsis size={15} />
+              </button>
+            </MenuTrigger>
+            <MenuContent align="end">
+              <MenuItem
+                icon={<Pencil size={15} />}
+                onSelect={() => {
+                  const name = window.prompt('Status name', s.name);
+                  if (name?.trim()) onStatuses(renameStatus(statuses, s.id, name));
+                }}
+              >
+                Rename
+              </MenuItem>
+              <div className="flex flex-wrap gap-1 px-2.5 py-1.5" aria-label="Colour">
+                {STATUS_COLORS.map((c) => (
+                  <button key={c} onClick={() => onStatuses(recolorStatus(statuses, s.id, c))} className={cn('size-5 rounded-full ring-2', s.color === c ? 'ring-brand-500' : 'ring-transparent')} style={{ background: c }} aria-label={`Colour ${c}`} />
+                ))}
+              </div>
+              <MenuItem icon={<ChevronLeft size={15} />} disabled={statuses[0].id === s.id} onSelect={() => onStatuses(moveStatus(statuses, s.id, -1))}>
+                Move left
+              </MenuItem>
+              <MenuItem icon={<ChevronRight size={15} />} disabled={statuses[statuses.length - 1].id === s.id} onSelect={() => onStatuses(moveStatus(statuses, s.id, 1))}>
+                Move right
+              </MenuItem>
+              <MenuSeparator />
+              {onEditWorkflow && (
+                <MenuItem icon={<Settings2 size={15} />} onSelect={onEditWorkflow}>
+                  Edit workflow…
+                </MenuItem>
+              )}
+              <MenuItem
+                icon={<Trash2 size={15} />}
+                danger
+                disabled={statuses.length < 2}
+                onSelect={() => {
+                  const kind = statuses.filter((x) => x.category === s.category && x.id !== s.id)[0]?.name ?? statuses.find((x) => x.id !== s.id)!.name;
+                  if (window.confirm(`Delete the status "${s.name}"? Its issues move to "${kind}".`)) onStatuses(removeStatus(statuses, s.id));
+                }}
+                data-testid="delete-status"
+              >
+                Delete status
+              </MenuItem>
+            </MenuContent>
+          </Menu>
+        )}
       </div>
     );
   };
@@ -596,6 +648,21 @@ function BoardView({ tasks, all, statuses, strict = false, wip, canEdit, project
           )}
         </section>
       ))}
+      {onStatuses && (
+        <form
+          className="flex h-fit w-[220px] shrink-0 items-center gap-1.5 rounded-xl border-2 border-dashed border-line-strong p-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newStatus.trim()) return;
+            onStatuses(addStatus(statuses, newStatus, strict));
+            setNewStatus('');
+          }}
+          data-testid="add-status"
+        >
+          <Plus size={15} className="shrink-0 text-muted" />
+          <input value={newStatus} onChange={(e) => setNewStatus(e.target.value)} placeholder="Add status" aria-label="New status" className="min-w-0 flex-1 bg-transparent text-[13px] outline-none" />
+        </form>
+      )}
     </div>
   );
 }
@@ -1052,10 +1119,10 @@ function RequestDialog({ open, onClose, project }: { open: boolean; onClose: () 
   );
 }
 
-function ProjectSettingsDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
+function ProjectSettingsDialog({ open, onClose, project, initialTab = 'general' }: { open: boolean; onClose: () => void; project: Project; initialTab?: 'general' | 'workflow' }) {
   const { data: users } = useUsers();
   const { updateProject } = useTaskActions();
-  const [tab, setTab] = useState<'general' | 'workflow' | 'quality' | 'board'>('general');
+  const [tab, setTab] = useState<'general' | 'workflow' | 'quality' | 'board'>(initialTab);
   const [dod, setDod] = useState<string[]>(project.dod);
   const [enforceDod, setEnforceDod] = useState(project.enforceDod);
   const [dodDraft, setDodDraft] = useState('');
