@@ -1095,6 +1095,8 @@ export interface ProjectDocNode {
 
 export interface ProjectDocs {
   folderId: string | null;
+  /** The wiki space (§78) that holds the pages. */
+  spaceId: string | null;
   nodes: ProjectDocNode[];
 }
 
@@ -1454,3 +1456,47 @@ export function approvalValueText(f: ApprovalField, v: unknown, people?: Map<str
 }
 
 export const approvalSerial = (n: number) => 'AP-' + String(n).padStart(5, '0');
+
+// ── Wiki (§78): Confluence-style spaces ────────────────────────────────────
+
+export type WikiPageStatus = '' | 'draft' | 'in_progress' | 'review' | 'approved' | 'deprecated';
+export const WIKI_STATUS: Record<Exclude<WikiPageStatus, ''>, { label: string; color: string }> = {
+  draft: { label: 'Draft', color: '#64748b' },
+  in_progress: { label: 'In progress', color: '#2563eb' },
+  review: { label: 'In review', color: '#8b5cf6' },
+  approved: { label: 'Approved', color: '#10b981' },
+  deprecated: { label: 'Deprecated', color: '#ef4444' },
+};
+
+export interface WikiSpaceSummary {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  color: string;
+  folderId: string;
+  homePageId: string | null;
+  projectId: string | null;
+  role: Role;
+  pages: number;
+  updatedAt: string | null;
+}
+
+export interface WikiPageNode {
+  id: string;
+  title: string;
+  parentId: string | null;
+  position: string;
+  status: WikiPageStatus;
+  labels: string[];
+  template: string | null;
+  owner: UserSummary | null;
+  updatedAt: string;
+  updatedBy: UserSummary | null;
+  /** Issues that trace to this page (§76). */
+  linked: number;
+}
+
+export interface WikiSpaceDetail extends WikiSpaceSummary {
+  tree: WikiPageNode[];
+}

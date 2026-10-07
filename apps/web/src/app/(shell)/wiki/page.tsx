@@ -1,5 +1,5 @@
-import { TypeIndex } from '@/components/editor/TypeIndex';
+import { WikiHome } from '@/components/wiki/WikiHome';
 
 export default function Page() {
-  return <TypeIndex appId="wiki" type="wiki" />;
+  return <WikiHome />;
 }

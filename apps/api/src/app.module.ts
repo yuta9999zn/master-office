@@ -38,6 +38,8 @@ import { MacroTriggersService } from './sheets/macro-triggers.service';
 import { SlidesService } from './slides/slides.service';
 import { BaseController } from './base/base.controller';
 import { FlowService } from './flow/flow.service';
+import { WikiController } from './wiki/wiki.controller';
+import { WikiService } from './wiki/wiki.service';
 import { BaseService } from './base/base.service';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
@@ -58,7 +60,7 @@ import { WorkspaceController } from './users/workspace.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -78,6 +80,7 @@ import { WorkspaceController } from './users/workspace.controller';
     FormsService,
     BaseService,
     FlowService,
+    WikiService,
     MailService,
     MailboxService,
     InboundMailService,

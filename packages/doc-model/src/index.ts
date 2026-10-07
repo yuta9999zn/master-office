@@ -27,6 +27,7 @@ export * from './doc-chart';
 export * from './compare';
 export * from './templates';
 export * from './project-templates';
+export * from './ba-templates';
 export * from './citations';
 export * from './drawing';
 export * from './spelling';

@@ -11,6 +11,6 @@
     "dev:api": "pnpm --filter @workos/api dev",
     "dev:web": "pnpm --filter @workos/web dev",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm db:seed && pnpm --filter @workos/api test:smoke && pnpm --filter @workos/api test:docs && pnpm --filter @workos/api test:sheets && pnpm --filter @workos/api test:slides && pnpm --filter @workos/api test:forms && pnpm --filter @workos/api test:chat && pnpm --filter @workos/api test:mail && pnpm --filter @workos/api test:calendar && pnpm --filter @workos/api test:tasks && pnpm --filter @workos/api test:meetings && pnpm --filter @workos/api test:approvals && pnpm --filter @workos/api test:base && pnpm --filter @workos/api test:flow && pnpm --filter @workos/web e2e"
+    "test": "pnpm db:seed && pnpm --filter @workos/api test:smoke && pnpm --filter @workos/api test:docs && pnpm --filter @workos/api test:sheets && pnpm --filter @workos/api test:slides && pnpm --filter @workos/api test:forms && pnpm --filter @workos/api test:chat && pnpm --filter @workos/api test:mail && pnpm --filter @workos/api test:calendar && pnpm --filter @workos/api test:tasks && pnpm --filter @workos/api test:meetings && pnpm --filter @workos/api test:approvals && pnpm --filter @workos/api test:base && pnpm --filter @workos/api test:flow && pnpm --filter @workos/api test:wiki && pnpm --filter @workos/web e2e"
   }
 }

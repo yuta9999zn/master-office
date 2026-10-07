@@ -42,7 +42,7 @@ await step('setting up the documentation space from the recommended set', fujita
   await fujita.getByTestId('docset-scrum').getByText('Recommended').waitFor({ timeout: 90000 });
   await fujita.getByTestId('docset-waterfall').getByText('BRD · Business Requirements Document').waitFor();
   await fujita.getByTestId('setup-docs').click();
-  await fujita.locator('[data-testid="docs-folder"][data-name="02 Requirements"]').waitFor({ timeout: 60000 });
+  await fujita.locator('[data-testid="docs-page"][data-name="Requirements"]').waitFor({ timeout: 60000 });
   await page('PRD').waitFor();
   await page('DoD').waitFor();
 });

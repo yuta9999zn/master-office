@@ -5,7 +5,7 @@
 // Section structures follow those standard documents; the wording is our own guidance text.
 import type { JSONContent } from '@tiptap/core';
 
-export type ProjectDocCategory = 'Business' | 'Requirements' | 'Design' | 'Delivery & Quality' | 'Agile' | 'AI-DLC';
+export type ProjectDocCategory = 'Business' | 'Planning' | 'Elicitation' | 'Requirements' | 'Modelling' | 'Design' | 'Delivery & Quality' | 'Agile' | 'AI-DLC';
 
 export interface ProjectDocTemplate {
   id: string;
@@ -14,52 +14,15 @@ export interface ProjectDocTemplate {
   code: string;
   description: string;
   category: ProjectDocCategory;
+  /** Not offered in the template gallery (e.g. a space home page). */
+  hidden?: boolean;
   build: (title: string) => JSONContent;
 }
 
-const t = (text: string, ...marks: string[]): JSONContent => ({ type: 'text', text, ...(marks.length ? { marks: marks.map((type) => ({ type })) } : {}) });
-// Empty strings are dropped: ProseMirror has no empty text nodes.
-const p = (...content: (JSONContent | string)[]): JSONContent => {
-  const nodes = content.filter((c) => (typeof c === 'string' ? c !== '' : c.type !== 'text' || !!c.text)).map((c) => (typeof c === 'string' ? t(c) : c));
-  return nodes.length ? { type: 'paragraph', content: nodes } : { type: 'paragraph' };
-};
-const hint = (text: string): JSONContent => p(t(text, 'italic'));
-const h = (level: number, text: string): JSONContent => ({ type: 'heading', attrs: { level }, content: [t(text)] });
-const ul = (...items: string[]): JSONContent => ({ type: 'bulletList', content: items.map((i) => ({ type: 'listItem', content: [p(i)] })) });
-const ol = (...items: string[]): JSONContent => ({ type: 'orderedList', attrs: { start: 1 }, content: items.map((i) => ({ type: 'listItem', content: [p(i)] })) });
-const tasks = (...items: string[]): JSONContent => ({ type: 'taskList', content: items.map((i) => ({ type: 'taskItem', attrs: { checked: false }, content: [p(i)] })) });
-const callout = (tone: string, ...content: JSONContent[]): JSONContent => ({ type: 'callout', attrs: { tone }, content });
-const table = (head: string[], rows: string[][]): JSONContent => ({
-  type: 'table',
-  content: [
-    { type: 'tableRow', content: head.map((c) => ({ type: 'tableHeader', content: [p(c)] })) },
-    ...rows.map((r) => ({ type: 'tableRow', content: r.map((c) => ({ type: 'tableCell', content: [c ? p(c) : { type: 'paragraph' }] })) })),
-  ],
-});
-const doc = (...content: JSONContent[]): JSONContent => ({ type: 'doc', content });
+import { callout, doc, h, head, hint, intro, ol, p, t, table, tasks, ul } from './template-kit';
+import { BA_TEMPLATES } from './ba-templates';
 
-/** Title, owner line and the revision / approval table every controlled document starts with. */
-const head = (title: string, kind: string): JSONContent[] => [
-  h(1, title),
-  p(t(kind, 'bold'), ' · Version 0.1 · Status: Draft'),
-  h(3, 'Document control'),
-  table(['Date', 'Version', 'Change', 'Author', 'Approved by'], [['', '0.1', 'First draft', '', '']]),
-];
-const intro = (purpose: string): JSONContent[] => [
-  h(2, '1. Introduction'),
-  h(3, '1.1 Purpose'),
-  hint(purpose),
-  h(3, '1.2 Scope'),
-  hint('What this document covers — and what it does not.'),
-  h(3, '1.3 Stakeholders'),
-  table(['Name', 'Role', 'Responsibility', 'Contact'], [['', '', '', ''], ['', '', '', '']]),
-  h(3, '1.4 Definitions and acronyms'),
-  table(['Term', 'Meaning'], [['', ''], ['', '']]),
-  h(3, '1.5 References'),
-  ul('Related documents, standards, links'),
-];
-
-export const PROJECT_DOC_TEMPLATES: ProjectDocTemplate[] = [
+const CORE_TEMPLATES: ProjectDocTemplate[] = [
   // ── Business ──────────────────────────────────────────────────────────────
   {
     id: 'pd-business-case',
@@ -673,16 +636,22 @@ export const PROJECT_DOC_TEMPLATES: ProjectDocTemplate[] = [
   },
 ];
 
+/** Every template: the core set (§76) and the business-analysis toolkit (§78). */
+export const PROJECT_DOC_TEMPLATES: ProjectDocTemplate[] = [...CORE_TEMPLATES, ...BA_TEMPLATES];
+
 export const projectDocTemplate = (id: string) => PROJECT_DOC_TEMPLATES.find((x) => x.id === id);
 
 /** Folders of a project documentation space, Confluence-like. */
 export const PROJECT_DOC_FOLDERS: Record<ProjectDocCategory, string> = {
   Business: '01 Business',
-  Requirements: '02 Requirements',
-  Design: '03 Design',
-  'Delivery & Quality': '04 Delivery & Quality',
-  Agile: '05 Agile ceremonies',
-  'AI-DLC': '06 AI-DLC',
+  Planning: '02 Planning',
+  Elicitation: '03 Elicitation',
+  Requirements: '04 Requirements',
+  Modelling: '05 Modelling',
+  Design: '06 Design',
+  'Delivery & Quality': '07 Delivery & Quality',
+  Agile: '08 Agile ceremonies',
+  'AI-DLC': '09 AI-DLC',
 };
 
 /** Starter sets by way of working. */

@@ -29,14 +29,16 @@ check('a project starts without a documentation space', (await call('GET', `/tas
 check('viewers cannot set it up', (await call('POST', `/tasks/projects/${wf.id}/docs/setup`, { user: hana, body: {} })).status === 403);
 const set = await call('POST', `/tasks/projects/${wf.id}/docs/setup`, { user: fujita, body: {} });
 const names = set.data?.nodes?.map((x) => x.name) ?? [];
-const folders = set.data?.nodes?.filter((x) => x.type === 'folder').map((x) => x.name) ?? [];
+// Sections are top-level pages without a template (§78 wiki space).
+const sectionIds = new Set(set.data?.nodes?.filter((x) => !x.parentId && !x.name.includes(' · ') && !x.name.endsWith(' home')).map((x) => x.id) ?? []);
+const folders = set.data?.nodes?.filter((x) => sectionIds.has(x.id)).map((x) => x.name) ?? [];
 check('waterfall projects get the waterfall set: business case, BRD, FRD, SRS, RTM, test plan…', set.status === 201 && ['BC', 'CBA', 'BRD', 'FRD', 'SRS', 'RTM', 'TP', 'TC', 'CR', 'RAID'].every((c) => names.some((x) => x.startsWith(`CB${n} · ${c} — `))), names);
-check('… filed in section folders', ['01 Business', '02 Requirements', '03 Design', '04 Delivery & Quality'].every((f) => folders.includes(f)) && set.data.nodes.filter((x) => x.type === 'document').every((x) => x.parentId), folders);
+check('… filed under section pages of the project wiki space', !!set.data.spaceId && ['Business', 'Requirements', 'Design', 'Delivery & Quality'].every((f) => folders.includes(f)) && set.data.nodes.filter((x) => x.name.includes(' · ')).every((x) => sectionIds.has(x.parentId)), folders);
 const again = await call('POST', `/tasks/projects/${wf.id}/docs/setup`, { user: fujita, body: {} });
 check('setting up again adds nothing twice', again.data.nodes.length === set.data.nodes.length);
 const brd = set.data.nodes.find((x) => x.name.includes('· BRD —'));
 const brdRes = (await call('GET', `/resources/${brd.id}`, { user: fujita })).data;
-check('pages are documents in the project Space', brdRes.type === 'document' && brdRes.spaceId === itm);
+check('pages are wiki pages in the project Space', brdRes.type === 'wiki' && brdRes.spaceId === itm);
 check('space viewers read the docs space', (await call('GET', `/tasks/projects/${wf.id}/docs`, { user: hana })).data.nodes.length === set.data.nodes.length);
 const items = (await call('GET', `/tasks/docs/${brd.id}/items`, { user: fujita })).data;
 check('the template content is in the page (BRD sections and their lines)', items.some((i) => i.section === '4. Scope' && i.text === 'In scope') && items.some((i) => i.section === '9. Non-functional needs' && i.text === 'Security'), items.slice(0, 8));
@@ -44,7 +46,7 @@ check('the template content is in the page (BRD sections and their lines)', item
 // ── AI-DLC set, single pages ────────────────────────────────────────────────
 const ag = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: itm, name: `Assistant ${n}`, key: `AI${n}`, methodology: 'scrum' } })).data;
 const ai = await call('POST', `/tasks/projects/${ag.id}/docs/setup`, { user: fujita, body: { set: 'ai-dlc' } });
-check('the AI-DLC set: intent, inception, units of work, domain, logical design, bolt plan, runbook', ['INT', 'INC', 'UOW', 'DOM', 'LD', 'BOLT', 'OPS'].every((c) => ai.data.nodes.some((x) => x.name.startsWith(`AI${n} · ${c} — `))) && ai.data.nodes.some((x) => x.name === '06 AI-DLC'), ai.data.nodes.map((x) => x.name));
+check('the AI-DLC set: intent, inception, units of work, domain, logical design, bolt plan, runbook', ['INT', 'INC', 'UOW', 'DOM', 'LD', 'BOLT', 'OPS'].every((c) => ai.data.nodes.some((x) => x.name.startsWith(`AI${n} · ${c} — `))) && ai.data.nodes.some((x) => x.name === 'AI-DLC' && !x.parentId), ai.data.nodes.map((x) => x.name));
 const uc = await call('POST', `/tasks/projects/${ag.id}/docs`, { user: mika, body: { template: 'pd-use-case' } });
 check('a single page from a template, into its section', uc.status === 201 && uc.data.name === `AI${n} · UC — Use Case Specification`);
 const ALL = ['pd-business-case', 'pd-cba', 'pd-vision', 'pd-scope', 'pd-stakeholders', 'pd-raci', 'pd-comms', 'pd-brd', 'pd-frd', 'pd-srs', 'pd-prd', 'pd-use-case', 'pd-user-stories', 'pd-solution-design', 'pd-rmp', 'pd-rtm', 'pd-raid', 'pd-change-request', 'pd-test-plan', 'pd-test-cases', 'pd-dod', 'pd-release-notes', 'pd-sprint-planning', 'pd-sprint-review', 'pd-retro', 'pd-aidlc-intent', 'pd-aidlc-inception', 'pd-aidlc-units', 'pd-aidlc-domain', 'pd-aidlc-logical', 'pd-aidlc-bolt', 'pd-aidlc-ops'];

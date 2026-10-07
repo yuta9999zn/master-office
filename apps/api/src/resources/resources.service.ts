@@ -275,7 +275,7 @@ export class ResourcesService {
       return (await this.toDtos(actor, [row], tx))[0];
     });
     if (dto.type === 'spreadsheet') await this.sheets.init(dto.id, templateWorkbook(input.template, dto.name) ?? undefined);
-    const body = dto.type === 'document' ? templateDocument(input.template, dto.name) : null;
+    const body = dto.type === 'document' || dto.type === 'wiki' ? templateDocument(input.template, dto.name) : null;
     if (body) await this.docs.fillTemplate(dto.id, body, actor);
     if (dto.type === 'presentation') await this.slides.init(dto.id, dto.name, templateDeck(input.template, dto.name));
     if (dto.type === 'form') await this.forms.init(dto.id, dto.name);

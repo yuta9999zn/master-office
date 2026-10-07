@@ -1312,3 +1312,21 @@ Theo ảnh "giao diện vê và trỉnh sửa workflow.png": một tài nguyên 
 | Tạo mới | `/flow` liệt kê flow + mẫu (Blank: Start → First step → End; **Customer booking approval** đúng như ảnh tham chiếu: form → kiểm tra → còn chỗ? Yes / No → email + link họp → task cho nhân viên → CRM); menu **New → Flow (Diagram)**. Seed: *Customer Booking Approval Workflow* (Natural Beauty), *Lead Handling Flow* (Marketing). |
 | Test | `flow.mjs` (8): tạo, collab token, quyền, nội dung trống / mẫu qua phiên bản, khôi phục, sao chép, liệt kê. `flow-flow.mjs` (13): tạo từ mẫu, kéo hình vào, nối từ cổng, sửa chữ, nhãn đường nối, style, di chuyển, xoá + undo, workflow info, người thứ hai thấy thay đổi + con trỏ, trang, prototype, present + export PNG / SVG. |
 
+
+## 78. Phase 7 — Wiki kiểu Confluence (spaces, cây trang, bộ tài liệu BA): quyết định
+
+Theo bộ tài liệu tham chiếu ở D:\chuyển (BA toolkit, mẫu yêu cầu, mô hình hoá, review, rủi ro, test): một **space** là một thư mục Drive (quyền của thư mục = quyền của space), mỗi **trang** là tài nguyên loại `wiki` (tài liệu Yjs như Docs) nằm trong thư mục đó; cây trang, trạng thái, nhãn ở bảng `wiki_pages` (migration 0028).
+
+| Đợt | Nội dung | Trạng thái |
+|---|---|---|
+| 1 | Space (key, mô tả, màu, trang chủ), bộ khởi đầu (Blank, BA toolkit, Waterfall, Scrum, Kanban, Hybrid, AI-DLC), cây trang kéo thả, trạng thái + nhãn, sao chép (kèm trang con), xoá vào thùng rác, tìm trang, trang cập nhật gần đây, 61 mẫu (32 mẫu BA mới), tài liệu dự án (§76) dùng chung space | **xong** |
+| 2 | Macro: mục lục, danh sách trang con, danh sách issue, panel, decision log, nhúng sơ đồ Flow; xem theo nhãn; lưu trữ (archive) trang | |
+
+| Vấn đề | Quyết định |
+|---|---|
+| Mô hình | `wiki_spaces` (workspace, key duy nhất theo workspace, tên, mô tả, màu, folderId, homePageId, projectId). `wiki_pages` (resourceId PK, spaceId, parentId, position phân số, status `'' / draft / in_progress / review / approved / deprecated`, labels text[], template, owner). Quyền đọc / sửa lấy từ Drive (space nằm trong My Files hoặc trong một Space của tổ chức) — không thêm hệ quyền thứ hai. |
+| Mẫu | `@workos/doc-model`: `template-kit.ts` (h, p, ul, ol, tasks, callout, table, doc…), `project-templates.ts` (mẫu dự án §76) + `ba-templates.ts` (BA plan, PM tasks, interview log / interviewee profile, brainstorming, document analysis, FRS, data dictionary, information requirements, requirement attributes / standards, glossary, 9 mẫu mô hình — BPMN, use case, activity, sequence, class, ER, DFD, state, component —, PDD, review log, RMP checklist, traceability worksheet, risk log / response, UC checklist). Mẫu `hidden` (trang chủ space) không hiện trong thư viện. Trang tạo từ mẫu bắt đầu ở trạng thái Draft. |
+| Bộ khởi đầu | Mỗi trang được xếp dưới **trang mục** theo nhóm (Planning, Elicitation, Business, Requirements, Modelling, Design, Delivery & Quality, Agile, AI-DLC); trang mục tạo khi cần lần đầu. |
+| Cây trang | Kéo thả: nửa trên / dưới của dòng = trước / sau, giữa = vào trong; client gửi cả `afterId` và `beforeId` để vị trí phân số nằm đúng giữa hai trang kề. Không cho đặt trang vào trang con của chính nó (400). Xoá trang → cả cây con vào thùng rác Drive; trang chủ không xoá được. Sao chép: trang trên cùng thành "X (Copy)", trang con giữ tên. |
+| Giao diện | `/wiki`: danh sách space, tạo space (tên, key, ai thấy, bộ khởi đầu), trang cập nhật gần đây. `/wiki/s/:spaceId?page=`: thanh bên (tìm theo tên / nhãn, cây trang, + trang con, ⋯ sao chép / sao chép kèm trang con / chép link / lên cấp cao nhất / đặt làm trang chủ / xoá), đầu trang (breadcrumb, trạng thái, nhãn, số issue liên kết, owner, sửa lần cuối) rồi trình soạn Docs. `/wiki/:id` chuyển vào space của trang. Tab Docs của dự án dùng cùng cây trang và có nút "Open in Wiki". |
+| Test | `wiki.mjs` (25), `project-docs.mjs` cập nhật; `wiki-flow.mjs` (10): tạo space với BA toolkit, trang mục, trang từ mẫu + trang con, kéo để sắp xếp / lồng, trạng thái + nhãn, tìm, sao chép kèm trang con + xoá, cài đặt space, trang chủ Wiki, link `/wiki/:id`. |

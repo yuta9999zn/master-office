@@ -1302,3 +1302,51 @@ export const baseComments = pgTable(
   },
   (t) => [index('base_comments_record_idx').on(t.recordId, t.createdAt)],
 );
+
+// ── Wiki (§78): Confluence-style spaces with a page tree ───────────────────
+
+/** A wiki space: its pages live (flat) in a Drive folder whose roles are the space's permissions. */
+export const wikiSpaces = pgTable(
+  'wiki_spaces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    color: text('color').notNull().default('#2563eb'),
+    folderId: uuid('folder_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    homePageId: uuid('home_page_id'),
+    /** The Tasks project whose documentation this is (§76: one space per project). */
+    projectId: uuid('project_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('wiki_spaces_key_idx').on(t.workspaceId, t.key)],
+);
+
+/** A page of a space: the content is a `wiki` resource; here is its place in the tree and its status. */
+export const wikiPages = pgTable(
+  'wiki_pages',
+  {
+    resourceId: uuid('resource_id')
+      .primaryKey()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => wikiSpaces.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id'),
+    position: text('position').notNull(),
+    /** '' (none), draft, in_progress, review, approved, deprecated */
+    status: text('status').notNull().default(''),
+    labels: text('labels').array().notNull().default(sql`'{}'::text[]`),
+    template: text('template'),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+  },
+  (t) => [index('wiki_pages_space_idx').on(t.spaceId, t.parentId, t.position)],
+);

@@ -32,39 +32,45 @@ export function DocsView({ project, tasks, open }: { project: Project; tasks: Ta
   if (isLoading) return <Skeleton className="m-6 h-80" />;
   if (!data?.folderId) return <Setup project={project} />;
   const nodes = data.nodes;
-  const page = nodes.find((n) => n.id === selected && n.type !== 'folder') ?? null;
-  const children = (parent: string | null) => nodes.filter((n) => n.parentId === parent).sort((x, y) => (x.type === 'folder' ? 0 : 1) - (y.type === 'folder' ? 0 : 1) || x.name.localeCompare(y.name));
+  const page = nodes.find((n) => n.id === selected) ?? null;
+  // The wiki space's tree (§78): pages in their own order; any page can have subpages.
+  const children = (parent: string | null) => nodes.filter((n) => n.parentId === parent);
   const row = trace?.find((r) => r.doc.id === page?.id);
   const branch = (parent: string | null, depth: number): React.ReactNode =>
-    children(parent).map((n) => (
-      <li key={n.id}>
-        {n.type === 'folder' ? (
-          <button
-            onClick={() =>
-              setClosed((v) => {
-                const s = new Set(v);
-                if (!s.delete(n.id)) s.add(n.id);
-                return s;
-              })
-            }
-            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] font-medium text-ink-2 hover:bg-hover"
-            style={{ paddingLeft: 8 + depth * 14 }}
-            data-testid="docs-folder"
-            data-name={n.name}
-          >
-            {closed.has(n.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-            <Folder size={14} className="text-amber-500" /> <span className="truncate">{n.name}</span>
-          </button>
-        ) : (
-          <button onClick={() => setSelected(n.id)} className={cn('flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] hover:bg-hover', selected === n.id && 'bg-selected font-medium text-brand-700')} style={{ paddingLeft: 22 + depth * 14 }} data-testid="docs-page" data-name={n.name}>
-            <FileIcon r={{ type: n.type, metadata: {}, mimeType: null }} size={15} />
-            <span className="min-w-0 flex-1 truncate">{n.name}</span>
-            {n.linked > 0 && <span className="rounded-full bg-brand-50 px-1.5 text-[10.5px] font-semibold text-brand-700" title="Linked issues">{n.linked}</span>}
-          </button>
-        )}
-        {n.type === 'folder' && !closed.has(n.id) && <ul>{branch(n.id, depth + 1)}</ul>}
-      </li>
-    ));
+    children(parent).map((n) => {
+      const kids = children(n.id).length > 0;
+      return (
+        <li key={n.id}>
+          <div className={cn('flex items-center rounded-md hover:bg-hover', selected === n.id && 'bg-selected')} style={{ paddingLeft: 4 + depth * 14 }}>
+            {kids ? (
+              <button
+                onClick={() =>
+                  setClosed((v) => {
+                    const x = new Set(v);
+                    if (!x.delete(n.id)) x.add(n.id);
+                    return x;
+                  })
+                }
+                className="rounded p-0.5 text-muted"
+                aria-label={closed.has(n.id) ? `Expand ${n.name}` : `Collapse ${n.name}`}
+                data-testid="docs-folder"
+                data-name={n.name}
+              >
+                {closed.has(n.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+              </button>
+            ) : (
+              <span className="w-[17px]" />
+            )}
+            <button onClick={() => setSelected(n.id)} className={cn('flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1 text-left text-[13px]', selected === n.id ? 'font-medium text-brand-700' : kids && depth === 0 ? 'font-medium text-ink-2' : 'text-ink-2')} data-testid="docs-page" data-name={n.name}>
+              <FileIcon r={{ type: n.type, metadata: {}, mimeType: null }} size={15} />
+              <span className="min-w-0 flex-1 truncate">{n.name}</span>
+              {n.linked > 0 && <span className="rounded-full bg-brand-50 px-1.5 text-[10.5px] font-semibold text-brand-700" title="Linked issues">{n.linked}</span>}
+            </button>
+          </div>
+          {kids && !closed.has(n.id) && <ul>{branch(n.id, depth + 1)}</ul>}
+        </li>
+      );
+    });
 
   return (
     <div className="flex h-full min-h-0" data-testid="docs-view">
@@ -72,6 +78,11 @@ export function DocsView({ project, tasks, open }: { project: Project; tasks: Ta
         <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
           <BookOpen size={16} className="text-brand-600" />
           <span className="flex-1 truncate text-[13.5px] font-semibold text-ink">{project.name} — Docs</span>
+          {data.spaceId && (
+            <Link href={`/wiki/s/${data.spaceId}`} className="text-[12px] text-brand-700 hover:underline" data-testid="open-wiki">
+              Open in Wiki
+            </Link>
+          )}
           {canEdit && (
             <Button size="sm" variant="primary" icon={<FilePlus2 size={14} />} onClick={() => setGallery(true)} data-testid="new-page">
               New page
@@ -206,7 +217,7 @@ function Gallery({ project, onClose, onMade }: { project: Project; onClose: () =
   const a = useProjectDocActions();
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
-  const list = PROJECT_DOC_TEMPLATES.filter((t) => !needle || `${t.name} ${t.code} ${t.description}`.toLowerCase().includes(needle));
+  const list = PROJECT_DOC_TEMPLATES.filter((t) => !t.hidden && (!needle || `${t.name} ${t.code} ${t.description}`.toLowerCase().includes(needle)));
   const make = (template: string | null) =>
     a.create.mutate(
       { projectId: project.id, template, ...(template ? {} : { name: 'Untitled page' }) },

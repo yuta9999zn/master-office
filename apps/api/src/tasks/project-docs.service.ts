@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PROJECT_DOC_FOLDERS, PROJECT_DOC_SETS, projectDocTemplate, type ProjectDocCategory } from '@workos/doc-model';
+import { PROJECT_DOC_SETS, projectDocTemplate } from '@workos/doc-model';
 import { can, WORK_TYPES, type DocItem, type IssueType, type ProjectDocs, type TaskView, type TraceRow } from '@workos/shared';
 import type { JSONContent } from '@tiptap/core';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -11,6 +11,7 @@ import { DocsService } from '../docs/docs.service';
 import { projects, resources, taskDocs, tasks } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
+import { WikiService } from '../wiki/wiki.service';
 import { TasksService } from './tasks.service';
 
 type Proj = typeof projects.$inferSelect;
@@ -30,60 +31,29 @@ export class ProjectDocsService {
     private readonly resources: ResourcesService,
     private readonly docs: DocsService,
     private readonly perms: PermissionsService,
+    private readonly wiki: WikiService,
   ) {}
 
-  private async folderOf(p: Proj) {
-    if (!p.docsFolderId) return null;
-    const [f] = await this.db.select().from(resources).where(eq(resources.id, p.docsFolderId));
-    return f && !f.trashedAt ? f : null;
-  }
-
+  /** The project's documentation space (a wiki space, §78). */
   async tree(actor: Actor, projectId: string): Promise<ProjectDocs> {
-    const { p } = await this.tasksSvc.projectAccess(actor, projectId);
-    const folder = await this.folderOf(p);
-    if (!folder) return { folderId: null, nodes: [] };
-    const rows = await this.db
-      .select()
-      .from(resources)
-      .where(and(sql`${resources.path} @> ARRAY[${folder.id}]::uuid[]`, isNull(resources.trashedAt)))
-      .orderBy(resources.name);
-    const roles = await this.perms.rolesFor(actor, rows);
-    const visible = rows.filter((r) => can(roles.get(r.id), 'viewer'));
-    const linked = visible.length
-      ? await this.db.execute<{ resource_id: string; n: string }>(sql`SELECT resource_id, count(*) AS n FROM task_docs WHERE resource_id IN (${sql.join(visible.map((r) => sql`${r.id}`), sql`, `)}) GROUP BY resource_id`)
-      : { rows: [] };
-    const people = await loadUsers(this.db, visible.map((r) => r.updatedBy));
+    await this.tasksSvc.projectAccess(actor, projectId);
+    const space = await this.wiki.ofProject(projectId);
+    if (!space) return { folderId: null, spaceId: null, nodes: [] };
+    const d = await this.wiki.detail(actor, space.id);
     return {
-      folderId: folder.id,
-      nodes: visible.map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        parentId: r.parentId === folder.id ? null : r.parentId,
-        updatedAt: r.updatedAt,
-        updatedBy: r.updatedBy ? people.get(r.updatedBy) ?? null : null,
-        linked: Number(linked.rows.find((x) => x.resource_id === r.id)?.n ?? 0),
-      })),
+      folderId: space.folderId,
+      spaceId: space.id,
+      nodes: d.tree.map((n) => ({ id: n.id, name: n.title, type: 'wiki', parentId: n.parentId, updatedAt: n.updatedAt, updatedBy: n.updatedBy, linked: n.linked })),
     };
   }
 
-  /** The documentation folder, and its section folder for a category (made on first use). */
-  private async ensureFolders(actor: Actor, p: Proj, category?: ProjectDocCategory) {
-    let folder = await this.folderOf(p);
-    if (!folder) {
-      const made = await this.resources.create(actor, { name: `${p.name} — Docs`, type: 'folder', spaceId: p.spaceId });
-      await this.db.update(projects).set({ docsFolderId: made.id }).where(eq(projects.id, p.id));
-      [folder] = await this.db.select().from(resources).where(eq(resources.id, made.id));
-      p.docsFolderId = made.id;
-    }
-    if (!category) return { root: folder!.id, section: folder!.id };
-    const name = PROJECT_DOC_FOLDERS[category];
-    const [existing] = await this.db
-      .select({ id: resources.id })
-      .from(resources)
-      .where(and(eq(resources.parentId, folder!.id), eq(resources.name, name), eq(resources.type, 'folder'), isNull(resources.trashedAt)));
-    const section = existing?.id ?? (await this.resources.create(actor, { name, type: 'folder', parentId: folder!.id })).id;
-    return { root: folder!.id, section };
+  /** The project's space, made on first use in the project's Space. */
+  private async spaceFor(actor: Actor, p: Proj) {
+    const existing = await this.wiki.ofProject(p.id);
+    if (existing) return existing;
+    const key = await this.wiki.freeKey(actor.workspaceId, p.key);
+    const made = await this.wiki.createSpace(actor, { name: p.name, key, description: `Documentation of the ${p.name} project`, spaceId: p.spaceId, projectId: p.id, set: 'blank' });
+    return (await this.wiki.ofProject(p.id)) ?? { ...made, workspaceId: actor.workspaceId };
   }
 
   private pageName(p: Proj, templateId: string, name?: string) {
@@ -95,15 +65,8 @@ export class ProjectDocsService {
   async setup(actor: Actor, projectId: string, set?: DocSet): Promise<ProjectDocs> {
     const { p } = await this.tasksSvc.projectAccess(actor, projectId, 'write');
     const chosen: DocSet = set ?? (p.methodology === 'ai-dlc' ? 'ai-dlc' : p.methodology === 'waterfall' ? 'waterfall' : p.methodology === 'hybrid' ? 'hybrid' : p.methodology === 'kanban' ? 'kanban' : 'scrum');
-    const existing = (await this.tree(actor, projectId)).nodes.map((n) => n.name);
-    for (const id of PROJECT_DOC_SETS[chosen].templates) {
-      const tpl = projectDocTemplate(id)!;
-      const name = this.pageName(p, id);
-      if (existing.includes(name)) continue;
-      const { section } = await this.ensureFolders(actor, p, tpl.category);
-      await this.resources.create(actor, { name, type: 'document', parentId: section, template: id });
-    }
-    await this.ensureFolders(actor, p);
+    const space = await this.spaceFor(actor, p);
+    await this.wiki.addStarter(actor, space.id, chosen, (id) => this.pageName(p, id));
     return this.tree(actor, projectId);
   }
 
@@ -111,15 +74,11 @@ export class ProjectDocsService {
     const { p } = await this.tasksSvc.projectAccess(actor, projectId, 'write');
     const tpl = input.template ? projectDocTemplate(input.template) : null;
     if (input.template && !tpl) throw new BadRequestException('Unknown template');
-    let parentId: string;
-    if (input.folderId) {
-      const { root } = await this.ensureFolders(actor, p);
-      const [f] = await this.db.select().from(resources).where(eq(resources.id, input.folderId));
-      if (!f || f.type !== 'folder' || !(f.id === root || f.path.includes(root))) throw new BadRequestException('Pick a folder of the project docs');
-      parentId = f.id;
-    } else parentId = (await this.ensureFolders(actor, p, tpl?.category)).section;
-    const name = tpl ? this.pageName(p, tpl.id, input.name) : input.name?.trim() || 'Untitled page';
-    return this.resources.create(actor, { name, type: 'document', parentId, ...(tpl ? { template: tpl.id } : {}) });
+    const space = await this.spaceFor(actor, p);
+    // folderId: the page to put it under (a section page or any page of the space).
+    const parentId = input.folderId ?? (tpl ? await this.wiki.sectionFor(actor, space.id, tpl.category) : null);
+    const title = tpl ? this.pageName(p, tpl.id, input.name) : input.name?.trim() || 'Untitled page';
+    return this.wiki.createPage(actor, space.id, { title, template: tpl?.id ?? null, parentId });
   }
 
   // ── Traceability ──────────────────────────────────────────────────────────
