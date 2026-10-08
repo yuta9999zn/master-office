@@ -4,7 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition } from '../common/http';
+import { contentDisposition, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { config } from '../config';
 import { ResourcesService } from '../resources/resources.service';
@@ -135,12 +135,19 @@ export class MailController {
   }
 
   @Get('attachments/:id')
-  async download(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query('inline') inline: string | undefined, @Res() res: Response) {
+  async download(
+    @CurrentUser() a: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('inline') inline: string | undefined,
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Res() res: Response,
+  ) {
     const f = await this.mail.download(a, id);
+    if (sendCached(res, f.etag, ifNoneMatch)) return;
     res.setHeader('Content-Type', f.mimeType);
     res.setHeader('Content-Length', String(f.size));
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
-    f.stream.pipe(res);
+    (await f.open()).pipe(res);
   }
 
   /** "Save to Drive": a copy of the attachment as a file in My Files, a folder or a space. */

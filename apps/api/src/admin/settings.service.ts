@@ -57,6 +57,15 @@ export class SettingsService {
     this.version++;
   }
 
+  /** Any setting by key (e.g. 'storage'), for services that own their own key. */
+  async getValue<T>(workspaceId: string, key: string): Promise<T | null> {
+    return (await this.get<T>(workspaceId, key))?.value ?? null;
+  }
+
+  async putValue(actor: Actor | null, workspaceId: string, key: string, value: object) {
+    await this.put(actor, workspaceId, key, value);
+  }
+
   async general(workspaceId: string): Promise<GeneralSettings> {
     return { appUrl: null, ...(await this.get<GeneralSettings>(workspaceId, 'general'))?.value };
   }

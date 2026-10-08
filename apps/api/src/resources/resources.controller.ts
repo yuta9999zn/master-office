@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { config } from '../config';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition } from '../common/http';
+import { contentDisposition, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from './resources.service';
 
@@ -116,13 +116,20 @@ export class ResourcesController {
   }
 
   @Get(':id/download')
-  async download(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query('inline') inline: string | undefined, @Res() res: Response) {
+  async download(
+    @CurrentUser() a: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('inline') inline: string | undefined,
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Res() res: Response,
+  ) {
     const f = await this.svc.download(a, id);
+    if ('etag' in f && f.etag && sendCached(res, f.etag, ifNoneMatch)) return;
     res.setHeader('Content-Type', f.mime);
     res.setHeader('Content-Length', String(f.size));
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
     if ('body' in f) res.send(f.body);
-    else f.stream.pipe(res);
+    else (await f.open()).pipe(res);
   }
 
   @Get(':id/activity')

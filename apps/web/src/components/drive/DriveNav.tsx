@@ -9,6 +9,7 @@ import { formatBytes } from '@/lib/format';
 import { useSpaces, useStats } from '@/lib/queries';
 import { SpaceBadge } from '../shell/Sidebar';
 import { CreateSpaceDialog } from '../spaces/CreateSpaceDialog';
+import { StorageMeter } from './StorageMeter';
 import { cn } from '../ui/primitives';
 
 const LINKS: { href: string; label: string; icon: ReactNode }[] = [
@@ -87,6 +88,7 @@ export function DriveNav({ activeSpaceId }: { activeSpaceId?: string }) {
           </button>
         </div>
       </div>
+      <StorageMeter spaceId={activeSpaceId} spaceName={spaces?.find((s) => s.id === activeSpaceId)?.name} />
       <CreateSpaceDialog open={creating} onOpenChange={setCreating} />
     </nav>
   );

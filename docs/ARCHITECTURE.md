@@ -1339,7 +1339,7 @@ Mục tiêu bản open source: **một tổ chức ≈ 20 người**, đơn gi�
 |---|---|---|
 | A | Đăng nhập thật (email + mật khẩu, phiên), trình cài đặt lần đầu `/setup`, email hệ thống (SMTP + app password, mã hoá, hướng dẫn Gmail / Outlook, gửi thử), mời người qua email + trang nhận lời mời, quên mật khẩu, trang Admin → Members (vai trò, khoá / mở, mời lại) | **xong** |
 | B | Nhóm / phòng ban: loại Space (department / team / project), cây cha-con, **trưởng nhóm** (vai trò admin của Space), **chức vụ theo từng nhóm** (một người nhiều nhóm, nhiều chức vụ), trưởng nhóm thêm người, lập kênh chat; danh bạ: quyền xem số điện thoại, nhãn nhóm + chức vụ khi chat | **xong** |
-| C | Dung lượng: quỹ của tổ chức, hạn mức mỗi người, hạn mức mỗi nhóm, tính dung lượng chuẩn, chặn upload khi đầy, trang Storage; hiệu năng mở / lưu file | |
+| C | Dung lượng: quỹ của tổ chức, hạn mức mỗi người, hạn mức mỗi nhóm, tính dung lượng chuẩn, chặn upload khi đầy, trang Storage; hiệu năng mở / lưu file | **xong** |
 
 **Vai trò**
 
@@ -1385,3 +1385,15 @@ Mục tiêu bản open source: **một tổ chức ≈ 20 người**, đơn gi�
 | Ai chịu | File trong **My Files** → chủ sở hữu; file trong **Space của nhóm** → nhóm (như shared drive); đính kèm mail → người gửi / mailbox. |
 | Hạn mức | Quỹ tổ chức (mặc định: không giới hạn ở bản open source, admin đặt theo ổ đĩa máy chủ), mặc định mỗi người (vd. 10 GB), mỗi nhóm (vd. 50 GB), ghi đè từng người / nhóm. Trang Storage: tổng / đã cấp / đã dùng, từng người, từng nhóm, file lớn nhất. Cảnh báo 80 %, chặn upload (413 "Storage full") khi vượt người / nhóm / tổ chức. |
 | Hiệu năng | Kiểm tra hạn mức bằng một truy vấn SUM có index (`resources_owner_idx`, `resources_space_idx`) — vài ms với quy mô 20 người; bản doanh nghiệp: bảng đếm cập nhật trong cùng transaction + đối soát định kỳ. Mở file: stream từ S3, ETag = sha256 + `Cache-Control: private, max-age` cho nội dung bất biến; tài liệu cộng tác tải trạng thái Yjs một lần rồi đồng bộ tăng dần; lưu = cập nhật Yjs gộp, snapshot định kỳ. |
+
+**Đợt C — cách làm (đã xong)**
+
+| Vấn đề | Quyết định |
+|---|---|
+| Lưu chính sách | `system_settings` khoá `storage`: `{ orgBytes, userDefaultBytes (10 GiB), spaceDefaultBytes (50 GiB), users: {id → bytes \| null}, spaces: {…} }`; `null` = không giới hạn; không có khoá = mặc định. Không cần bảng mới, chỉ thêm index `resource_versions(resource_id)`, `mail_attachments(uploaded_by)` (migration 0031). |
+| Tính dung lượng | `QuotaService` (apps/api/src/storage/quota.service.ts), một truy vấn CTE: mỗi `resources` (trừ folder, shortcut; **kể cả thùng rác**) = `size_bytes` + SUM `resource_versions` có blob khác blob hiện tại (phiên bản "Original upload" dùng chung blob nên không tính hai lần) + SUM blob trong `resource_assets` (ảnh / video trong tài liệu, tệp trong Base, tệp người trả lời Form). Tệp đính kèm mail: người tải lên chịu; thư nhận từ ngoài tính cho hộp thư nhận (người hoặc Space). File có `space_id` → nhóm; không → chủ sở hữu. Bản sao dùng chung blob nhưng vẫn tính đủ cho người nhận. |
+| Chặn | `assertRoom(workspaceId, {spaceId, ownerId}, bytes)` **trước khi ghi S3** tại: upload Drive / Chat (`ResourcesService.upload`), sao chép (`copy`, cả cây thư mục), ảnh / media trong tài liệu (`DocsService.saveAsset`), đính kèm mail gửi đi, tệp Form, tệp Base. Vượt người / nhóm / tổ chức → **413 PayloadTooLarge "Storage full: …"** (thông điệp nói còn bao nhiêu). Không chặn: lưu Yjs khi soạn, snapshot phiên bản, khôi phục thùng rác, thư đến. |
+| API | `GET /storage/me`, `GET /storage/space/:id` → `{ used, limit, percent, warning (≥ 80 % người / nhóm hoặc tổ chức), full, org }` (thành viên xem Space công khai hoặc mình tham gia). Admin: `GET /admin/storage` (báo cáo: cài đặt, tổ chức đã dùng / đã cấp / số bên không giới hạn, từng người, từng nhóm, 20 file lớn nhất), `PATCH /admin/storage` (mặc định), `PUT/DELETE /admin/storage/{users\|spaces}/:id` (hạn mức riêng / về mặc định). `/stats.storageBytes` giờ là dung lượng logic của tổ chức. |
+| Web | Admin → **Storage** (StorageAdmin.tsx): thẻ tổng quan, "Default limits" (số + đơn vị MB / GB / TB, ô Unlimited), bảng People / Teams với thanh đo và ô Limit (Default / Unlimited / Custom…), danh sách file lớn nhất. Drive: thước đo cuối thanh trái (StorageMeter.tsx) cho My files và nhóm đang mở — vàng từ 80 %, đỏ khi đầy + ghi chú "Empty the trash"; bảng Details của Space có dòng Storage. Upload bị từ chối → toast thông điệp 413. |
+| Hiệu năng mở file | `sendCached()` (common/http.ts): `ETag = "sha256"`, `Cache-Control: private, max-age=86400`, `If-None-Match` → **304** không mở stream S3 (service trả `open()` lười) cho `/resources/:id/download`, `/resources/:id/assets/:blobId` (immutable), `/mail/attachments/:id`. |
+| Test | `storage.mjs` (51, chạy lại được: dọn hạn mức trước / sau), `storage-flow.mjs` (7). |

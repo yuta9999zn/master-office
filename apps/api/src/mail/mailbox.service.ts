@@ -22,6 +22,7 @@ import { resourcePath } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { StorageService } from '../storage/storage.service';
+import { QuotaService } from '../storage/quota.service';
 import { MailService } from './mail.service';
 
 type Box = typeof mailboxes.$inferSelect;
@@ -65,6 +66,7 @@ export class MailboxService {
     private readonly realtime: RealtimeService,
     private readonly storage: StorageService,
     private readonly mail: MailService,
+    private readonly quota: QuotaService,
   ) {}
 
   // ── Mailboxes & access ────────────────────────────────────────────────────
@@ -554,6 +556,8 @@ export class MailboxService {
 
   async upload(actor: Actor, file: { originalname: string; buffer: Buffer; mimetype: string; size: number }) {
     if (file.size > config.maxUploadBytes) throw new BadRequestException('File too large');
+    // Attachments people send are charged to them (§79 C).
+    await this.quota.assertRoom(actor.workspaceId, { spaceId: null, ownerId: actor.id }, file.size);
     const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
     const sha = StorageService.sha256(file.buffer);
     const key = await this.storage.putBlob(file.buffer, sha, file.mimetype);
@@ -582,7 +586,7 @@ export class MailboxService {
 
   async download(actor: Actor, id: string) {
     const { att, blob } = await this.attachment(actor, id);
-    return { name: att.name, mimeType: att.mimeType ?? 'application/octet-stream', size: att.sizeBytes, stream: await this.storage.getStream(blob.storageKey) };
+    return { name: att.name, mimeType: att.mimeType ?? 'application/octet-stream', size: att.sizeBytes, etag: blob.sha256, open: () => this.storage.getStream(blob.storageKey) };
   }
 
   async buffer(actor: Actor, id: string) {

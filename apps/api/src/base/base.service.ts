@@ -37,10 +37,11 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { baseComments, baseFields, baseRecords, baseTables, baseViews, blobs, resourceAssets, users, workspaceMembers } from '../db/schema';
+import { baseComments, baseFields, baseRecords, baseTables, baseViews, blobs, resourceAssets, resources, users, workspaceMembers } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { StorageService } from '../storage/storage.service';
+import { QuotaService } from '../storage/quota.service';
 
 type TableRow = typeof baseTables.$inferSelect;
 type FieldRow = typeof baseFields.$inferSelect;
@@ -77,6 +78,7 @@ export class BaseService implements OnModuleInit {
     private readonly perms: PermissionsService,
     private readonly realtime: RealtimeService,
     private readonly storage: StorageService,
+    private readonly quota: QuotaService,
   ) {}
 
   onModuleInit() {
@@ -837,6 +839,8 @@ export class BaseService implements OnModuleInit {
   private async storeAttachment(actor: Actor, baseId: string, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }): Promise<Attachment> {
     if (!file?.buffer?.length) throw new BadRequestException('Choose a file');
     if (file.size > 50 * 1024 * 1024) throw new BadRequestException('Files can be up to 50 MB');
+    const [owner] = await this.db.select({ workspaceId: resources.workspaceId, spaceId: resources.spaceId, ownerId: resources.ownerId }).from(resources).where(eq(resources.id, baseId));
+    if (owner) await this.quota.assertRoom(owner.workspaceId, { spaceId: owner.spaceId, ownerId: owner.ownerId }, file.size);
     const sha = StorageService.sha256(file.buffer);
     const key = await this.storage.putBlob(file.buffer, sha, file.mimetype);
     const [blob] = await this.db

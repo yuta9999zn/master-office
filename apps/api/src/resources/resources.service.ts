@@ -26,6 +26,7 @@ import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationsService, resourcePath } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
+import { QuotaService } from '../storage/quota.service';
 import { COLLAB_TYPES, DocsService } from '../docs/docs.service';
 import { FlowService } from '../flow/flow.service';
 import { SheetsService } from '../sheets/sheets.service';
@@ -55,6 +56,7 @@ export class ResourcesService {
     private readonly forms: FormsService,
     private readonly flow: FlowService,
     private readonly notifications: NotificationsService,
+    private readonly quota: QuotaService,
   ) {}
 
   // ── Serialization ──────────────────────────────────────────────────────────
@@ -351,6 +353,9 @@ export class ResourcesService {
         tx,
       );
       const subtree = row.type === 'folder' ? await tx.select().from(resources).where(and(sql`${id} = ANY(${resources.path})`, alive)) : [];
+      // A copy shares the content blobs, yet counts in full for whoever receives it (logical usage, §79 C).
+      const bytes = [row, ...subtree].reduce((n, r) => n + (r.type === 'folder' || r.linkTargetId ? 0 : r.sizeBytes), 0);
+      await this.quota.assertRoom(actor.workspaceId, { spaceId: t.spaceId, ownerId: actor.id }, bytes, tx);
       const idMap = new Map<string, string>([[id, crypto.randomUUID()]]);
       subtree.forEach((r) => idMap.set(r.id, crypto.randomUUID()));
 
@@ -430,6 +435,9 @@ export class ResourcesService {
 
   async upload(actor: Actor, file: Express.Multer.File, target: { parentId?: string; spaceId?: string }): Promise<Resource> {
     const name = Buffer.from(file.originalname, 'latin1').toString('utf8'); // multer decodes as latin1
+    // Quota (§79 C) before anything is stored: charged to the team when the file lands in one, else to the uploader.
+    const where = await this.resolveTarget(actor, target.parentId, target.spaceId, this.db);
+    await this.quota.assertRoom(actor.workspaceId, { spaceId: where.spaceId, ownerId: actor.id }, file.size);
     const sha = StorageService.sha256(file.buffer);
     const key = await this.storage.putBlob(file.buffer, sha, file.mimetype);
     const created = await this.db.transaction(async (tx) => {
@@ -485,7 +493,8 @@ export class ResourcesService {
     }
     const [blob] = await this.db.select().from(blobs).where(eq(blobs.id, row.blobId));
     if (!blob) throw new NotFoundException('Blob missing');
-    return { stream: await this.storage.getStream(blob.storageKey), name: row.name, mime: blob.mimeType ?? 'application/octet-stream', size: blob.sizeBytes };
+    // Immutable content: the sha256 is the ETag, and the stream is only opened when the browser's copy is stale.
+    return { open: () => this.storage.getStream(blob.storageKey), etag: blob.sha256, name: row.name, mime: blob.mimeType ?? 'application/octet-stream', size: blob.sizeBytes };
   }
 
   // ── Details panel ─────────────────────────────────────────────────────────

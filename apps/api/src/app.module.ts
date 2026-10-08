@@ -62,10 +62,12 @@ import { AuthService } from './auth/auth.service';
 import { AdminController } from './admin/admin.controller';
 import { OrgService } from './admin/org.service';
 import { SettingsService } from './admin/settings.service';
+import { QuotaService } from './storage/quota.service';
+import { StorageController } from './storage/storage.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -75,6 +77,7 @@ import { SettingsService } from './admin/settings.service';
     PermissionsService,
     EventsService,
     StorageService,
+    QuotaService,
     DocStore,
     CollabService,
     PdfRenderer,

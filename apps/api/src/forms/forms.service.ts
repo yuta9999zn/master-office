@@ -37,6 +37,7 @@ import { ResourcesService } from '../resources/resources.service';
 import { SheetsService } from '../sheets/sheets.service';
 import { MacroTriggersService } from '../sheets/macro-triggers.service';
 import { StorageService } from '../storage/storage.service';
+import { QuotaService } from '../storage/quota.service';
 
 const csvCell = (v: string | number) => {
   const s = String(v ?? '');
@@ -62,6 +63,7 @@ export class FormsService {
     private readonly sheets: SheetsService,
     private readonly mail: MailService,
     private readonly moduleRef: ModuleRef,
+    private readonly quota: QuotaService,
   ) {}
 
   static stateOf(f: PlainForm) {
@@ -409,6 +411,7 @@ export class FormsService {
     if (!file) throw new BadRequestException('No file');
     const limit = Math.max(...form.items.filter((i) => i.type === 'file').map((i) => i.file?.maxSizeMb ?? 10), 10);
     if (file.size > limit * 1024 * 1024) throw new BadRequestException(`File is larger than ${limit} MB`);
+    await this.quota.assertRoom(row.workspaceId, { spaceId: row.spaceId, ownerId: row.ownerId }, file.size);
     const sha = StorageService.sha256(file.buffer);
     const key = await this.storage.putBlob(file.buffer, sha, file.mimetype);
     const [blob] = await this.db

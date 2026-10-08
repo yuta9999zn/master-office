@@ -1,7 +1,7 @@
 'use client';
 
 import { can } from '@workos/shared';
-import { Ban, Copy, Crown, Globe, KeyRound, Mail, MoreHorizontal, Network, RotateCcw, Search, Send, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Ban, Copy, Crown, Globe, HardDrive, KeyRound, Mail, MoreHorizontal, Network, RotateCcw, Search, Send, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -10,11 +10,13 @@ import { useSpaces } from '@/lib/queries';
 import { ORG_ROLES, useAdminActions, useAdminMembers, useAdminRole, useGeneral, useInvitations, type AdminMember, type InviteResult, type OrgRole } from '@/lib/admin';
 import { Avatar, Button, cn, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Skeleton } from '../ui/primitives';
 import { SmtpForm } from './SmtpForm';
+import { StorageAdmin } from './StorageAdmin';
 import { TeamsAdmin } from './TeamsAdmin';
 
 const TABS = [
   { id: 'members', label: 'Members', icon: Users },
   { id: 'teams', label: 'Teams', icon: Network },
+  { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'email', label: 'System e-mail', icon: Mail },
   { id: 'general', label: 'General', icon: Globe },
 ] as const;
@@ -48,6 +50,7 @@ export function AdminConsole() {
         <div className="mx-auto max-w-[1100px] p-6">
           {tab === 'members' && <Members myRole={me.role} />}
           {tab === 'teams' && <TeamsAdmin />}
+          {tab === 'storage' && <StorageAdmin />}
           {tab === 'email' && (
             <section>
               <Header title="System e-mail" note="The mailbox that sends invitations, password resets and notifications. Connect it with an app password." />

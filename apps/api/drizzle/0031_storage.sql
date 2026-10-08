@@ -1,0 +1,2 @@
+CREATE INDEX "mail_attachments_uploader_idx" ON "mail_attachments" USING btree ("uploaded_by");--> statement-breakpoint
+CREATE INDEX "resource_versions_resource_idx" ON "resource_versions" USING btree ("resource_id");

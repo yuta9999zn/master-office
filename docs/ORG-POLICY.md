@@ -116,9 +116,10 @@ Chọn **Custom SMTP** và nhập host, cổng, chế độ bảo mật, tên đ
 |---|---|
 | Cách tính | Như Google Drive: kích thước file + các phiên bản cũ + tệp đính kèm email + ảnh trong tài liệu. Thùng rác **vẫn tính** cho tới khi xoá hẳn. |
 | Ai chịu | File ở **My Files** tính cho **người sở hữu**; file trong **nhóm** tính cho **nhóm**. |
-| Hạn mức mặc định (gợi ý) | Mỗi người **10 GB**, mỗi nhóm **50 GB**. Admin đổi được, và đặt riêng cho từng người / nhóm. |
+| Hạn mức mặc định (gợi ý) | Mỗi người **10 GB**, mỗi nhóm **50 GB**. Admin đổi được, và đặt riêng cho từng người / nhóm (chọn *Unlimited* để bỏ giới hạn). |
+| Ở đâu | **Admin → Storage**: tổng quan, hạn mức mặc định, từng người, từng nhóm, các file lớn nhất. Mỗi người thấy thước đo của mình (và của nhóm đang mở) ở cuối thanh trái trong Drive. |
 | Quỹ tổ chức | Bản open source: theo ổ đĩa máy chủ. Gợi ý: tổng hạn mức đã cấp ≤ 80 % dung lượng ổ lưu trữ, để chỗ cho phiên bản và sao lưu. Ví dụ 20 người × 10 GB + 5 nhóm × 50 GB = 450 GB → nên có ổ ≥ 600 GB. |
-| Khi gần đầy | 80 %: cảnh báo cho người / trưởng nhóm. 100 %: không tải thêm file được (vẫn xem, sửa tài liệu nhỏ và xoá được). |
+| Khi gần đầy | 80 %: thước đo chuyển vàng và nhắc dọn. 100 %: không tải thêm file được — tải lên, sao chép, chèn ảnh, đính kèm mail đều bị từ chối với thông báo "Storage full" (vẫn xem, sửa tài liệu và xoá được; thư đến vẫn nhận). |
 | Giải phóng | Xoá hẳn thùng rác, xoá phiên bản cũ không cần, chuyển file lớn sang nhóm có hạn mức lớn hơn. |
 
 Bản doanh nghiệp: hạn mức bắt buộc theo gói, báo cáo dung lượng định kỳ, cảnh báo cho Admin.

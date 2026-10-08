@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition } from '../common/http';
+import { contentDisposition, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from '../resources/resources.service';
 import { DocsService } from './docs.service';
@@ -91,15 +91,15 @@ export class DocsController {
     // Byte ranges let <video> / <audio> seek without downloading the whole file.
     const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ''));
     const f = await this.docs.asset(a, id, blobId, m ? { start: Number(m[1]), end: m[2] ? Number(m[2]) : undefined } : undefined);
+    if (!f.range && sendCached(res, f.etag, req.headers['if-none-match'] as string | undefined, 'private, max-age=86400, immutable')) return;
     res.setHeader('Content-Type', f.mime);
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
     if (f.range) {
       res.status(206);
       res.setHeader('Content-Range', `bytes ${f.range.start}-${f.range.end}/${f.size}`);
       res.setHeader('Content-Length', String(f.range.end - f.range.start + 1));
     } else res.setHeader('Content-Length', String(f.size));
-    f.stream.pipe(res);
+    (await f.open()).pipe(res);
   }
 
   @Post(':id/versions')

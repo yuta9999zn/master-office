@@ -159,7 +159,7 @@ export const resourceVersions = pgTable('resource_versions', {
   sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: ts('created_at').notNull().default(sql`now()`),
-});
+}, (t) => [index('resource_versions_resource_idx').on(t.resourceId)]);
 
 export const aclEntries = pgTable(
   'acl_entries',
@@ -724,7 +724,7 @@ export const mailAttachments = pgTable(
     uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
-  (t) => [index('mail_attachments_message_idx').on(t.messageId)],
+  (t) => [index('mail_attachments_message_idx').on(t.messageId), index('mail_attachments_uploader_idx').on(t.uploadedBy)],
 );
 
 // ── Calendar (Phase 7, docs/ARCHITECTURE.md §71) ────────────────────────────

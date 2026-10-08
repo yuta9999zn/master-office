@@ -5,9 +5,13 @@ import { parse } from '../common/validation';
 import { MailService } from '../mail/mail.service';
 import { OrgService } from './org.service';
 import { SettingsService, SMTP_PRESETS } from './settings.service';
+import { QuotaService } from '../storage/quota.service';
 
 const uuid = z.string().uuid();
 const memberRole = z.enum(['admin', 'editor', 'viewer']);
+/** A storage limit in bytes (up to 1 PB), or null for unlimited. */
+const bytes = z.number().int().min(0).max(2 ** 50).nullable();
+const limitKind = z.enum(['users', 'spaces']).transform((k) => (k === 'users' ? 'user' : 'space') as 'user' | 'space');
 
 /** Admin console (docs/ARCHITECTURE.md §79): members, invitations, system e-mail, general settings. */
 @Controller('admin')
@@ -16,6 +20,7 @@ export class AdminController {
     private readonly org: OrgService,
     private readonly settings: SettingsService,
     private readonly mail: MailService,
+    private readonly quota: QuotaService,
   ) {}
 
   @Get('me')
@@ -124,6 +129,37 @@ export class AdminController {
     }
     await this.settings.markVerified(a.workspaceId);
     return { ok: true, smtp: await this.settings.smtp(a.workspaceId) };
+  }
+
+  // ── Storage (§79 C) ──────────────────────────────────────────────────────
+
+  @Get('storage')
+  async storage(@CurrentUser() a: Actor) {
+    await this.org.requireAdmin(a);
+    return this.quota.report(a.workspaceId);
+  }
+
+  /** Organisation pool and default quotas; `null` = unlimited. */
+  @Patch('storage')
+  async setStorage(@CurrentUser() a: Actor, @Body() b: unknown) {
+    await this.org.requireAdmin(a);
+    await this.quota.setDefaults(a, parse(z.object({ orgBytes: bytes.optional(), userDefaultBytes: bytes.optional(), spaceDefaultBytes: bytes.optional() }), b));
+    return this.quota.report(a.workspaceId);
+  }
+
+  /** A person's or a team's own limit (`null` = unlimited); DELETE returns them to the default. */
+  @Put('storage/:kind/:id')
+  async setLimit(@CurrentUser() a: Actor, @Param('kind') kind: string, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    await this.org.requireAdmin(a);
+    await this.quota.setOverride(a, parse(limitKind, kind), id, parse(z.object({ bytes }), b).bytes);
+    return this.quota.report(a.workspaceId);
+  }
+
+  @Delete('storage/:kind/:id')
+  async clearLimit(@CurrentUser() a: Actor, @Param('kind') kind: string, @Param('id', ParseUUIDPipe) id: string) {
+    await this.org.requireAdmin(a);
+    await this.quota.setOverride(a, parse(limitKind, kind), id, undefined);
+    return this.quota.report(a.workspaceId);
   }
 
   @Get('settings/general')

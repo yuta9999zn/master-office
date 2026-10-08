@@ -11,6 +11,8 @@ import { formatBytes, formatDateTime, timeAgo } from '@/lib/format';
 import { useResource, useResourceActions, useResourceActivity, useResourceMembers, useResourceVersions, useSpaceActivity, useSpaceMembers } from '@/lib/queries';
 import { hrefFor, ROLE_LABEL, typeLabel } from '@/lib/resources';
 import { SpaceBadge } from '../shell/Sidebar';
+import { useSpaceStorage } from '@/lib/storage';
+import { Meter } from '../admin/StorageAdmin';
 import { Avatar, Button, Chip, FileIcon, IconButton, Skeleton } from '../ui/primitives';
 import { type Action, DropdownActions } from './actions';
 import { DropdownMenu as DM } from 'radix-ui';
@@ -263,6 +265,7 @@ export function SpaceDetails({ space, onClose }: { space: Space; onClose: () => 
   const [tab, setTab] = useState('details');
   const { data: members } = useSpaceMembers(space.id);
   const { data: activity, isLoading } = useSpaceActivity(tab === 'activity' ? space.id : undefined);
+  const { data: storage } = useSpaceStorage(space.id);
   return (
     <PanelShell
       onClose={onClose}
@@ -289,6 +292,7 @@ export function SpaceDetails({ space, onClose }: { space: Space; onClose: () => 
             <Field label="Created">{formatDateTime(space.createdAt)}</Field>
             <Field label="Your role">{space.myRole ? ROLE_LABEL[space.myRole] : '—'}</Field>
             <Field label="Members">{space.memberCount}</Field>
+            <Field label="Storage">{storage ? <Meter used={storage.used} limit={storage.limit} percent={storage.percent} compact /> : '—'}</Field>
           </Tabs.Content>
           <Tabs.Content value="members" className="space-y-1">
             {members?.map((m) => (

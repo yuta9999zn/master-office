@@ -5,6 +5,7 @@ import { type Actor, CurrentUser } from '../common/current-user';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { resources, workspaceMembers } from '../db/schema';
+import { QuotaService } from '../storage/quota.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { visibleActivity } from './activity';
 
@@ -14,6 +15,7 @@ export class WorkspaceController {
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly perms: PermissionsService,
+    private readonly quota: QuotaService,
   ) {}
 
   /** Activity the actor is allowed to see (resource events filtered by effective role, space events by space role). */
@@ -26,7 +28,7 @@ export class WorkspaceController {
   async stats(@CurrentUser() a: Actor) {
     const week = sql`now() - interval '7 days'`;
     const twoWeeks = sql`now() - interval '14 days'`;
-    const [[members], [thisWeek], [lastWeek], [storage], spaces] = await Promise.all([
+    const [[members], [thisWeek], [lastWeek], storage, spaces] = await Promise.all([
       this.db.select({ n: count() }).from(workspaceMembers).where(eq(workspaceMembers.workspaceId, a.workspaceId)),
       this.db
         .select({ n: count() })
@@ -42,10 +44,7 @@ export class WorkspaceController {
             sql`${resources.createdAt} >= ${twoWeeks} AND ${resources.createdAt} < ${week}`,
           ),
         ),
-      this.db
-        .select({ bytes: sql<string>`coalesce(sum(${resources.sizeBytes}), 0)` })
-        .from(resources)
-        .where(and(eq(resources.workspaceId, a.workspaceId), sql`${resources.trashedAt} IS NULL`)),
+      this.quota.orgUsed(a.workspaceId),
       this.perms.spaceRoles(a),
     ]);
     return {
@@ -53,7 +52,7 @@ export class WorkspaceController {
       spaces: [...spaces.values()].filter((r) => can(r, 'viewer')).length,
       filesCreated7d: thisWeek.n,
       filesCreatedPrev7d: lastWeek.n,
-      storageBytes: Number(storage.bytes),
+      storageBytes: storage,
     };
   }
 }

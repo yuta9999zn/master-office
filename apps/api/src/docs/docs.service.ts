@@ -19,6 +19,7 @@ import { auditEvents, blobs, comments, resourceAssets, resourceLinks, resources,
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { StorageService } from '../storage/storage.service';
+import { QuotaService } from '../storage/quota.service';
 import { config } from '../config';
 import { signCollabToken } from '../collab/collab-token';
 import { CollabService } from '../collab/collab.service';
@@ -84,6 +85,7 @@ export class DocsService {
     private readonly sheets: SheetsService,
     private readonly slides: SlidesService,
     private readonly flow: FlowService,
+    private readonly quota: QuotaService,
   ) {}
 
   private async requireDoc(actor: Actor, id: string, role: Parameters<PermissionsService['require']>[2]) {
@@ -172,7 +174,9 @@ export class DocsService {
     const media = /^(video|audio)\//.test(mime);
     if (!mime.startsWith('image/') && !media) throw new BadRequestException('Only pictures, video and audio can be embedded');
     if (!media && buf.length > 20 * 1024 * 1024) throw new BadRequestException('Pictures can be up to 20 MB');
-    await this.requireDoc(actor, id, 'editor');
+    const { row } = await this.requireDoc(actor, id, 'editor');
+    // Embedded media count towards the document's owner or team (§79 C).
+    await this.quota.assertRoom(row.workspaceId, { spaceId: row.spaceId, ownerId: row.ownerId }, buf.length);
     return this.storeAsset(id, buf, mime, actor.id);
   }
 
@@ -191,17 +195,18 @@ export class DocsService {
   async asset(actor: Actor, id: string, blobId: string, range?: { start: number; end?: number }) {
     await this.perms.require(actor, id, 'viewer');
     const [row] = await this.db
-      .select({ key: blobs.storageKey, mime: blobs.mimeType, size: blobs.sizeBytes })
+      .select({ key: blobs.storageKey, mime: blobs.mimeType, size: blobs.sizeBytes, sha: blobs.sha256 })
       .from(resourceAssets)
       .innerJoin(blobs, eq(blobs.id, resourceAssets.blobId))
       .where(and(eq(resourceAssets.resourceId, id), eq(resourceAssets.blobId, blobId)));
     if (!row) throw new NotFoundException('Image not found');
     const size = Number(row.size);
+    const mime = row.mime ?? 'application/octet-stream';
     if (range && range.start < size) {
       const end = Math.min(size - 1, range.end ?? size - 1);
-      return { stream: await this.storage.getStream(row.key, { start: range.start, end }), mime: row.mime ?? 'application/octet-stream', size, range: { start: range.start, end } };
+      return { open: () => this.storage.getStream(row.key, { start: range.start, end }), etag: row.sha, mime, size, range: { start: range.start, end } };
     }
-    return { stream: await this.storage.getStream(row.key), mime: row.mime ?? 'application/octet-stream', size, range: null };
+    return { open: () => this.storage.getStream(row.key), etag: row.sha, mime, size, range: null };
   }
 
   /** Bytes of an image a presentation references: its own assets or data: URLs (never arbitrary URLs). */
