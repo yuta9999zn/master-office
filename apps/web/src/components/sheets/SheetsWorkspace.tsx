@@ -432,6 +432,9 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
             <MenuItem icon={<BarChartHorizontal />} disabled={!grid} onSelect={() => setPanel('Column stats')}>
               Column stats
             </MenuItem>
+            <MenuItem icon={<Sigma />} disabled={!grid} onSelect={() => (grid?.formulas.recalculate(), toast.message('Recalculating every formula…'))}>
+              Recalculate all formulas
+            </MenuItem>
             <MenuSeparator />
             <MenuLabel>Data cleanup</MenuLabel>
             <MenuItem icon={<CopyMinus />} disabled={!editable || !grid} onSelect={() => setDedupe(true)}>
@@ -506,6 +509,12 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
       </div>
 
       <ImportBanner report={report} canEdit={editable} onRetry={() => versions.reimport.mutate()} retrying={versions.reimport.isPending} downloadHref={`/api/resources/${r.id}/download`} />
+      {grid && !grid.formulas.recalculatedOnOpen && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[12px] text-amber-900" data-testid="sheet-big-notice">
+          <Sigma size={13} className="shrink-0" />
+          Big workbook ({grid.formulas.count.toLocaleString()} formulas): the saved results are shown as they are. Data → Recalculate all formulas refreshes every one.
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-3 p-5 pt-2">
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">

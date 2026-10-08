@@ -2,7 +2,7 @@ import { TiptapTransformer } from '@hocuspocus/transformer';
 import { Injectable, Logger } from '@nestjs/common';
 import { COLLAB_FIELD, combineTabs, docExtensions, linksOf, SETTINGS_MAP, tabField, tabsOf, toPlainText, type DocTab, type JSONContent } from '@workos/doc-model';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { hasWorkbook, readWorkbook, workbookText } from '@workos/sheet-model';
+import { hasWorkbook, workbookSummary } from '@workos/sheet-model';
 import { deckText, hasDeck, readDeck } from '@workos/slide-model';
 import { formText, hasForm, readForm } from '@workos/form-model';
 import { hasFlow, readFlow } from '@workos/flow-model';
@@ -91,9 +91,10 @@ export class DocStore {
     let text: string;
     let stats: Record<string, number>;
     if (hasWorkbook(doc)) {
-      const wb = readWorkbook(doc);
-      text = workbookText(wb);
-      stats = { sheetCount: wb.sheets.length };
+      // Read straight from the Y.Doc, stopping at the text limit: a 500k-cell workbook saves every few seconds.
+      const sum = workbookSummary(doc);
+      text = sum.text;
+      stats = { sheetCount: sum.sheetCount };
     } else if (hasForm(doc)) {
       const form = readForm(doc);
       text = formText(form);

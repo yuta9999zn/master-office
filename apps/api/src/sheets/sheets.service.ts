@@ -5,6 +5,7 @@ import {
   cellValue,
   colName,
   newId,
+  RESOURCES_MAP,
   SHEETS_MAP,
   WB_MAP,
   ySheet,
@@ -17,6 +18,8 @@ import {
   type CellStyle,
   type PlainSheet,
   type PlainWorkbook,
+  toStoredCell,
+  yStyles,
 } from '@workos/sheet-model';
 import * as Y from 'yjs';
 import type { Actor } from '../common/current-user';
@@ -24,7 +27,15 @@ import { CollabService } from '../collab/collab.service';
 import { DocStore } from '../docs/doc-store';
 import { PdfRenderer } from '../docs/pdf-renderer';
 import { csvToSheet, sheetToCsv } from './csv';
-import { exportXlsx, importXlsx, type XlsxReport } from './xlsx';
+import { exportXlsx, importXlsx, type ImageLoader, type XlsxReport } from './xlsx';
+import { drawingResource } from './xlsx-images';
+import { importToState, type WorkerImage, type WorkerResult } from './xlsx-worker';
+import { fork } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ModuleRef } from '@nestjs/core';
+import { DocsService } from '../docs/docs.service';
 import JSZip from 'jszip';
 import { readVbaProject, type VbaModule } from './vba';
 
@@ -125,6 +136,7 @@ export class SheetsService {
     private readonly store: DocStore,
     private readonly collab: CollabService,
     private readonly pdf: PdfRenderer,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /** Workbook from the live or stored Yjs state (an empty sheet if the spreadsheet was never initialised). */
@@ -159,10 +171,15 @@ export class SheetsService {
     let report: XlsxReport;
     let vba: VbaModule[] = [];
     if (ext === 'xlsx' || ext === 'xlsm') {
-      ({ wb, report } = await importXlsx(buf, fileName));
-      if (ext === 'xlsm') {
-        vba = await this.vbaOf(buf, report);
-      }
+      // Built in a child process: the API keeps answering, and the memory ExcelJS needs is given back when it exits.
+      const r = await this.importIsolated(buf, fileName);
+      report = r.report;
+      if (ext === 'xlsm') vba = await this.vbaOf(buf, report);
+      await this.collab.replaceWorkbookState(id, r.state, { id: actor.id, name: actor.name });
+      await this.placePictures(actor, id, r.images, report);
+      await this.collab.replaceMap(id, 'vba', Object.fromEntries(vba.map((m, i) => [String(i).padStart(3, '0'), m])), { id: actor.id, name: actor.name });
+      this.log.log(`imported ${fileName}: ${r.stats.cells} cells, state ${(r.stats.stateBytes / 1048576).toFixed(1)} MB, ${r.stats.totalMs} ms${r.worker ? ' (worker)' : ''}`);
+      return { status: 'done', ...report };
     } else if (ext === 'csv') {
       const sheet = csvToSheet(buf.toString('utf8'), sheetBaseName(fileName));
       wb = { name: sheetBaseName(fileName), sheets: [sheet] };
@@ -178,6 +195,62 @@ export class SheetsService {
     await this.replace(id, wb, { id: actor.id, name: actor.name });
     await this.collab.replaceMap(id, 'vba', Object.fromEntries(vba.map((m, i) => [String(i).padStart(3, '0'), m])), { id: actor.id, name: actor.name });
     return { status: 'done', ...report };
+  }
+
+  /**
+   * The .xlsx → Yjs state, in the import worker when the built one exists (production), inline otherwise (dev
+   * under tsx, tests) — the same code either way.
+   */
+  private async importIsolated(buf: Buffer, fileName: string): Promise<{ state: Uint8Array; report: XlsxReport; images: (WorkerImage & { data: Buffer })[]; stats: WorkerResult['stats']; worker: boolean }> {
+    const dir = mkdtempSync(join(tmpdir(), 'mo-xlsx-'));
+    const file = join(dir, 'in.xlsx');
+    const out = join(dir, 'state.bin');
+    writeFileSync(file, buf);
+    try {
+      const worker = join(__dirname, 'xlsx-worker.js');
+      let result: WorkerResult;
+      let viaWorker = false;
+      if (existsSync(worker)) {
+        viaWorker = true;
+        result = await new Promise<WorkerResult>((resolve, reject) => {
+          const child = fork(worker, [], { execArgv: ['--max-old-space-size=4096'], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+          const timer = setTimeout(() => (child.kill(), reject(new Error('The import took longer than 10 minutes'))), 600_000);
+          child.once('message', (m: WorkerResult | { ok: false; error: string }) => {
+            clearTimeout(timer);
+            if (m.ok) resolve(m);
+            else reject(new BadRequestException(`The workbook could not be read: ${m.error}`));
+          });
+          child.once('error', (e) => (clearTimeout(timer), reject(e)));
+          child.once('exit', (code) => code && reject(new Error(`The import worker stopped (code ${code}) — the file may be too large for this server`)));
+          child.send({ file, name: fileName, out });
+        });
+      } else result = await importToState({ file, name: fileName, out });
+      const state = new Uint8Array(readFileSync(out));
+      const images = result.images.map((img) => ({ ...img, data: readFileSync(img.path) }));
+      return { state, report: result.report, images, stats: result.stats, worker: viaWorker };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Pictures of an imported workbook: stored as the spreadsheet's assets, drawn by Univer's drawing plugin. */
+  private async placePictures(actor: Actor, id: string, images: (WorkerImage & { data: Buffer })[], report: XlsxReport) {
+    if (!images.length) return;
+    const docs = this.moduleRef.get(DocsService, { strict: false });
+    const placed: { sheetId: string; source: string; from: WorkerImage['from']; to: WorkerImage['to']; box: WorkerImage['box'] }[] = [];
+    for (const img of images) {
+      try {
+        const { url } = await docs.saveAsset(actor, id, img.data, `image/${img.ext}`);
+        placed.push({ sheetId: img.sheetId, source: url, from: img.from, to: img.to, box: img.box });
+      } catch (e) {
+        report.warnings.push(`A picture could not be stored: ${(e as Error).message}`);
+      }
+    }
+    if (!placed.length) return;
+    await this.collab.transact(id, { id: actor.id, name: actor.name }, (doc) => {
+      const res = doc.getMap<string>(RESOURCES_MAP);
+      res.set('SHEET_DRAWING_PLUGIN', drawingResource(id, placed, res.get('SHEET_DRAWING_PLUGIN')));
+    });
   }
 
   /** VBA source of a macro-enabled workbook: kept read-only (Extensions → Macros), never executed. */
@@ -211,6 +284,7 @@ export class SheetsService {
       const m = doc.getMap(SHEETS_MAP).get(order[0]) as Y.Map<unknown> | undefined;
       if (!m) return;
       const ys = ySheet(m);
+      const styles = yStyles(doc);
       const rowIds = ys.rows.toArray();
       const colIds = ys.cols.toArray();
       const used = new Set<string>();
@@ -228,7 +302,7 @@ export class SheetsService {
           if (v === '' || v === null || v === undefined) return;
           const cell: Cell = typeof v === 'number' ? { v, t: 2 } : { v: String(v), t: 1 };
           if (opts.headerBold && start === 0 && i === 0) cell.s = { bl: 1, bg: { rgb: '#E8F0FE' } };
-          ys.cells.set(cellKey(allRows[start + i], allCols[j]), cell);
+          ys.cells.set(cellKey(allRows[start + i], allCols[j]), toStoredCell(styles, cell));
         }),
       );
       if (opts.headerBold && start === 0) ys.map.set('meta', { ...ys.meta(), freeze: { row: 1, col: 0 } });
@@ -237,12 +311,12 @@ export class SheetsService {
     return at as { sheet: string; row: number } | null;
   }
 
-  async export(id: string, name: string, format: SheetExportFormat, opts: { author?: string; sheetId?: string } = {}) {
+  async export(id: string, name: string, format: SheetExportFormat, opts: { author?: string; sheetId?: string; loadImage?: ImageLoader } = {}) {
     const wb = await this.workbook(id, name);
     const title = sheetBaseName(name);
     let body: Buffer;
     let fileName = `${title}.${format}`;
-    if (format === 'xlsx') body = await exportXlsx(wb, { author: opts.author });
+    if (format === 'xlsx') body = await exportXlsx(wb, { author: opts.author, loadImage: opts.loadImage });
     else if (format === 'csv') {
       // CSV holds one sheet: the requested one, else the first visible one (like Excel's "active sheet").
       const sheet = wb.sheets.find((s) => s.id === opts.sheetId) ?? wb.sheets.find((s) => !s.meta.hidden) ?? wb.sheets[0];

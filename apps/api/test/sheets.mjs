@@ -47,11 +47,16 @@ const sheetsOf = (doc) => {
     return { id, name: m.get('meta').name, m };
   });
 };
+/** A cell with its style resolved: cells hold the id of an entry of the shared style table (§83). */
 const cellAt = (sheet, r, c) => {
   const rows = sheet.m.get('rows');
   const cols = sheet.m.get('cols');
-  return sheet.m.get('cells').get(`${rows.get(r)}:${cols.get(c)}`);
+  const cell = sheet.m.get('cells').get(`${rows.get(r)}:${cols.get(c)}`);
+  return cell && typeof cell.s === 'string' ? { ...cell, s: sheet.m.doc.getMap('styles').get(cell.s) } : cell;
 };
+const rawCellAt = (sheet, r, c) => sheet.m.get('cells').get(`${sheet.m.get('rows').get(r)}:${sheet.m.get('cols').get(c)}`);
+// A 1 × 1 PNG, enough for Excel to anchor a picture to.
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const setCell = (sheet, r, c, cell) => sheet.m.get('cells').set(`${sheet.m.get('rows').get(r)}:${sheet.m.get('cols').get(c)}`, cell);
 const loadXlsx = async (res) => {
   const buf = await res.arrayBuffer();
@@ -150,9 +155,11 @@ ws.getCell('D3').value = { sharedFormula: 'D2', result: 9 };
 ws.getCell('A5').value = { formula: 'SUM(D2:D3)', result: 13.5 };
 ws.getCell('B6').value = new Date(Date.UTC(2026, 8, 29));
 ws.getCell('A1').font = { bold: true, color: { argb: 'FF1D4ED8' } };
+ws.getCell('B1').font = { bold: true, color: { argb: 'FF1D4ED8' } };
 ws.getCell('C2').numFmt = '0.00';
 ws.mergeCells('A7:C7');
 ws.getCell('A7').value = 'Merged note';
+ws.addImage(src.addImage({ base64: PNG_1PX, extension: 'png' }), 'E2:G6');
 src.addWorksheet('Second').getCell('A1').value = { richText: [{ text: 'Rich ' }, { text: 'text', font: { bold: true } }] };
 const fd = new FormData();
 const srcBuf = Buffer.from(await src.xlsx.writeBuffer());
@@ -167,10 +174,24 @@ check('shared formulas are expanded per cell', cellAt(ds[0], 2, 3)?.f === '=B3*C
 check('dates import as serial numbers', Math.round(cellAt(ds[0], 5, 1)?.v) === 46294, cellAt(ds[0], 5, 1));
 check('merges, freeze, tab colour, widths import', ds[0].m.get('merges').size === 1 && ds[0].m.get('meta').freeze?.row === 1 && ds[0].m.get('meta').tabColor === '#FF0000' && ds[0].m.get('colMeta').size >= 3);
 check('rich text imports as its text', cellAt(ds[1], 0, 0)?.v === 'Rich text');
+// §83: one shared style table — a cell holds the id of its style, equal styles share one entry.
+const styleTable = d.doc.getMap('styles');
+check('styles live in a shared table, cells hold ids', typeof rawCellAt(ds[0], 0, 0)?.s === 'string' && styleTable.has(rawCellAt(ds[0], 0, 0).s) && styleTable.size >= 2, [rawCellAt(ds[0], 0, 0)?.s, styleTable.size]);
+check('… two cells with the same style share one id', rawCellAt(ds[0], 0, 0)?.s === rawCellAt(ds[0], 0, 1)?.s && rawCellAt(ds[0], 0, 0)?.s !== rawCellAt(ds[0], 1, 2)?.s);
+// §83: floating pictures become assets of the spreadsheet, drawn by the drawing plugin at their cells.
+const drawings = JSON.parse(d.doc.getMap('resources').get('SHEET_DRAWING_PLUGIN') ?? '{}');
+const pics = Object.values(drawings[ds[0].id]?.data ?? {});
+check('drawings are keyed by sheet id with an order list, as Univer stores them', Array.isArray(drawings[ds[0].id]?.order) && drawings[ds[0].id].order.length === 1, Object.keys(drawings));
+check('a picture imports as a drawing anchored to its cells (E2)', pics.length === 1 && pics[0].drawingType === 0 && pics[0].imageSourceType === 'URL' && pics[0].sheetTransform?.from?.column === 4 && pics[0].sheetTransform?.from?.row === 1 && pics[0].transform?.width > 0, pics);
+check('… the import report counts it', imported.metadata?.import?.preserved?.includes('pictures: 1'), imported.metadata?.import);
+const picRes = pics[0] ? await call('GET', pics[0].source.replace(/^\/api/, ''), { user: claudia, raw: true }) : null;
+check('… and its bytes are served as an asset of the spreadsheet', picRes?.status === 200 && picRes.headers.get('content-type')?.includes('image/png'), picRes?.status);
 setCell(ds[0], 9, 0, { v: 'after import', t: 1 });
 await sleep(2500);
 const reDl = await loadXlsx(await call('GET', `/resources/${imported.id}/export?format=xlsx`, { user: claudia, raw: true }));
 check('imported file exports with later edits', reDl.getWorksheet('Data').getCell('A10').value === 'after import');
+check('… the picture travels back into the .xlsx at its cells', reDl.getWorksheet('Data').getImages().length === 1 && Math.floor(reDl.getWorksheet('Data').getImages()[0].range.tl.col) === 4, reDl.getWorksheet('Data').getImages().map((i) => i.range));
+check('… and the A1 style survived the round trip', reDl.getWorksheet('Data').getCell('A1').font?.bold === true);
 const orig = await call('GET', `/resources/${imported.id}/download`, { user: claudia, raw: true });
 check('download of an imported file still returns the original upload', Buffer.from(await orig.arrayBuffer()).length === srcBuf.length);
 d.provider.destroy();

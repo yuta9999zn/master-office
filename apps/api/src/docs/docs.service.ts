@@ -257,7 +257,7 @@ export class DocsService {
     }
     if (row.type === 'spreadsheet') {
       if (!SHEET_FORMATS.includes(format)) throw new BadRequestException(`Spreadsheets export as ${SHEET_FORMATS.join(', ')}`);
-      const f = await this.sheets.export(id, row.name, format as SheetExportFormat, { author: actor.name, sheetId });
+      const f = await this.sheets.export(id, row.name, format as SheetExportFormat, { author: actor.name, sheetId, loadImage: this.imageLoader(id) });
       if (!opts.quiet) await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
       return f;
     }

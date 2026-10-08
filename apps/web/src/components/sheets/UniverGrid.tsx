@@ -12,7 +12,7 @@ import '@univerjs/preset-sheets-thread-comment/lib/index.css';
 import '@univerjs/preset-sheets-drawing/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 
-import { hasWorkbook } from '@workos/sheet-model';
+import { hasWorkbook, SHEETS_MAP } from '@workos/sheet-model';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { SheetBinding, type UniverAPI } from './binding';
@@ -32,6 +32,25 @@ export interface GridHandle {
   showFormulas: { set: (on: boolean) => void; get: () => boolean };
   /** Rows hidden on this screen only (filter views). */
   rowFilter: { set: (sheetId: string | null, rows: Set<number>) => void };
+  /** How formulas were handled on open (§83): all recalculated, or the saved results kept for a big workbook. */
+  formulas: { count: number; cells: number; recalculatedOnOpen: boolean; recalculate: () => void };
+}
+
+/**
+ * Above this many formulas the saved results are shown as they are and only formulas without a result are computed
+ * on open (Univer's WHEN_EMPTY) — recalculating 80 000 lookups took most of a minute. Data → Recalculate all is a click.
+ */
+const RECALC_ON_OPEN_UP_TO = 20_000;
+
+/** Cells and formulas in the Y.Doc — counted from the maps, nothing materialised. */
+function countFormulas(doc: Y.Doc) {
+  let cells = 0;
+  let formulas = 0;
+  doc.getMap(SHEETS_MAP).forEach((m) => {
+    const cellsMap = (m as Y.Map<unknown>).get('cells') as Y.Map<{ f?: string | null }> | undefined;
+    cellsMap?.forEach((c) => (cells++, c?.f && formulas++));
+  });
+  return { cells, formulas };
 }
 
 const rawValue = (api: UniverAPI, unitId: string) => (sheet: string, a1: string) => {
@@ -88,6 +107,9 @@ export function UniverGrid({
     let cleanup: (() => void) | null = null;
     (async () => {
       try {
+        const t0 = performance.now();
+        const size = countFormulas(doc);
+        const recalcOnOpen = size.formulas <= RECALC_ON_OPEN_UP_TO;
         const [presets, core, filter, sort, cf, dv, fr, link, note, comment, drawing, table, enCore, enFilter, enSort, enCf, enDv, enFr, enLink, enNote, enComment, enDrawing, enTable] = await Promise.all([
           import('@univerjs/presets'),
           import('@univerjs/preset-sheets-core'),
@@ -127,8 +149,9 @@ export function UniverGrid({
               container: host.current,
               ribbonType: 'classic',
               sheets: { disableForceStringMark: true },
-              // Formulas are always recalculated on open, like Excel with "fullCalcOnLoad".
-              formula: { initialFormulaComputing: 0 as never },
+              // Formulas are recalculated on open, like Excel with "fullCalcOnLoad" — unless the workbook is big (§83):
+              // then the saved results stand and only formulas without one are computed (CalculationMode.WHEN_EMPTY).
+              formula: { initialFormulaComputing: (recalcOnOpen ? 0 : 1) as never },
               // Sheet tabs live above the grid (SheetTabs, Lark style), not in Univer's bottom bar.
               footer: { sheetBar: false, statisticBar: true, menus: true, zoomSlider: true } as never,
             }),
@@ -149,6 +172,7 @@ export function UniverGrid({
         chartContexts.set(unitId, { doc, api: univerAPI });
         univerAPI.registerComponent(CHART_COMPONENT, SheetChart as never, { framework: 'react' } as never);
         univerAPI.registerComponent(CURSOR_LABEL, CursorLabel as never, { framework: 'react' } as never);
+        const tEngine = performance.now();
         const binding = new SheetBinding(univerAPI, doc, unitId, {
           editable,
           resources: injector.get(presets.IResourceManagerService),
@@ -157,6 +181,23 @@ export function UniverGrid({
           onError: (e) => console.error('[sheets] binding', e),
         });
         binding.start();
+        const tWorkbook = performance.now();
+        // Open timing (engine, workbook build, first calculation) for the console and the measuring scripts.
+        const timing: Record<string, number> = { cells: size.cells, formulas: size.formulas, engineMs: Math.round(tEngine - t0), workbookMs: Math.round(tWorkbook - tEngine) };
+        (window as unknown as { __moSheetOpen?: Record<string, number> }).__moSheetOpen = timing;
+        try {
+          const fx = univerAPI.getFormula?.();
+          const done = fx?.calculationEnd?.(() => {
+            if (timing.calcMs === undefined) {
+              timing.calcMs = Math.round(performance.now() - tWorkbook);
+              console.debug('[sheets] open', { ...timing, recalculatedOnOpen: recalcOnOpen });
+            }
+            done?.dispose?.();
+          });
+        } catch {
+          /* no formula facade */
+        }
+        console.debug('[sheets] open', { ...timing, recalculatedOnOpen: recalcOnOpen });
         // Viewers never write: only editors keep pivot tables up to date.
         const pivots = editable ? new PivotEngine(univerAPI, doc, unitId) : null;
         pivots?.start();
@@ -172,7 +213,20 @@ export function UniverGrid({
         const formulasView = installShowFormulas(injector, core, univerAPI, unitId);
         if (showFormulasPref()) formulasView.set(true, false);
         const rowFilter = installRowFilter(injector, core, univerAPI, unitId);
-        const handle = { api: univerAPI, binding, value: rawValue(univerAPI, unitId), showFormulas: formulasView, rowFilter };
+        const handle: GridHandle = {
+          api: univerAPI,
+          binding,
+          value: rawValue(univerAPI, unitId),
+          showFormulas: formulasView,
+          rowFilter,
+          formulas: {
+            ...size,
+            count: size.formulas,
+            recalculatedOnOpen: recalcOnOpen,
+            // Every formula of the open workbook, as Univer does it after "initialFormulaComputing: FORCED".
+            recalculate: () => void univerAPI.executeCommand('formula.mutation.set-formula-calculation-start', { commands: [], forceCalculation: true }),
+          },
+        };
         (window as unknown as { __moSheet?: GridHandle }).__moSheet = handle; // e2e hooks (formula parity tests)
         onReady?.(handle);
         setState('ready');

@@ -1,4 +1,4 @@
-import { cellKey, createYSheet, emptySheet, newId, SHEETS_MAP, WB_MAP, ySheet, type Cell, type CellStyle, type YSheet } from '@workos/sheet-model';
+import { cellKey, createYSheet, emptySheet, newId, resolveCell, SHEETS_MAP, toStoredCell, WB_MAP, ySheet, yStyles, type Cell, type CellStyle, type YSheet } from '@workos/sheet-model';
 import * as Y from 'yjs';
 
 // Server side of macro execution (docs/ARCHITECTURE.md §48): the operations a macro produced in the sandbox are
@@ -52,6 +52,7 @@ export function applyMacroOps(doc: Y.Doc, ops: Op[], active: string): ApplyRepor
   const report: ApplyReport = { applied: 0, skipped: [], toasts: [] };
   const wbMeta = doc.getMap(WB_MAP);
   const sheets = doc.getMap(SHEETS_MAP);
+  const styles = yStyles(doc);
   const order = () => ((wbMeta.get('sheetOrder') as string[] | undefined) ?? []).filter((id) => sheets.has(id));
   const byName = (name?: string): { id: string; ys: YSheet } => {
     const want = name ?? active;
@@ -70,10 +71,10 @@ export function applyMacroOps(doc: Y.Doc, ops: Op[], active: string): ApplyRepor
     for (let i = 0; i < (o.nr ?? 1); i++)
       for (let j = 0; j < (o.nc ?? 1); j++) {
         const key = cellKey(rows[o.r + i], cols[o.c + j]);
-        const next = fn(key, ys.cells.get(key));
+        const next = fn(key, resolveCell(styles, ys.cells.get(key)) ?? undefined);
         if (next === undefined) continue;
         if (next === null || (next.v === undefined && !next.f && !next.s)) ys.cells.delete(key);
-        else ys.cells.set(key, next);
+        else ys.cells.set(key, toStoredCell(styles, next));
       }
   };
   const setMeta = (ys: YSheet, patch: Record<string, unknown>) => ys.map.set('meta', { ...ys.meta(), ...patch });
@@ -89,7 +90,7 @@ export function applyMacroOps(doc: Y.Doc, ops: Op[], active: string): ApplyRepor
         rows.forEach((row, i) =>
           row.forEach((mc, j) => {
             const key = cellKey(rowIds[o.r + i], colIds[o.c + j]);
-            const prev = ys.cells.get(key);
+            const prev = resolveCell(styles, ys.cells.get(key));
             const style = (mc?.s as CellStyle | undefined) ?? prev?.s ?? undefined;
             let next: Cell | null;
             if (!mc || (mc.v === undefined && !mc.f)) next = style ? { s: style } : null;
@@ -98,7 +99,7 @@ export function applyMacroOps(doc: Y.Doc, ops: Op[], active: string): ApplyRepor
             if (next && typeof next.v === 'boolean') next.v = next.v ? 1 : 0;
             // A formula's cached result is stale now: editors recompute it when they open the file.
             ys.values?.delete(key);
-            if (next) ys.cells.set(key, next);
+            if (next) ys.cells.set(key, toStoredCell(styles, next));
             else ys.cells.delete(key);
           }),
         );

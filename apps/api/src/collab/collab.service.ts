@@ -3,7 +3,7 @@ import { Server } from '@hocuspocus/server';
 import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { can } from '@workos/shared';
 import { COLLAB_FIELD, SETTINGS_MAP, tabField, TABS_KEY, type JSONContent } from '@workos/doc-model';
-import { RESOURCES_MAP, SHEETS_MAP, WB_MAP, writeWorkbook, type PlainWorkbook } from '@workos/sheet-model';
+import { RESOURCES_MAP, SHEETS_MAP, WB_MAP, writeWorkbook, type PlainWorkbook, STYLES_MAP } from '@workos/sheet-model';
 import { DECK_MAP, ORDER_ARRAY, SLIDES_MAP, writeDeck, type PlainDeck } from '@workos/slide-model';
 import * as Y from 'yjs';
 import { config } from '../config';
@@ -125,6 +125,25 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
           for (const k of [...m.keys()]) m.delete(k);
         }
         writeWorkbook(doc, wb);
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  /**
+   * Replaces a workbook with a state another process built (the import worker, §83): one transaction, so live
+   * editors see the import land at once. The update's root maps join this document's by name.
+   */
+  async replaceWorkbookState(resourceId: string, state: Uint8Array, editor: { id: string; name: string }) {
+    const conn = await this.server.hocuspocus.openDirectConnection(docName(resourceId), { user: editor });
+    try {
+      await conn.transact((doc) => {
+        for (const name of [WB_MAP, SHEETS_MAP, RESOURCES_MAP, STYLES_MAP]) {
+          const m = doc.getMap(name);
+          for (const k of [...m.keys()]) m.delete(k);
+        }
+        Y.applyUpdate(doc, state);
       });
     } finally {
       await conn.disconnect();

@@ -1,6 +1,11 @@
 import { cellValue, newId, usedRange, type Cell, type CellStyle, type PlainSheet, type PlainWorkbook } from '@workos/sheet-model';
+import { applyImages, drawingResource, imagesIn, imagesOf, type ImportedImage } from './xlsx-images';
 import { applyResources, readResources } from './xlsx-resources';
 import ExcelJS from 'exceljs';
+
+export { drawingResource, type ImportedImage };
+/** Bytes of a picture a workbook references (its own assets or data: URLs). */
+export type ImageLoader = (src: string) => Promise<{ mime: string; data: Buffer } | null>;
 
 /** XLSX ⇄ internal workbook (docs/ARCHITECTURE.md §8). Univer style codes are used on the internal side. */
 
@@ -116,12 +121,13 @@ export interface XlsxReport {
   warnings: string[];
 }
 
-export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: PlainWorkbook; report: XlsxReport }> {
+export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: PlainWorkbook; report: XlsxReport; images: ImportedImage[] }> {
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(buf as unknown as ArrayBuffer);
   const counts = { sheets: 0, cells: 0, formulas: 0, styled: 0, merges: 0, images: 0 };
   const sheets: PlainSheet[] = [];
   const pairs: { id: string; ws: ExcelJS.Worksheet }[] = [];
+  const images: ImportedImage[] = [];
   book.eachSheet((ws) => {
     counts.sheets++;
     const cells: PlainSheet['cells'] = {};
@@ -152,11 +158,10 @@ export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: Plain
       merges.push({ r0: m.top - 1, c0: m.left - 1, r1: m.bottom - 1, c1: m.right - 1 });
     }
     counts.merges += merges.length;
-    counts.images += ws.getImages?.().length ?? 0;
     const view = ws.views?.[0] as { state?: string; xSplit?: number; ySplit?: number } | undefined;
     const id = newId();
     pairs.push({ id, ws });
-    sheets.push({
+    const sheet: PlainSheet = {
       id,
       meta: {
         name: ws.name,
@@ -171,7 +176,11 @@ export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: Plain
       rowMeta,
       colMeta,
       merges,
-    });
+    };
+    sheets.push(sheet);
+    const found = imagesIn(book, ws, sheet);
+    counts.images += ws.getImages?.().length ?? 0;
+    images.push(...found);
   });
   if (!sheets.length) throw new Error('The workbook has no worksheets');
   // Conditional formats, data validation, notes and named ranges become Univer plugin state.
@@ -180,11 +189,12 @@ export async function importXlsx(buf: Buffer, name: string): Promise<{ wb: Plain
   if (extra.counts.conditionalSkipped) degraded.push(`conditional formats without an equivalent: ${extra.counts.conditionalSkipped} (icon sets, dates…)`);
   if (extra.counts.validationsSkipped) degraded.push(`data validation rules without an equivalent: ${extra.counts.validationsSkipped}`);
   const dropped = ['charts and pivot tables', 'macros (VBA)', 'external data connections'];
-  if (counts.images) dropped.unshift(`images: ${counts.images}`);
+  if (counts.images > images.length) dropped.unshift(`pictures in a format other than PNG / JPEG / GIF: ${counts.images - images.length}`);
   return {
     wb: { name: name.replace(/\.(xlsx|xlsm|xls|csv)$/i, ''), sheets, resources: extra.resources },
+    images,
     report: {
-      preserved: [`sheets: ${counts.sheets}`, `cells: ${counts.cells}`, `formulas: ${counts.formulas}`, `styled cells: ${counts.styled}`, `merged ranges: ${counts.merges}`, 'column widths, row heights, frozen panes, tab colours, number formats', `conditional formats: ${extra.counts.conditional}`, `data validation rules: ${extra.counts.validations}`, `notes: ${extra.counts.notes}`, `named ranges: ${extra.counts.names}`],
+      preserved: [`sheets: ${counts.sheets}`, `cells: ${counts.cells}`, `formulas: ${counts.formulas}`, `styled cells: ${counts.styled}`, `merged ranges: ${counts.merges}`, 'column widths, row heights, frozen panes, tab colours, number formats', `conditional formats: ${extra.counts.conditional}`, `data validation rules: ${extra.counts.validations}`, `notes: ${extra.counts.notes}`, `named ranges: ${extra.counts.names}`, ...(images.length ? [`pictures: ${images.length}`] : [])],
       degraded,
       dropped,
       warnings: [],
@@ -215,7 +225,7 @@ function styleOut(cell: ExcelJS.Cell, s: CellStyle) {
   if (s.n?.pattern) cell.numFmt = s.n.pattern;
 }
 
-export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string } = {}): Promise<Buffer> {
+export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string; loadImage?: ImageLoader } = {}): Promise<Buffer> {
   const book = new ExcelJS.Workbook();
   book.creator = meta.author ?? 'Master Office';
   book.created = new Date();
@@ -271,5 +281,14 @@ export async function exportXlsx(wb: PlainWorkbook, meta: { author?: string } = 
   }
   // Conditional formats, data validation, notes, hyperlinks and named ranges (Univer plugin state).
   applyResources(book, byId, wb.resources);
+  // Floating pictures (the drawing plugin's state) — only the workbook's own assets are fetched.
+  if (meta.loadImage) {
+    const loaded: Parameters<typeof applyImages>[3] = [];
+    for (const img of imagesOf(wb.resources?.SHEET_DRAWING_PLUGIN)) {
+      const data = await meta.loadImage(img.source).catch(() => null);
+      if (data && /^image\/(png|jpe?g|gif)$/i.test(data.mime)) loaded.push({ img, data: data.data, mime: data.mime });
+    }
+    applyImages(book, byId, new Map(wb.sheets.map((s) => [s.id, s])), loaded);
+  }
   return Buffer.from(await book.xlsx.writeBuffer());
 }

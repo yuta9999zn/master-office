@@ -16,13 +16,18 @@ import {
   splitKey,
   WB_MAP,
   ySheet,
+  yStyles,
   newId,
+  resolveStyle,
+  styleKeyOf,
+  toStoredCell,
   type Cell,
   type ColMeta,
   type PlainSheet,
   type PlainWorkbook,
   type RowMeta,
   type SheetMeta,
+  type StoredCell,
 } from '@workos/sheet-model';
 import * as Y from 'yjs';
 
@@ -74,6 +79,26 @@ export function toUniverSheet(s: PlainSheet) {
   };
 }
 
+/**
+ * Floating pictures and charts ({ [sheetId]: { data, order } }) carry the unit id they were created in; a copy, a
+ * restored version or an import made on the server carry another one. Every drawing is stamped with this unit.
+ */
+function rekeyDrawings(json: string, unitId: string): string {
+  try {
+    const map = JSON.parse(json) as Record<string, { data?: Record<string, Any>; order?: string[] }>;
+    let changed = false;
+    for (const item of Object.values(map ?? {})) {
+      if (!item || typeof item !== 'object') continue;
+      if (!Array.isArray(item.order)) (item.order = Object.keys(item.data ?? {})), (changed = true);
+      for (const d of Object.values(item.data ?? {})) if (d && d.unitId !== unitId) (d.unitId = unitId), (changed = true);
+    }
+    return changed ? JSON.stringify(map) : json;
+  } catch {
+    return json;
+  }
+}
+
+/** The Univer snapshot: cells reference the shared style table (`styles`) by id, as Univer stores them itself. */
 export function toUniverWorkbook(unitId: string, wb: PlainWorkbook) {
   const sheets: Record<string, Any> = {};
   for (const s of wb.sheets) sheets[s.id] = toUniverSheet(s);
@@ -82,10 +107,10 @@ export function toUniverWorkbook(unitId: string, wb: PlainWorkbook) {
     name: wb.name,
     appVersion: '1.0.3',
     locale: 'enUS',
-    styles: {},
+    styles: wb.styles ?? {},
     sheetOrder: wb.sheets.map((s) => s.id),
     sheets,
-    resources: Object.entries(wb.resources ?? {}).map(([name, data]) => ({ name, data })),
+    resources: Object.entries(wb.resources ?? {}).map(([name, data]) => ({ name, data: name === 'SHEET_DRAWING_PLUGIN' ? rekeyDrawings(data, unitId) : data })),
   };
 }
 
@@ -187,7 +212,8 @@ export class SheetBinding {
   }
 
   private createUnit(activeSheetId?: string) {
-    const plain = readWorkbook(this.doc);
+    // Styles stay ids: Univer takes the table as it is, and a 500k-cell workbook is not expanded cell by cell.
+    const plain = readWorkbook(this.doc, { styles: 'table' });
     this.rebuildMirrors();
     this.applying++;
     try {
@@ -500,6 +526,7 @@ export class SheetBinding {
     const ws = fws.getSheet();
     const rows = ys.rows.toArray();
     const cols = ys.cols.toArray();
+    const table = yStyles(this.doc);
     const done = new Set<string>();
     for (const r0 of ranges) {
       const rs = Math.max(0, r0.startRow);
@@ -517,7 +544,12 @@ export class SheetBinding {
           const prev = ys.cells.get(key);
           if (!next) {
             if (prev) ys.cells.delete(key);
-          } else if (!sameJSON(prev, next)) ys.cells.set(key, next);
+            continue;
+          }
+          // Compared by style id (an old workbook may still hold the style object): unchanged cells are not rewritten.
+          const stored = toStoredCell(table, next);
+          const prevKeyed = prev ? { ...prev, s: styleKeyOf(prev.s) || undefined } : prev;
+          if (!sameJSON(prevKeyed, stored)) ys.cells.set(key, stored);
         }
       }
     }
@@ -646,7 +678,7 @@ export class SheetBinding {
             continue;
           }
           if (!cur?.f || (cur.v === v && (t === undefined || cur.t === t))) continue;
-          const next: Cell = { ...cur };
+          const next: StoredCell = { ...cur };
           if (v === null || v === undefined) {
             delete next.v;
             delete next.t;
@@ -748,6 +780,7 @@ export class SheetBinding {
       // 2) cells, row/column metadata, merges, sheet meta
       const cellWrites = new Map<string, Record<number, Record<number, Any>>>();
       const styles = this.workbook()?.getWorkbook?.().getStyles?.();
+      const table = yStyles(this.doc);
       for (const e of events) {
         const sid = this.sheetIdOf(e.target);
         if (!sid) continue;
@@ -763,18 +796,19 @@ export class SheetBinding {
             const c = m.colIdx.get(cid);
             if (r === undefined || c === undefined) continue;
             const cell = ys.cells.get(key);
-            const old = (e as Y.YMapEvent<Cell>).changes.keys.get(key)?.oldValue as Cell | undefined;
+            const old = (e as Y.YMapEvent<StoredCell>).changes.keys.get(key)?.oldValue as StoredCell | undefined;
             // A change that keeps the formula and style (a result written back by another client) never
             // replaces what this client has: the local engine computes the value, and a formula shifted here
-            // in the meantime must survive.
-            if (cell?.f && old?.f === cell.f && sameJSON(old?.s ?? null, cell.s ?? null)) continue;
+            // in the meantime must survive. Styles compare by id, whether stored as id or object.
+            if (cell?.f && old?.f === cell.f && styleKeyOf(old?.s) === styleKeyOf(cell.s)) continue;
             if (cell?.f && fws) {
               // A result-only update of a formula this client already has: the local engine computes it.
               const raw = fws.getSheet().getCellRaw(r, c);
               const localStyle = typeof raw?.s === 'string' ? styles?.get?.(raw.s) : raw?.s;
-              if (fws.getRange(r, c).getFormula() === cell.f && sameJSON(localStyle && Object.keys(localStyle).length ? localStyle : null, cell.s ?? null)) continue;
+              if (fws.getRange(r, c).getFormula() === cell.f && styleKeyOf(localStyle && Object.keys(localStyle).length ? localStyle : null) === styleKeyOf(cell.s)) continue;
             }
-            (matrix[r] ??= {})[c] = cell ? { v: cell.v ?? null, t: cell.v === undefined ? undefined : cell.t, f: cell.f ?? null, si: null, s: cell.s ?? null, p: null } : null;
+            // Univer receives the style object: an id it has never seen would show nothing.
+            (matrix[r] ??= {})[c] = cell ? { v: cell.v ?? null, t: cell.v === undefined ? undefined : cell.t, f: cell.f ?? null, si: null, s: resolveStyle(table, cell.s), p: null } : null;
           }
           cellWrites.set(sid, matrix);
         } else if (e.target === ys.rowMeta) {
