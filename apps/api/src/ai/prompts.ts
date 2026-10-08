@@ -9,7 +9,7 @@
 
 export type PromptApp = 'flow' | 'sheets' | 'slides' | 'docs' | 'general';
 /** What the answer is turned into. */
-export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
+export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'photodeck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
 
 export interface PromptDef {
   key: string;
@@ -306,6 +306,64 @@ Answer with JSON: {"prompt": "…"}.`,
     variables: [],
     system: 'Remove all text, letters, numbers and logo lettering from this picture and fill those places naturally, as if they had never been there. Keep everything else exactly the same: composition, people, objects, decorations, colours, light and size.',
     template: '—',
+  },
+  {
+    key: 'slides.photoDeck',
+    name: 'Presentation with pictures (from ChatGPT)',
+    app: 'slides',
+    output: 'photodeck',
+    description: 'The local model plans a picture-led deck part by part (the parts come from the request, or from the “parts” step) — which slides are a picture alone (finished by hand), a picture with a caption, words, or figures — and writes the prompt for every picture. Pictures are then made in ChatGPT / Gemini and put into the picture slots (AI → “Pictures for the picture slots”).',
+    temperature: 0.4,
+    variables: [
+      { ...REQUEST, example: 'Làm bộ slide 30 trang giới thiệu về Hạ Long và đặc sản: vịnh và hang động, đảo, làng chài, ẩm thực (chả mực, sá sùng, ngán), mua sắm, cách đi' },
+      { name: 'title', label: 'Deck title (from the request)', example: 'Giới thiệu về Hạ Long và đặc sản Hạ Long' },
+      { name: 'place', label: 'The place or subject', example: 'Hạ Long' },
+      { name: 'part', label: 'The part being planned', example: 'Ẩm thực và đặc sản' },
+      { name: 'items', label: 'Things to show in the part', example: 'chả mực, sá sùng, ngán, sam, bánh cuốn chả mực, rượu ba kích' },
+      { name: 'done', label: 'Slides the code already planned in the part', example: 'Ẩm thực và đặc sản; Chả mực; Sá sùng; Ngán' },
+      { name: 'count', label: 'Slides to add to this part', example: '2' },
+    ],
+    system: `You add slides to ONE part of a picture-led presentation, answered as JSON: s = exactly {{count}} new slides, each with k = its kind and h = its heading (max 8 words, in {{language}}). The part already has: {{done}} — never repeat those.
+Kinds:
+- photo: a picture ALONE, no words — a place, a landscape, a dish, people, a moment. People finish these slides by hand.
+- caption: a picture with one short line under it.
+- text: 3–5 short practical points (history, how to get there, tips, where to buy, what it costs) — no picture.
+- data: ONLY if this part has real figures (visitors, area, distances, prices, years) — a chart. At most one per part.
+Rules: prefer practical text (how to get there, when, where to buy, what it costs, tips) and real figures when the part has them, then pictures of other real, famous spots of this part; never two text slides in a row; each heading names something concrete from this part — a place, a dish, an activity — never "Slide 3"; use only things named here or that truly belong to {{place}}, never one from another city; a data heading says WHAT is measured, never a value.
+Answer with JSON only.`,
+    template: 'The presentation: {{title}}\nThis part: {{part}}\nThings named in the request for it: {{items}}\nAlready planned in this part: {{done}}\nAdd {{count}} slides now.',
+  },
+  {
+    key: 'slides.photoDeck.parts',
+    name: 'Presentation with pictures · split into parts',
+    app: 'slides',
+    output: 'text',
+    partOf: 'slides.photoDeck',
+    description: 'Only when the request does not list its parts: the deck title and 4–8 parts, each with the things to show in it.',
+    temperature: 0.3,
+    variables: [{ ...REQUEST, example: 'Giới thiệu Đà Lạt, 20 trang' }],
+    system: `You split a presentation into parts, answered as JSON: t = the deck title (in {{language}}), p = 4–8 parts in a natural order, each with n = its name (max 6 words) and i = up to 6 concrete things to show in it (places, dishes, activities — real ones that belong to the subject). Answer with JSON only.`,
+    template: 'Presentation about:\n{{request}}',
+  },
+  {
+    key: 'slides.photoDeck.detail',
+    name: 'Presentation with pictures · write a few slides',
+    app: 'slides',
+    output: 'text',
+    partOf: 'slides.photoDeck',
+    description: 'Second step, a few slides at a time: the points of text slides, the figures of data slides, the caption and the image-AI prompt of picture slides.',
+    temperature: 0.4,
+    variables: [
+      { name: 'title', label: 'Deck title', example: 'Hạ Long – kỳ quan và đặc sản' },
+      { name: 'plan', label: 'All slides (number · kind · heading)', example: '1 · cover · Hạ Long – kỳ quan thế giới\n2 · photo · Vịnh Hạ Long lúc bình minh\n3 · data · Vịnh Hạ Long qua những con số' },
+      { name: 'range', label: 'Slides to write now', example: '1–6' },
+    ],
+    system: `You write the content of some slides of a picture-led presentation, answered as JSON: s = one entry per slide asked, i = its number.
+- cover, section, photo, caption, end: img = a prompt for an image AI (ChatGPT / DALL·E, Gemini), in English, 1–2 sentences: the subject, the place, light and time of day, the angle, and the style ("professional travel photography", "food photography", "aerial drone shot"); always end with "no text, no letters, no logos, 16:9". c = a line in {{language}} (max 12 words): the subtitle of cover, the line under caption, a short line for section and end. photo has no c.
+- text: b = 3–5 points in {{language}}, max 12 words each, concrete: names, places, dishes, tips.
+- data: d = 2–6 {l: label, v: number} of ONE kind of figure, u = the unit, src = who publishes such figures. Only real, well-known figures; if unsure, fewer and rounded.
+Write only the slides asked. Answer with JSON only.`,
+    template: 'The presentation: {{title}}\nAll slides (number · kind · heading):\n{{plan}}\n\nWrite slides {{range}} now.',
   },
   {
     key: 'image.retext',

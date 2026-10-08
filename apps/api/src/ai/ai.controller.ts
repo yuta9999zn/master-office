@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { SlidesService } from '../slides/slides.service';
 import { ImageStudioService } from './image-studio';
 import { z } from 'zod';
@@ -150,6 +150,21 @@ export class AiController {
     const body = parse(z.object({ slideId: z.string().max(64).optional(), newSlide: z.enum(['0', '1']).optional() }), b ?? {});
     const deck = await this.slides.deck(id);
     return this.studio.importPicture(a, id, file, { slideId: body.slideId ?? null, newSlide: body.newSlide !== '0' }, deck.size);
+  }
+
+  /** Picture slots of a deck: the prompt of each (to paste into ChatGPT / Gemini) and whether a picture is in. */
+  @Get('pictures/:id/slots')
+  async slots(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    await this.studio.requireEditor(a, id);
+    return this.studio.slotsOf(id);
+  }
+
+  /** Pictures into the slots: by slide number in the file name, else in order. */
+  @Post('pictures/:id/slots')
+  @UseInterceptors(FilesInterceptor('files', 40, { limits: { fileSize: 25 * 1024 * 1024 } }))
+  fillSlots(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @UploadedFiles() files: Express.Multer.File[]) {
+    if (!files?.length) throw new BadRequestException('Choose the pictures');
+    return this.studio.fillSlots(a, id, files);
   }
 
   /** Magic resize: the slide as a new design in another format (no model involved). */

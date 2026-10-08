@@ -107,7 +107,9 @@ import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar'
 import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 import { allRunsHave, DeckStore, LOCAL, setAlignEverywhere, setMarkEverywhere, setTextStyleEverywhere, useDeck, type DeckSnapshot } from './deck-store';
 import { DiagramDialog } from './DiagramDialog';
+import { FontSizeBox } from './FontSizeBox';
 import { PictureDownloadDialog, ResizeDialog } from './PictureDialogs';
+import { SlotsDialog } from './SlotsDialog';
 import { VideoDialog } from './MediaDialog';
 import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
@@ -125,7 +127,7 @@ const EXPORTS = [
   { f: 'pdf', label: 'PDF document (.pdf)' },
   { f: 'html', label: 'Web page (.html)' },
 ];
-const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 96];
+const SIZES = [5, 6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 96];
 const CLIP_PREFIX = 'MO-SLIDES:';
 type Clip = { kind: 'elements'; items: PlainElement[] } | { kind: 'slides'; items: PlainSlide[] };
 let clipboard: Clip | null = null;
@@ -184,6 +186,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [pictureOpen, setPictureOpen] = useState(false);
   const [resizeOpen, setResizeOpen] = useState(false);
+  const [slotsOpen, setSlotsOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [diagramDialog, setDiagramDialog] = useState(false);
   const replaceTarget = useRef<string | null>(null);
@@ -830,6 +833,9 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
             <MenuItem icon={<Scaling />} onSelect={() => setResizeOpen(true)}>
               Resize to another format…
             </MenuItem>
+            <MenuItem icon={<ImageIcon />} disabled={!editable} onSelect={() => setSlotsOpen(true)}>
+              Pictures for the picture slots…
+            </MenuItem>
             {r.mimeType && (
               <MenuItem icon={<Download />} onSelect={() => (window.location.href = `/api/resources/${r.id}/download`)}>
                 Download original ({r.name.split('.').pop()?.toUpperCase()})
@@ -1194,15 +1200,8 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
               </option>
             ))}
           </select>
-          <select aria-label="Font size" disabled={!textEnabled} value={SIZES.includes(curSize) ? String(curSize) : ''} onChange={(e) => fmt.size(Number(e.target.value))} className="h-8 w-[62px] rounded-md bg-transparent px-1.5 text-[13px] text-ink-2 outline-none hover:bg-hover disabled:opacity-40">
-            {!SIZES.includes(curSize) && <option value="">{curSize}</option>}
-            {SIZES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <Btn label="Decrease font size" disabled={!textEnabled} onClick={() => fmt.size(SIZES.filter((s) => s < curSize).pop() ?? curSize)} icon={<Minus size={14} />} />
+          <FontSizeBox value={curSize} sizes={SIZES} disabled={!textEnabled} onChange={(n) => fmt.size(n)} />
+          <Btn label="Decrease font size" disabled={!textEnabled} onClick={() => fmt.size(SIZES.filter((s) => s < curSize).pop() ?? Math.max(1, curSize - 0.5))} icon={<Minus size={14} />} />
           <Btn label="Increase font size" disabled={!textEnabled} onClick={() => fmt.size(SIZES.find((s) => s > curSize) ?? curSize)} icon={<Plus size={14} />} />
           <Sep />
           <Btn label="Bold (Ctrl+B)" disabled={!textEnabled} active={isOn('bold')} onClick={() => fmt.mark('bold')} icon={<Bold size={17} />} />
@@ -1578,6 +1577,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
       {pictureOpen && deck && <PictureDownloadDialog open onClose={() => setPictureOpen(false)} resourceId={r.id} slideNo={index + 1} slides={deck.slides.length} size={deck.size} />}
+      {slotsOpen && <SlotsDialog open onClose={() => setSlotsOpen(false)} resourceId={r.id} onGo={(id) => (goSlide(id), setSlotsOpen(false))} />}
       {resizeOpen && deck && <ResizeDialog open onClose={() => setResizeOpen(false)} resourceId={r.id} slideId={current} size={deck.size} picture={deck.slides.find((s) => s.id === current)?.meta.background?.type === 'image'} />}
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
       <Dialog open={shortcuts} onOpenChange={setShortcuts} title="Keyboard shortcuts" width={520}>

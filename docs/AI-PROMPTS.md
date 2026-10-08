@@ -421,6 +421,86 @@ Message template:
 —
 ```
 
+### `slides.photoDeck` — Presentation with pictures (from ChatGPT)
+
+The local model plans a picture-led deck part by part (the parts come from the request, or from the “parts” step) — which slides are a picture alone (finished by hand), a picture with a caption, words, or figures — and writes the prompt for every picture. Pictures are then made in ChatGPT / Gemini and put into the picture slots (AI → “Pictures for the picture slots”).
+
+- App: **slides** · Result: **photodeck** · Temperature: 0.4
+- Variables: `{{request}}`, `{{title}}`, `{{place}}`, `{{part}}`, `{{items}}`, `{{done}}`, `{{count}}`
+- Example request: “Làm bộ slide 30 trang giới thiệu về Hạ Long và đặc sản: vịnh và hang động, đảo, làng chài, ẩm thực (chả mực, sá sùng, ngán), mua sắm, cách đi”
+
+System prompt:
+
+```text
+You add slides to ONE part of a picture-led presentation, answered as JSON: s = exactly {{count}} new slides, each with k = its kind and h = its heading (max 8 words, in {{language}}). The part already has: {{done}} — never repeat those.
+Kinds:
+- photo: a picture ALONE, no words — a place, a landscape, a dish, people, a moment. People finish these slides by hand.
+- caption: a picture with one short line under it.
+- text: 3–5 short practical points (history, how to get there, tips, where to buy, what it costs) — no picture.
+- data: ONLY if this part has real figures (visitors, area, distances, prices, years) — a chart. At most one per part.
+Rules: prefer practical text (how to get there, when, where to buy, what it costs, tips) and real figures when the part has them, then pictures of other real, famous spots of this part; never two text slides in a row; each heading names something concrete from this part — a place, a dish, an activity — never "Slide 3"; use only things named here or that truly belong to {{place}}, never one from another city; a data heading says WHAT is measured, never a value.
+Answer with JSON only.
+```
+
+Message template:
+
+```text
+The presentation: {{title}}
+This part: {{part}}
+Things named in the request for it: {{items}}
+Already planned in this part: {{done}}
+Add {{count}} slides now.
+```
+
+### `slides.photoDeck.parts` — Presentation with pictures · split into parts
+
+Only when the request does not list its parts: the deck title and 4–8 parts, each with the things to show in it.
+
+- App: **slides** · Result: **text** · Temperature: 0.3 · Step of `slides.photoDeck`
+- Variables: `{{request}}`
+- Example request: “Giới thiệu Đà Lạt, 20 trang”
+
+System prompt:
+
+```text
+You split a presentation into parts, answered as JSON: t = the deck title (in {{language}}), p = 4–8 parts in a natural order, each with n = its name (max 6 words) and i = up to 6 concrete things to show in it (places, dishes, activities — real ones that belong to the subject). Answer with JSON only.
+```
+
+Message template:
+
+```text
+Presentation about:
+{{request}}
+```
+
+### `slides.photoDeck.detail` — Presentation with pictures · write a few slides
+
+Second step, a few slides at a time: the points of text slides, the figures of data slides, the caption and the image-AI prompt of picture slides.
+
+- App: **slides** · Result: **text** · Temperature: 0.4 · Step of `slides.photoDeck`
+- Variables: `{{title}}`, `{{plan}}`, `{{range}}`
+- Example request: “Hạ Long – kỳ quan và đặc sản”
+
+System prompt:
+
+```text
+You write the content of some slides of a picture-led presentation, answered as JSON: s = one entry per slide asked, i = its number.
+- cover, section, photo, caption, end: img = a prompt for an image AI (ChatGPT / DALL·E, Gemini), in English, 1–2 sentences: the subject, the place, light and time of day, the angle, and the style ("professional travel photography", "food photography", "aerial drone shot"); always end with "no text, no letters, no logos, 16:9". c = a line in {{language}} (max 12 words): the subtitle of cover, the line under caption, a short line for section and end. photo has no c.
+- text: b = 3–5 points in {{language}}, max 12 words each, concrete: names, places, dishes, tips.
+- data: d = 2–6 {l: label, v: number} of ONE kind of figure, u = the unit, src = who publishes such figures. Only real, well-known figures; if unsure, fewer and rounded.
+Write only the slides asked. Answer with JSON only.
+```
+
+Message template:
+
+```text
+The presentation: {{title}}
+All slides (number · kind · heading):
+{{plan}}
+
+Write slides {{range}} now.
+```
+
 ### `image.retext` — Put new information into a design
 
 Changes the words of the text layers of the slide on screen (a banner, card or poster — e.g. one whose text was made editable from a ChatGPT picture) to the new information you give; looks, places and every other line stay. "old → new" lines are applied exactly, without the model.

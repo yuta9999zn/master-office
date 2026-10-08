@@ -31,13 +31,15 @@ const FACTS: { kind: string; re: RegExp; key: (m: RegExpExecArray) => string; sw
   { kind: 'date', re: /(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?![\d/])/gu, key: (m) => m[0], swap: (_m, to) => to[0] },
   { kind: 'phone', re: /(?<![\d/])\+?\d[\d .-]{7,14}\d(?![\d/])/gu, key: (m) => m[0].replace(/\D/g, ''), swap: (_m, to) => to[0] },
   { kind: 'e-mail', re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, key: (m) => m[0].toLowerCase(), swap: (_m, to) => to[0] },
-  { kind: 'website', re: /\b(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:vn|com|net|org|io|jp|co|info|biz|shop|store)\b(?!@)/giu, key: (m) => m[0].toLowerCase().replace(/^https?:\/\/(www\.)?/, ''), swap: (_m, to) => to[0] },
+  { kind: 'website', re: /(?<![@\w.-])(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:vn|com|net|org|io|jp|co|info|biz|shop|store)\b(?!@)/giu, key: (m) => m[0].toLowerCase().replace(/^https?:\/\/(www\.)?/, ''), swap: (_m, to) => to[0] },
   { kind: 'month', re: /(tháng|thang|month)\s+(\d{1,2})(?!\s*\/)/giu, key: (m) => m[2], swap: (m, to) => m[0].replace(m[2], to[2]) },
 ];
 
 /** Words of a request that only say "change": they never have to appear in the design. */
 const INSTRUCTION_WORDS = new Set(
-  'doi sang sua thanh thay the cap nhat update change replace to into from by the a an and va voi cho la thi de nhe giup minh toi ban hay vao trong cua ra moi new set make it this that please con lai giu nguyen keep'.split(' '),
+  ('doi sang sua thanh thay the cap nhat update change replace to into from by the a an and va voi cho la thi de nhe giup minh toi ban hay vao trong cua ra moi new set make it this that please con lai giu nguyen keep ' +
+    // labels of facts: "số điện thoại 09…", "email …", "địa chỉ …"
+    'so dien thoai sdt dt hotline phone tel mobile email mail website web trang dia chi address ten name').split(' '),
 );
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

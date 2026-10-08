@@ -230,6 +230,9 @@ export class ImageStudioService {
     const oy = src.rect.y + (cover ? (src.rect.h - H0 * cover) / 2 : 0);
     const els: PlainElement[] = [];
     let z = 50;
+    // Bold = clearly bigger than the rest of the design (a headline), not "big on the page": on a card every line is.
+    const sizes = lines.map((l) => (l.ink ? inkMetrics(l.text, l.box).fontPx : (l.box.y2 - l.box.y1) / 1.25)).sort((a, b) => a - b);
+    const median = sizes[Math.floor(sizes.length / 2)] ?? 0;
     for (const l of lines) {
       const colour = l.colour && l.colour !== '#000000' ? l.colour : await textColourIn(original, l.box).catch(() => '#1F2937');
       const x = ox + l.box.x1 * kx;
@@ -252,7 +255,7 @@ export class ImageStudioService {
           z: ++z,
           name: 'text from picture',
           text: textDoc([l.text], { align: 'left' }),
-          style: { fontSize: Math.max(5, Math.round(px * 0.75 * 10) / 10), bold: l.bold || px > size.h * 0.05, color: colour, vAlign: 'middle', pad: 0, lineHeight: 1.1, autofit: 'shrink' },
+          style: { fontSize: Math.max(5, Math.round(px * 0.75 * 10) / 10), bold: l.bold || m.fontPx >= median * 1.7, color: colour, vAlign: 'middle', pad: 0, lineHeight: 1.1, autofit: 'shrink' },
         });
         continue;
       }
@@ -268,7 +271,7 @@ export class ImageStudioService {
         z: ++z,
         name: 'text from picture',
         text: textDoc([l.text], { align: 'left' }),
-        style: { fontSize, bold: l.bold || h > size.h * 0.06, color: colour, vAlign: 'middle', pad: 0, lineHeight: 1.1, autofit: 'shrink' },
+        style: { fontSize, bold: l.bold || h / 1.25 >= median * 1.7, color: colour, vAlign: 'middle', pad: 0, lineHeight: 1.1, autofit: 'shrink' },
       });
     }
     await this.collab.transact(resourceId, { id: actor.id, name: `${actor.name} (AI)` }, (doc) => {
@@ -383,6 +386,82 @@ export class ImageStudioService {
     for (const f of Object.values(formats)) if (Math.abs(f.size.w / f.size.h / (w / h) - 1) < 0.02) return f.size;
     const W = w >= h ? 1200 : Math.round((1200 * w) / h);
     return { w: W, h: Math.round((W * h) / w) };
+  }
+
+  // ── Picture slots (§82): pictures made in ChatGPT / Gemini go into the slots a deck was planned with ──
+
+  /** Every picture slot of the deck, in slide order: its slide number, the prompt to paint it from, filled or not. */
+  async slotsOf(resourceId: string) {
+    const state = await this.collab.currentState(resourceId);
+    if (!state) throw new NotFoundException('Presentation not found');
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, state);
+    const slides = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
+    const out: { slide: number; slideId: string; elementId: string; prompt: string; filled: boolean; w: number; h: number }[] = [];
+    doc
+      .getArray<string>(ORDER_ARRAY)
+      .toArray()
+      .forEach((sid, i) => {
+        const ym = slides.get(sid);
+        if (!ym) return;
+        for (const e of readSlide(sid, ym).elements)
+          if (e.type === 'image' && e.name === 'picture slot') out.push({ slide: i + 1, slideId: sid, elementId: e.id, prompt: e.alt ?? '', filled: !String(e.src ?? '').startsWith('data:image/svg+xml'), w: e.w, h: e.h });
+      });
+    return out;
+  }
+
+  /**
+   * Pictures into slots: a file named after its slide ("slide 05.png", "trang-5.jpg", "05 vịnh.png") goes to that
+   * slide's slot; the others fill the empty slots in order. Each picture is cropped to its slot's shape (like
+   * "cover"), never stretched.
+   */
+  async fillSlots(actor: Actor, resourceId: string, files: { buffer: Buffer; mimetype: string; originalname: string }[]) {
+    await this.requireEditor(actor, resourceId);
+    const slots = await this.slotsOf(resourceId);
+    if (!slots.length) throw new BadRequestException('This presentation has no picture slots — make one with AI → “Presentation with pictures”');
+    const named = (f: { originalname: string }) => {
+      const name = Buffer.from(f.originalname, 'latin1').toString('utf8');
+      const m = /(?:slide|trang|page|ảnh|anh)[\s_-]*0*(\d{1,2})(?!\d)/i.exec(name) ?? /^0*(\d{1,2})(?!\d)/.exec(name);
+      return { name, no: m ? Number(m[1]) : null };
+    };
+    const list = files.map((f) => ({ f, ...named(f) })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const taken = new Set<string>();
+    const plan: { slot: (typeof slots)[number]; f: (typeof list)[number] }[] = [];
+    for (const x of list.filter((x) => x.no !== null)) {
+      const slot = slots.find((s) => s.slide === x.no && !taken.has(s.elementId));
+      if (slot) (taken.add(slot.elementId), plan.push({ slot, f: x }));
+      else x.no = null;
+    }
+    for (const x of list.filter((x) => x.no === null)) {
+      const slot = slots.find((s) => !s.filled && !taken.has(s.elementId));
+      if (!slot) break;
+      taken.add(slot.elementId);
+      plan.push({ slot, f: x });
+    }
+    const placed: { slide: number; elementId: string; slideId: string; url: string; crop: { l: number; t: number; r: number; b: number }; file: string }[] = [];
+    for (const { slot, f } of plan) {
+      if (!/^image\//i.test(f.f.mimetype)) continue;
+      const png = await sharp(f.f.buffer).rotate().resize({ width: 2400, withoutEnlargement: true }).png().toBuffer().catch(() => null);
+      if (!png) continue;
+      const meta = await sharp(png).metadata();
+      const pic = (meta.width ?? 1) / (meta.height ?? 1);
+      const box = slot.w / slot.h;
+      const crop = { l: 0, t: 0, r: 0, b: 0 };
+      if (pic > box) crop.l = crop.r = Math.round(((1 - box / pic) / 2) * 1000) / 1000;
+      else if (pic < box) crop.t = crop.b = Math.round(((1 - pic / box) / 2) * 1000) / 1000;
+      placed.push({ slide: slot.slide, elementId: slot.elementId, slideId: slot.slideId, url: await this.store(actor, resourceId, png), crop, file: f.name });
+    }
+    await this.collab.transact(resourceId, { id: actor.id, name: actor.name }, (doc) => {
+      const slides = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
+      for (const p of placed) {
+        const el = (slides.get(p.slideId)?.get('elements') as Y.Map<Y.Map<unknown>> | undefined)?.get(p.elementId);
+        if (!el) continue;
+        el.set('src', p.url);
+        el.set('crop', p.crop);
+      }
+    });
+    const left = slots.filter((s) => !s.filled && !placed.some((p) => p.elementId === s.elementId)).length;
+    return { placed: placed.map((p) => ({ slide: p.slide, file: p.file })), left, unused: list.filter((x) => !placed.some((p) => p.file === x.name)).map((x) => x.name) };
   }
 
   async requireEditor(actor: Actor, resourceId: string) {

@@ -22,6 +22,7 @@ import { alignColumns, catalogText, cleanPlan, planFromRequest, planText, SHEET_
 import { DECK_OUTLINE_SCHEMA, DESIGN_FORMATS, DESIGN_SCHEMA, deckOf, slidesFromDesign, slidesFromOutline, themeById, type DeckOutline, type DesignSpec } from './gen-slides';
 import { OllamaClient, parseJsonLoose, type LlmModel } from './llm';
 import { DocsService } from '../docs/docs.service';
+import { capitalize, cleanPhotoPlan, ensureData, PARTS_SCHEMA, partBudget, partSchema, partsOfRequest, PHOTO_DETAIL_SCHEMA, photoPlanText, PICTURE_KINDS, slideCountOf, slidesFromPhotoPlan, type PhotoDetail, type PhotoPlan } from './gen-photodeck';
 import { acceptChange, planRetext } from './retext';
 import { adaptForPicture, fitSlide, resizeSlide, BANNER_COPY_SCHEMA, bannerSlides, CARD_COPY_SCHEMA, cardSlides, type BannerCopy, type CardCopy } from './gen-design';
 import { DEFAULT_IMAGE_SETTINGS, ImageStudioService, type ImageSettings } from './image-studio';
@@ -84,7 +85,7 @@ interface Live {
 
 const OUTPUT_SCHEMA: Partial<Record<PromptOutput, object>> = { flow: FLOW_SPEC_SCHEMA, sheet: SHEET_SPEC_SCHEMA, deck: DECK_OUTLINE_SCHEMA, design: DESIGN_SCHEMA };
 /** Generous caps: a CPU writes ~5–15 tokens / s, so these bound a job to a few minutes. */
-const MAX_TOKENS: Record<PromptOutput, number> = { flow: 1500, sheet: 3500, deck: 2500, design: 1800, template: 500, image: 400, layers: 1500, retext: 600, markdown: 1800, text: 900 };
+const MAX_TOKENS: Record<PromptOutput, number> = { flow: 1500, sheet: 3500, deck: 2500, design: 1800, template: 500, image: 400, layers: 1500, retext: 600, photodeck: 1600, markdown: 1800, text: 900 };
 const RETEXT_SCHEMA = {
   type: 'object',
   properties: { c: { type: 'array', maxItems: 40, items: { type: 'object', properties: { i: { type: 'integer' }, t: { type: 'string', maxLength: 240 } }, required: ['i', 't'] } } },
@@ -347,7 +348,7 @@ export class AiService {
     }
     if (input.targetId) {
       const { row } = await this.perms.require(actor, input.targetId, p.output === 'markdown' || p.output === 'text' ? 'viewer' : 'editor');
-      const want = { flow: 'flow', sheet: 'spreadsheet', deck: 'presentation', image: 'presentation', layers: 'presentation', retext: 'presentation' }[p.output as 'flow' | 'sheet' | 'deck' | 'image' | 'layers' | 'retext'];
+      const want = { flow: 'flow', sheet: 'spreadsheet', deck: 'presentation', photodeck: 'presentation', image: 'presentation', layers: 'presentation', retext: 'presentation' }[p.output as 'flow' | 'sheet' | 'deck' | 'photodeck' | 'image' | 'layers' | 'retext'];
       if (want && row.type !== want) throw new BadRequestException(`This prompt writes into a ${want}, not a ${row.type}`);
     }
     if ((p.output === 'design' || p.output === 'template') && input.format && !DESIGN_FORMATS[input.format]) throw new BadRequestException('Unknown format');
@@ -432,7 +433,7 @@ export class AiService {
         return res.text;
       };
       // Small models build a workbook far better one sheet at a time (plan → sheets → report).
-      const answer = p.output === 'image' || p.output === 'layers' || p.output === 'retext' ? '' : p.key === 'sheet.generate' && p.output === 'sheet' ? await this.sheetSteps(actor, gen, job.request) : await gen('', p, p.output === 'template' ? (isCard(p.key, input.format) ? CARD_COPY_SCHEMA : BANNER_COPY_SCHEMA) : OUTPUT_SCHEMA[p.output], MAX_TOKENS[p.output]);
+      const answer = p.output === 'image' || p.output === 'layers' || p.output === 'retext' ? '' : p.output === 'photodeck' ? await this.photoDeckSteps(actor, gen, p, job.request) : p.key === 'sheet.generate' && p.output === 'sheet' ? await this.sheetSteps(actor, gen, job.request) : await gen('', p, p.output === 'template' ? (isCard(p.key, input.format) ? CARD_COPY_SCHEMA : BANNER_COPY_SCHEMA) : OUTPUT_SCHEMA[p.output], MAX_TOKENS[p.output]);
       const result = await this.apply(actor, p, { ...input, request: job.request }, answer, format?.size ?? null, gen, live);
       await this.db
         .update(aiRuns)
@@ -454,6 +455,72 @@ export class AiService {
    * master lists, then the data sheets — told which codes the master lists hold, so their lookups find real rows —
    * and last the report sheets, which pick figures from the finished columns. Returns one SheetSpec as JSON.
    */
+  /**
+   * "slides.photoDeck" in steps: the plan (kinds and headings of every slide), then the slides a few at a time (points,
+   * figures, captions, picture prompts) — a 3B model keeps 6 slides straight, not 30.
+   */
+  private async photoDeckSteps(actor: Actor, gen: Gen, p: PromptDef, request: string): Promise<string> {
+    const want = slideCountOf(request) ?? 16;
+    const lang = guessLanguage(request);
+    // The parts: named in the request, else asked for (a small step a 3B model does well).
+    let split = partsOfRequest(request);
+    if (!split) {
+      const out = parseJsonLoose<{ t?: string; p?: { n?: string; i?: string[] }[] }>(await gen('Parts', await this.prompt(actor, 'slides.photoDeck.parts'), PARTS_SCHEMA, 500));
+      const parts = (out.p ?? []).filter((x) => x?.n).map((x) => ({ name: String(x.n), items: (x.i ?? []).map(String).filter(Boolean) }));
+      if (parts.length < 2) throw new Error('The model found no parts for this presentation');
+      split = { title: String(out.t ?? parts[0].name), parts };
+    }
+    const place = /(?:về|about|of)\s+([A-ZĐÀ-Ỹ][\p{L}]*(?:\s+[A-ZĐÀ-Ỹ][\p{L}]*)*)/u.exec(split.title)?.[1] ?? split.title;
+    const budget = partBudget(split.parts, want);
+    const s: PhotoPlan['s'] = [{ k: 'cover', h: split.title }];
+    for (const [pi, part] of split.parts.entries()) {
+      // Code: the part opens with its name, and every thing the request lists gets a picture slide of its own (a 3B
+      // model asked to "show every item" forgets half of them). The model adds the rest: practical text, figures,
+      // other real spots.
+      const own: PhotoPlan['s'] = [{ k: 'section', h: part.name }];
+      part.items.slice(0, Math.max(0, budget[pi] - 1)).forEach((it, i) => own.push({ k: i % 2 ? 'photo' : 'caption', h: capitalize(it), p: part.name }));
+      own[0].p = part.name;
+      const extra = budget[pi] - own.length;
+      if (extra > 0) {
+        const out = parseJsonLoose<{ s?: PhotoPlan['s'] }>(
+          await gen(`Part ${pi + 1}: ${part.name}`, p, partSchema(extra), 80 + extra * 40, { title: split.title, place, part: part.name, items: part.items.join(', ') || '—', done: own.map((x) => x.h).join('; '), count: String(extra) }),
+        );
+        own.push(...(out.s ?? []).filter((x) => x && typeof x === 'object').map((x) => ({ k: x.k === 'section' ? ('photo' as const) : x.k, h: String(x.h ?? '').split('\n')[0], p: part.name })));
+      }
+      s.push(...own);
+    }
+    s.push({ k: 'end', h: lang === 'Vietnamese' ? 'Cảm ơn' : lang === 'Japanese' ? 'ありがとうございました' : 'Thank you' });
+    const { plan, fixes } = cleanPhotoPlan({ t: split.title, s, place }, want, !['Japanese', 'Chinese'].includes(lang));
+    const data = ensureData(plan, request);
+    if (data) fixes.push(data);
+    const detailP = await this.prompt(actor, 'slides.photoDeck.detail');
+    const details: PhotoDetail[] = [];
+    const planned = photoPlanText(plan);
+    const item = PHOTO_DETAIL_SCHEMA.properties.s.items;
+    for (let a = 1; a <= plan.s.length; a += 5) {
+      const nums = plan.s.map((_, i) => i + 1).filter((n) => n >= a && n < a + 5);
+      // One entry per slide asked, numbered from the chunk (the grammar enforces it: small models skip slides).
+      const chunk = { type: 'object', properties: { s: { type: 'array', minItems: nums.length, maxItems: nums.length, items: { ...item, properties: { ...item.properties, i: { type: 'integer', enum: nums } } } } }, required: ['s'] };
+      const out = parseJsonLoose<{ s?: PhotoDetail[] }>(await gen(`Slides ${nums[0]}–${nums[nums.length - 1]}`, detailP, chunk, 1000, { title: plan.t, plan: planned, range: `${nums[0]}–${nums[nums.length - 1]}` }));
+      for (const d of out.s ?? []) if (nums.includes(d?.i) && !details.some((x) => x.i === d.i)) details.push(d);
+      // What a slide's kind needs and the model left out: asked again, for that slide alone, with the field required.
+      for (const n of nums) {
+        const k = plan.s[n - 1].k;
+        const field = PICTURE_KINDS.includes(k) ? 'img' : k === 'text' ? 'b' : k === 'data' ? 'd' : null;
+        const have = details.find((x) => x.i === n);
+        const ok = (x?: PhotoDetail) => !field || (field === 'img' ? !!x?.img?.trim() : field === 'b' ? (x?.b ?? []).filter((t) => String(t).trim()).length >= 2 : (x?.d ?? []).length >= 2);
+        if (ok(have)) continue;
+        const one = { type: 'object', properties: { s: { type: 'array', minItems: 1, maxItems: 1, items: { ...item, properties: { ...item.properties, i: { type: 'integer', enum: [n] }, b: { ...item.properties.b, minItems: 3 }, d: { ...item.properties.d, minItems: 2 } }, required: ['i', field!, ...(field === 'd' ? ['u'] : [])] } } }, required: ['s'] };
+        const again = parseJsonLoose<{ s?: PhotoDetail[] }>(await gen(`Slide ${n} again`, detailP, one, 400, { title: plan.t, plan: planned, range: String(n) })).s?.[0];
+        if (!again || !ok(again)) continue;
+        const merged = { ...have, ...again, i: n };
+        if (have) details[details.indexOf(have)] = merged;
+        else details.push(merged);
+      }
+    }
+    return JSON.stringify({ plan, details, fixes });
+  }
+
   private async sheetSteps(actor: Actor, gen: Gen, request: string): Promise<string> {
     const [planP, tableP, summaryP] = await Promise.all(['sheet.plan', 'sheet.table', 'sheet.summary'].map((k) => this.prompt(actor, k)));
     // A request that lists its sheets and columns is the plan itself: no model call, nothing forgotten.
@@ -572,6 +639,35 @@ export class AiService {
       await this.moduleRef.get(SheetsService, { strict: false }).init(created.id, workbook, editor);
       await mark(created.id);
       return { resourceId: created.id, url: `/sheets/${created.id}`, title: workbook.name, sheets: workbook.sheets.map((s) => s.meta.name), warnings, fixes };
+    }
+
+    if (p.output === 'photodeck') {
+      const { plan, details, fixes } = JSON.parse(text) as { plan: PhotoPlan; details: PhotoDetail[]; fixes: string[] };
+      const slidesSvc = this.moduleRef.get(SlidesService, { strict: false });
+      const theme = themeById(/spa|beauty|làm đẹp|thẩm mỹ/i.test(input.request) ? 'natural-beauty' : /rừng|núi|nông|xanh lá|organic/i.test(input.request) ? 'forest' : 'master');
+      const byNo = new Map(details.map((d) => [d.i, d]));
+      if (input.targetId) {
+        const deck = await slidesSvc.deck(input.targetId);
+        const { slides, prompts } = slidesFromPhotoPlan(plan, byNo, deck.size, deck.theme);
+        await this.collab.transact(input.targetId, editor, (doc) => {
+          const map = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
+          for (const s of slides) {
+            const y = createYSlide(s);
+            map.set(s.id, y.map);
+            y.fill();
+          }
+          doc.getArray<string>(ORDER_ARRAY).push(slides.map((s) => s.id));
+        });
+        return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: plan.t, slides: slides.length, pictures: prompts.length, prompts, fixes };
+      }
+      const sz = DESIGN_FORMATS.deck.size;
+      const { slides, prompts } = slidesFromPhotoPlan(plan, byNo, sz, theme);
+      const name = plan.t.slice(0, 120) || 'AI presentation';
+      const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      await slidesSvc.init(created.id, name, deckOf(name, sz, theme, slides));
+      await mark(created.id);
+      const kinds = plan.s.reduce<Record<string, number>>((m, x) => ((m[x.k] = (m[x.k] ?? 0) + 1), m), {});
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, slides: slides.length, pictures: prompts.length, kinds, prompts, fixes };
     }
 
     if (p.output === 'deck') {

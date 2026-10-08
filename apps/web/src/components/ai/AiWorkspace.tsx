@@ -40,6 +40,11 @@ export function AiWorkspace() {
   const [model, setModel] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const { data: job } = useAiJob(jobId);
+  // Back on the page while a run is going (or after a reload): follow it again.
+  const active = jobs?.find((j) => j.status === 'queued' || j.status === 'running');
+  useEffect(() => {
+    if (!jobId && active) setJobId(active.id);
+  }, [jobId, active?.id]);
   const [viewing, setViewing] = useState<AiJob | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const targetType = p ? TARGET[p.output] : undefined;

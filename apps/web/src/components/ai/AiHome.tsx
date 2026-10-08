@@ -50,7 +50,7 @@ export function AiHome() {
 // ── Prompt library ──────────────────────────────────────────────────────────
 
 const APPS: PromptApp[] = ['flow', 'sheets', 'slides', 'docs', 'general'];
-const OUTPUTS: PromptOutput[] = ['flow', 'sheet', 'deck', 'template', 'design', 'image', 'layers', 'retext', 'markdown', 'text'];
+const OUTPUTS: PromptOutput[] = ['flow', 'sheet', 'deck', 'photodeck', 'template', 'design', 'image', 'layers', 'retext', 'markdown', 'text'];
 type Draft = Omit<AiPrompt, 'builtIn' | 'overridden' | 'canEdit' | 'updatedAt' | 'partOf'>;
 
 function Library() {

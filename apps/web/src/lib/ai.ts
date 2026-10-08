@@ -9,7 +9,7 @@ import { api, uploadFile } from './api';
 // The AI layer (docs/ARCHITECTURE.md §80): one assistant in the top bar for every app.
 
 export type PromptApp = 'flow' | 'sheets' | 'slides' | 'docs' | 'general';
-export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
+export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'photodeck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
 
 export interface AiPrompt {
   key: string;
@@ -92,7 +92,13 @@ export interface AiSettings {
 
 export const useAiStatus = (enabled = true) => useQuery({ queryKey: ['ai', 'status'], queryFn: () => api<AiStatus>('/ai/status'), staleTime: 30_000, enabled });
 export const useAiPrompts = () => useQuery({ queryKey: ['ai', 'prompts'], queryFn: () => api<AiPrompt[]>('/ai/prompts'), staleTime: 60_000 });
-export const useAiJobs = () => useQuery({ queryKey: ['ai', 'jobs'], queryFn: () => api<AiJob[]>('/ai/jobs') });
+export const useAiJobs = () =>
+  useQuery({
+    queryKey: ['ai', 'jobs'],
+    queryFn: () => api<AiJob[]>('/ai/jobs'),
+    // While one of them runs, the list follows it (status, then Open).
+    refetchInterval: (q) => (q.state.data?.some((j) => j.status === 'queued' || j.status === 'running') ? 3000 : false),
+  });
 export const useAiSettings = (enabled: boolean) => useQuery({ queryKey: ['ai', 'settings'], queryFn: () => api<AiSettings>('/ai/settings'), enabled });
 
 /** A job, polled while it waits or runs. */
@@ -173,7 +179,7 @@ export const useAiUi = create<AiUi>((set) => ({
   setContext: (context) => set({ context }),
 }));
 
-export const OUTPUT_LABEL: Record<PromptOutput, string> = { flow: 'Workflow', sheet: 'Workbook', deck: 'Presentation', design: 'Free-form design', template: 'Design from a template', image: 'Picture (image AI)', layers: 'Editable text from a picture', retext: 'New information into a design', markdown: 'Text (Markdown)', text: 'Text' };
+export const OUTPUT_LABEL: Record<PromptOutput, string> = { flow: 'Workflow', sheet: 'Workbook', deck: 'Presentation', photodeck: 'Presentation with picture slots', design: 'Free-form design', template: 'Design from a template', image: 'Picture (image AI)', layers: 'Editable text from a picture', retext: 'New information into a design', markdown: 'Text (Markdown)', text: 'Text' };
 export const APP_LABEL: Record<PromptApp, string> = { flow: 'Flow', sheets: 'Sheets', slides: 'Slides', docs: 'Docs', general: 'General' };
 
 /** Tells the assistant which file is open (cleared when the editor closes). */

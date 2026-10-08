@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { markdownToHtml } from '@workos/doc-model';
 import { APP_LABEL, useAiActions, useAiJob, useAiJobs, useAiPrompts, useAiStatus, useAiUi, type AiContext, type AiJob, type AiPrompt } from '@/lib/ai';
 import { Button, cn } from '../ui/primitives';
+import { SlotsDialog } from '../slides/SlotsDialog';
 
 interface Action {
   id: string;
@@ -21,13 +22,14 @@ interface Action {
   /** Docs: how the text comes back. */
   docs?: 'insert' | 'replace' | 'summary';
   /** Pictures (§81): paint one with the image AI, make a picture's text editable, or bring one in from elsewhere. */
-  picture?: 'generate' | 'editable' | 'import' | 'retext';
+  picture?: 'generate' | 'editable' | 'import' | 'retext' | 'slots';
 }
 
 const NEW_FILE: Action[] = [
   { id: 'flow', promptKey: 'flow.generate', label: 'New workflow', note: 'A diagram from a description, with decisions and roles', icon: <Workflow size={16} /> },
   { id: 'sheet', promptKey: 'sheet.generate', label: 'New workbook', note: 'Sheets, lookups, totals and a report', icon: <Sheet size={16} /> },
   { id: 'deck', promptKey: 'slides.deck', label: 'New presentation', note: 'An outline on slides with notes', icon: <Presentation size={16} /> },
+  { id: 'photodeck', promptKey: 'slides.photoDeck', label: 'New presentation with pictures', note: 'AI plans it and writes the picture prompts for ChatGPT', icon: <ImageIcon size={16} /> },
   { id: 'banner', promptKey: 'slides.banner', label: 'New banner', note: 'Web, social post, story or poster', icon: <ImageIcon size={16} />, format: 'banner-web' },
   { id: 'card', promptKey: 'slides.businessCard', label: 'New business card', note: 'Two sides, print-safe', icon: <CreditCard size={16} />, format: 'business-card-eu' },
   { id: 'picture', promptKey: 'image.generate', label: 'New picture', note: 'Painted by the image AI (OpenAI / Gemini)', icon: <Wand2 size={16} />, format: 'banner-web', picture: 'generate' },
@@ -47,6 +49,7 @@ function actionsFor(ctx: AiContext | null): Action[] {
         { id: 'slide-picture', promptKey: 'image.generate', label: 'AI picture on this slide', note: 'Painted as the background — your text stays on top', icon: <Wand2 size={16} />, intoFile: true, picture: 'generate' },
         { id: 'slide-editable', promptKey: 'image.editable', label: 'Make the picture’s text editable', note: 'Like Photoshop: the text of the picture becomes text boxes', icon: <Layers size={16} />, intoFile: true, picture: 'editable' },
         { id: 'slide-retext', promptKey: 'image.retext', label: 'Put new information into this design', note: 'New dates, prices, offers… into the text of the slide', icon: <Replace size={16} />, intoFile: true, picture: 'retext' },
+        { id: 'slide-slots', promptKey: 'slides.photoDeck', label: 'Pictures for the picture slots', note: 'Prompts to paste into ChatGPT, then the pictures in', icon: <ImageIcon size={16} />, intoFile: true, picture: 'slots' },
         { id: 'slide-import', promptKey: 'image.editable', label: 'Bring in a picture from ChatGPT / Gemini', note: 'As a new slide, then its text becomes editable', icon: <Upload size={16} />, intoFile: true, picture: 'import' },
         ...NEW_FILE.filter((a) => a.id !== 'deck'),
       ];
@@ -84,6 +87,7 @@ export function AiPanel() {
   const [showLive, setShowLive] = useState(false);
   const [customKey, setCustomKey] = useState('');
   const [bgAi, setBgAi] = useState(false);
+  const [slotsOpen, setSlotsOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const { data: job } = useAiJob(jobId);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -120,6 +124,7 @@ export function AiPanel() {
     if (action.docs === 'insert' && text?.document) variables.context = `The document so far (for tone and context):\n${text.document.slice(0, 3000)}`;
     if (context && !action.docs && !action.picture) variables.context = `The open file is “${context.name}”.`;
     if (action.picture === 'import') return fileInput.current?.click();
+    if (action.picture === 'slots') return setSlotsOpen(true);
     const slide = action.picture ? context?.getSlide?.() : null;
     a.start.mutate(
       {
@@ -172,6 +177,7 @@ export function AiPanel() {
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-surface" data-testid="ai-panel">
+      {slotsOpen && context && <SlotsDialog open onClose={() => setSlotsOpen(false)} resourceId={context.resourceId} />}
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => (e.target.files?.[0] && void imported(e.target.files[0]), (e.target.value = ''))} data-testid="ai-picture-input" />
       <header className="flex items-center gap-2.5 border-b border-line px-4 py-3">
         <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 text-white">
@@ -249,7 +255,7 @@ export function AiPanel() {
 
         <div className="space-y-2">
           {prompt?.description && <p className="text-[11.5px] leading-snug text-muted">{prompt.description}</p>}
-          {action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import' && (
+          {action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import' && action.picture !== 'slots' && (
             <textarea
               ref={box}
               value={request}
@@ -299,8 +305,8 @@ export function AiPanel() {
                 </option>
               ))}
             </select>
-            <Button variant="primary" icon={<Sparkles size={14} />} onClick={run} loading={a.start.isPending} disabled={!!running || !status?.reachable || (!request.trim() && action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import')} data-testid="ai-run">
-              {action.picture === 'import' ? 'Choose a picture' : action.picture === 'editable' ? 'Make editable' : 'Generate'}
+            <Button variant="primary" icon={<Sparkles size={14} />} onClick={run} loading={a.start.isPending} disabled={!!running || !status?.reachable || (!request.trim() && action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import' && action.picture !== 'slots')} data-testid="ai-run">
+              {action.picture === 'slots' ? 'Open' : action.picture === 'import' ? 'Choose a picture' : action.picture === 'editable' ? 'Make editable' : 'Generate'}
             </Button>
           </div>
           <p className="text-[11px] text-muted">Runs on the organisation’s own model server — nothing leaves it. Ctrl+Enter to start.</p>

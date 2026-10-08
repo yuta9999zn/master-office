@@ -16,7 +16,8 @@ export const DESIGN_FORMATS: Record<string, { label: string; size: DeckSize; not
   'banner-leaderboard': { label: 'Leaderboard 728 × 90', size: { w: 728, h: 90 }, note: 'web ad strip' },
   poster: { label: 'Poster A4', size: { w: 794, h: 1123 }, note: 'printed flyer' },
   'business-card': { label: 'Business card 3.5 × 2 in', size: { w: 336, h: 192 }, note: 'US / Japan card (91 × 55 mm close)' },
-  'business-card-eu': { label: 'Business card 85 × 55 mm', size: { w: 321, h: 208 }, note: 'Vietnam / EU card' },
+  'business-card-eu': { label: 'Business card 85 × 55 mm', size: { w: 321, h: 208 }, note: 'EU / international card' },
+  'business-card-vn': { label: 'Business card 90 × 55 mm', size: { w: 340, h: 208 }, note: 'Vietnam standard card (9 × 5.5 cm)' },
 };
 
 // ── Deck outline ────────────────────────────────────────────────────────────
