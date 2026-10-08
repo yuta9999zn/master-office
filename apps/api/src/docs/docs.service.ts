@@ -36,14 +36,14 @@ import type { ImageLoader } from '../slides/pptx-export';
 import { FORM_MAP, ITEMS_MAP, ORDER_ARRAY as FORM_ORDER, readForm as readFormFromDoc, writeForm, type PlainForm } from '@workos/form-model';
 
 export const COLLAB_TYPES: ResourceType[] = ['document', 'wiki', 'note', 'spreadsheet', 'presentation', 'form', 'flow'];
-export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png';
+export type ExportFormat = 'docx' | 'pdf' | 'html' | 'txt' | 'xlsx' | 'csv' | 'pptx' | 'png' | 'jpg';
 /** Published pages: a thin top bar, and slides scaled to the window (presentations). */
 const PUBLISH_CSS = `.mo-pub-bar{position:sticky;top:0;z-index:10;font:13px/1.4 Inter,Arial,sans-serif;color:#475569;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 16px}@media screen{main{max-width:860px;margin:0 auto;padding:24px 16px 48px}}`;
 const PUBLISH_SLIDES_CSS = `@media screen{html,body{background:#0f172a}.page{margin:16px auto;box-shadow:0 8px 24px rgba(0,0,0,.35);transform-origin:top left}.mo-pub-bar{background:#1e293b;color:#cbd5e1;border-color:#334155}}`;
 const PUBLISH_SLIDES_JS = `(function(){function fit(){var p=document.querySelectorAll('.page');p.forEach(function(e){var w=e.offsetWidth||1;var k=Math.min(1,(window.innerWidth-32)/w);e.style.zoom=k;});}window.addEventListener('resize',fit);fit();})();`;
 
 const SHEET_FORMATS: ExportFormat[] = ['xlsx', 'csv', 'pdf', 'html'];
-const SLIDE_FORMATS: ExportFormat[] = ['pptx', 'pdf', 'png', 'html'];
+const SLIDE_FORMATS: ExportFormat[] = ['pptx', 'pdf', 'png', 'jpg', 'html'];
 const TEXT_FORMATS: ExportFormat[] = ['docx', 'pdf', 'html', 'txt'];
 
 const EXPORT_MIME: Record<'docx' | 'pdf' | 'html' | 'txt', string> = {
@@ -246,12 +246,12 @@ export class DocsService {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number, opts: { quiet?: boolean } = {}) {
+  async export(actor: Actor, id: string, format: ExportFormat, sheetId?: string, slide?: number, opts: { quiet?: boolean; scale?: number } = {}) {
     const { row } = await this.requireDoc(actor, id, 'viewer');
     if (row.type === 'form') throw new BadRequestException('Forms have no file format — download the responses as CSV (Responses tab) or link them to a spreadsheet');
     if (row.type === 'presentation') {
       if (!SLIDE_FORMATS.includes(format)) throw new BadRequestException(`Presentations export as ${SLIDE_FORMATS.join(', ')}`);
-      const f = await this.slides.export(id, row.name, format as SlideExportFormat, this.imageLoader(id), { author: actor.name, slide });
+      const f = await this.slides.export(id, row.name, format as SlideExportFormat, this.imageLoader(id), { author: actor.name, slide, scale: opts.scale });
       if (!opts.quiet) await this.events.emit(this.db, actor, 'resource.exported', { resourceId: id, spaceId: row.spaceId }, { name: row.name, format });
       return f;
     }

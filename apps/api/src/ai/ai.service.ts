@@ -2,8 +2,9 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { ModuleRef } from '@nestjs/core';
 import { EDGES_MAP, NODES_MAP, PAGE_ORDER, PAGES_MAP } from '@workos/flow-model';
 import { createYSheet, RESOURCES_MAP, SHEETS_MAP, WB_MAP } from '@workos/sheet-model';
-import { createYSlide, DECK_MAP, ORDER_ARRAY, readDeck, SLIDES_MAP, type DeckSize, type Theme } from '@workos/slide-model';
+import { createYSlide, DECK_MAP, newId, ORDER_ARRAY, readDeck, SLIDES_MAP, type DeckSize, type PlainElement, type PlainSlide, type Theme } from '@workos/slide-model';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import sharp from 'sharp';
 import * as Y from 'yjs';
 import { SettingsService } from '../admin/settings.service';
 import { CollabService } from '../collab/collab.service';
@@ -20,7 +21,12 @@ import { FLOW_SPEC_SCHEMA, flowFromSpec, repairFlowSpec, type FlowSpec } from '.
 import { alignColumns, catalogText, cleanPlan, planFromRequest, planText, SHEET_PLAN_SCHEMA, SHEET_SPEC_SCHEMA, SHEET_SUMMARY_SCHEMA, SHEET_TABLE_SCHEMA, workbookFromSpec, type SheetPlan, type SheetSpec, type SheetSpecTable } from './gen-sheet';
 import { DECK_OUTLINE_SCHEMA, DESIGN_FORMATS, DESIGN_SCHEMA, deckOf, slidesFromDesign, slidesFromOutline, themeById, type DeckOutline, type DesignSpec } from './gen-slides';
 import { OllamaClient, parseJsonLoose, type LlmModel } from './llm';
-import { BANNER_COPY_SCHEMA, bannerSlides, CARD_COPY_SCHEMA, cardSlides, type BannerCopy, type CardCopy } from './gen-design';
+import { DocsService } from '../docs/docs.service';
+import { acceptChange, planRetext } from './retext';
+import { adaptForPicture, fitSlide, resizeSlide, BANNER_COPY_SCHEMA, bannerSlides, CARD_COPY_SCHEMA, cardSlides, type BannerCopy, type CardCopy } from './gen-design';
+import { DEFAULT_IMAGE_SETTINGS, ImageStudioService, type ImageSettings } from './image-studio';
+import { fitTo } from './images';
+import { encryptSecret } from '../auth/secrets';
 import { BUILTIN_PROMPTS, builtinPrompt, fillTemplate, guessLanguage, type PromptApp, type PromptDef, type PromptOutput } from './prompts';
 
 /** Workspace AI settings (system_settings key `ai`). */
@@ -34,8 +40,10 @@ export interface AiSettings {
   models: Partial<Record<PromptApp, string>>;
   /** Context window (tokens): larger reads more but is slower on a CPU. */
   numCtx: number;
+  /** Image AI connection (§81): OpenAI / Gemini keys (encrypted), models, who reads text in pictures. */
+  images: ImageSettings;
 }
-const DEFAULT_SETTINGS: AiSettings = { enabled: true, provider: 'ollama', url: process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434', model: process.env.OLLAMA_MODEL ?? '', models: {}, numCtx: 8192 };
+const DEFAULT_SETTINGS: AiSettings = { enabled: true, provider: 'ollama', url: process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434', model: process.env.OLLAMA_MODEL ?? '', models: {}, numCtx: 8192, images: DEFAULT_IMAGE_SETTINGS };
 
 export interface PromptView extends PromptDef {
   builtIn: boolean;
@@ -58,6 +66,10 @@ export interface JobInput {
   format?: string | null;
   model?: string | null;
   notation?: 'flowchart' | 'bpmn' | null;
+  slideId?: string | null;
+  elementId?: string | null;
+  as?: 'background' | 'element' | null;
+  background?: 'template' | 'ai' | null;
 }
 
 type RunRow = typeof aiRuns.$inferSelect;
@@ -72,7 +84,13 @@ interface Live {
 
 const OUTPUT_SCHEMA: Partial<Record<PromptOutput, object>> = { flow: FLOW_SPEC_SCHEMA, sheet: SHEET_SPEC_SCHEMA, deck: DECK_OUTLINE_SCHEMA, design: DESIGN_SCHEMA };
 /** Generous caps: a CPU writes ~5–15 tokens / s, so these bound a job to a few minutes. */
-const MAX_TOKENS: Record<PromptOutput, number> = { flow: 1500, sheet: 3500, deck: 2500, design: 1800, template: 500, markdown: 1800, text: 900 };
+const MAX_TOKENS: Record<PromptOutput, number> = { flow: 1500, sheet: 3500, deck: 2500, design: 1800, template: 500, image: 400, layers: 1500, retext: 600, markdown: 1800, text: 900 };
+const RETEXT_SCHEMA = {
+  type: 'object',
+  properties: { c: { type: 'array', maxItems: 40, items: { type: 'object', properties: { i: { type: 'integer' }, t: { type: 'string', maxLength: 240 } }, required: ['i', 't'] } } },
+  required: ['c'],
+};
+
 /** Template designs: a business card or a banner, by the chosen format. */
 const isCard = (key: string, format?: string | null) => (format ? format.startsWith('business-card') : /card/i.test(key));
 
@@ -102,17 +120,48 @@ export class AiService {
 
   async settings(workspaceId: string): Promise<AiSettings> {
     const v = await this.settingsSvc.getValue<Partial<AiSettings>>(workspaceId, 'ai');
-    return { ...DEFAULT_SETTINGS, ...(v ?? {}), models: { ...(v?.models ?? {}) } };
+    return { ...DEFAULT_SETTINGS, ...(v ?? {}), models: { ...(v?.models ?? {}) }, images: { ...DEFAULT_IMAGE_SETTINGS, ...(v?.images ?? {}) } };
   }
 
-  async setSettings(actor: Actor, patch: Partial<AiSettings>) {
+  /** What the browser may see: everything but the API keys. */
+  view(s: AiSettings) {
+    const { openaiKey, geminiKey, ...images } = s.images;
+    return { ...s, images: { ...images, hasOpenaiKey: !!openaiKey, hasGeminiKey: !!geminiKey } };
+  }
+
+  /** Keys arrive in plain text once and are stored encrypted; "" removes a key, undefined keeps it. */
+  async setSettings(actor: Actor, patch: Partial<Omit<AiSettings, 'images'>> & { images?: Partial<ImageSettings> }) {
     const cur = await this.settings(actor.workspaceId);
-    const next: AiSettings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models ?? {}) } };
+    const imgPatch = { ...(patch.images ?? {}) };
+    const keys: Partial<ImageSettings> = {};
+    for (const k of ['openaiKey', 'geminiKey'] as const) {
+      if (imgPatch[k] === undefined) continue;
+      const plain = String(imgPatch[k]).trim();
+      keys[k] = plain ? encryptSecret(plain) : undefined;
+      delete imgPatch[k];
+    }
+    const images: ImageSettings = { ...cur.images, ...imgPatch, ...keys };
+    for (const k of ['openaiKey', 'geminiKey'] as const) if (k in keys && !keys[k]) delete images[k];
+    const next: AiSettings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models ?? {}) }, images };
     if (!/^https?:\/\/[^\s]+$/i.test(next.url)) throw new BadRequestException('The model server address must start with http:// or https://');
+    if (images.openaiBaseUrl && !/^https:\/\/[^\s]+$/i.test(images.openaiBaseUrl)) throw new BadRequestException('The OpenAI-compatible address must start with https://');
+    if (images.provider === 'openai' && !images.openaiKey) throw new BadRequestException('Enter the OpenAI API key first');
+    if (images.provider === 'gemini' && !images.geminiKey) throw new BadRequestException('Enter the Gemini API key first');
+    if (images.vision === 'gemini' && !images.geminiKey) throw new BadRequestException('Reading text with Gemini needs the Gemini API key');
     next.numCtx = Math.min(131072, Math.max(2048, Math.round(next.numCtx)));
     for (const k of Object.keys(next.models) as PromptApp[]) if (!next.models[k]) delete next.models[k];
     await this.settingsSvc.putValue(actor, actor.workspaceId, 'ai', next);
-    return next;
+    return this.view(next);
+  }
+
+  /** Makes one small picture with the configured image AI, to check the key and the model. */
+  async testImages(actor: Actor) {
+    const s = await this.settings(actor.workspaceId);
+    const provider = this.moduleRef.get(ImageStudioService, { strict: false }).provider(s.images);
+    if (!provider) throw new BadRequestException('Choose an image AI and enter its key first');
+    const started = Date.now();
+    const out = await provider.generate('A soft pastel gradient background with a few round bokeh lights, no text.', { w: 1024, h: 1024 });
+    return { ok: true, provider: out.provider, model: out.model, bytes: out.data.length, ms: Date.now() - started };
   }
 
   async status(actor: Actor) {
@@ -140,6 +189,14 @@ export class AiService {
       numCtx: s.numCtx,
       queue: this.queue.length + (this.working ? 1 : 0),
       formats: Object.entries(DESIGN_FORMATS).map(([id, f]) => ({ id, ...f })),
+      // Image AI connection (no keys): which provider makes pictures, who reads the text in them.
+      images: {
+        provider: s.images.provider,
+        ready: !!this.moduleRef.get(ImageStudioService, { strict: false }).provider(s.images),
+        model: s.images.provider === 'openai' ? s.images.openaiModel : s.images.provider === 'gemini' ? s.images.geminiModel : s.images.provider === 'demo' ? 'demo' : null,
+        vision: s.images.vision,
+        visionModel: s.images.vision === 'gemini' ? 'gemini-2.5-flash' : s.images.visionModel || models.find((m) => m.vision)?.name || null,
+      },
     };
   }
 
@@ -205,16 +262,92 @@ export class AiService {
     await this.db.delete(aiPrompts).where(eq(aiPrompts.id, row.id));
   }
 
+  /** A picture made elsewhere (ChatGPT, Gemini…) as a new one-page design in its own shape; its text is made editable next. */
+  async importAsDesign(actor: Actor, file: { buffer: Buffer; mimetype: string; originalname?: string }, where: { spaceId?: string | null; parentId?: string | null }) {
+    if (!/^image\//i.test(file.mimetype)) throw new BadRequestException('Choose a picture (PNG, JPEG, WebP…)');
+    const meta = await sharp(file.buffer)
+      .metadata()
+      .catch(() => ({ width: 0, height: 0, orientation: 1 }));
+    if (!meta.width || !meta.height) throw new BadRequestException('Choose a picture (PNG, JPEG, WebP…)');
+    const swap = (meta.orientation ?? 1) >= 5;
+    const size = ImageStudioService.sizeFor(swap ? meta.height : meta.width, swap ? meta.width : meta.height, DESIGN_FORMATS);
+    // Multer reads names as latin1; browsers send UTF-8.
+    const original = file.originalname ? Buffer.from(file.originalname, 'latin1').toString('utf8') : '';
+    const name = (original.replace(/\.[a-z0-9]+$/i, '') || 'Picture').slice(0, 120) + ' (editable)';
+    const created = await this.moduleRef.get(ResourcesService, { strict: false }).create(actor, { name, type: 'presentation', spaceId: where.spaceId ?? null, parentId: where.parentId ?? null });
+    await this.moduleRef.get(SlidesService, { strict: false }).init(created.id, name, deckOf(name, size, themeById('master'), []));
+    const studio = this.moduleRef.get(ImageStudioService, { strict: false });
+    const r = await studio.importPicture(actor, created.id, file, { newSlide: true }, size);
+    return { ...r, resourceId: created.id, url: `/slides/${created.id}`, name, size };
+  }
+
+  // ── Magic resize ──────────────────────────────────────────────────────────
+
+  /** A copy of a slide in another format (Canva's "Resize"): a new one-page design next to the original. */
+  async resize(actor: Actor, id: string, body: { slideId?: string | null; format: string; mode?: 'fit' | 'fill' | null }) {
+    const fmt = DESIGN_FORMATS[body.format];
+    if (!fmt) throw new BadRequestException('Unknown format');
+    const { row } = await this.perms.require(actor, id, 'viewer');
+    if (row.type !== 'presentation') throw new BadRequestException('Resize works on slides and designs');
+    const slidesSvc = this.moduleRef.get(SlidesService, { strict: false });
+    const studio = this.moduleRef.get(ImageStudioService, { strict: false });
+    const deck = await slidesSvc.deck(id);
+    const slide = deck.slides.find((s) => s.id === body.slideId) ?? deck.slides[0];
+    if (!slide) throw new BadRequestException('The presentation has no slide');
+    const base = row.name.replace(/\.(pptx?|odp|key)$/i, '').replace(/ · [^·]+$/, '');
+    const name = `${base} · ${fmt.label}`.slice(0, 200);
+    const created = await this.moduleRef.get(ResourcesService, { strict: false }).create(actor, { name, type: 'presentation', spaceId: row.spaceId ?? null, parentId: row.parentId ?? null });
+    const docsSvc = this.moduleRef.get(DocsService, { strict: false });
+    const save = async (png: Buffer) => (await docsSvc.saveAsset(actor, created.id, png, 'image/png')).url;
+    // The pictures move along: they are assets of the original file.
+    const copied = new Map<string, string>();
+    const copy = async (src: string | undefined) => {
+      if (!src || !src.includes(`/resources/${id}/assets/`)) return src;
+      if (!copied.has(src)) copied.set(src, await save(await studio.bytesOf(id, src)));
+      return copied.get(src);
+    };
+    const bg = slide.meta.background?.type === 'image' ? slide.meta.background.src : null;
+    // A design on a picture (its text sits on the picture's own decorations) is kept whole: scaled into the new shape,
+    // the margins filled with a blurred copy of the picture. Other designs are laid out again ("fill").
+    const mode = body.mode ?? (bg ? 'fit' : 'fill');
+    let out: PlainSlide;
+    if (mode === 'fit') {
+      const fitted = fitSlide(slide, deck.size, fmt.size);
+      out = fitted.slide;
+      if (bg) {
+        const pic = await studio.bytesOf(id, bg).catch(() => null);
+        if (pic) {
+          // The picture as the original slide showed it (centred "cover" crop), as the bottom layer of the frame…
+          const shown = await sharp(pic).resize(deck.size.w * 2, deck.size.h * 2, { fit: 'cover' }).png().toBuffer();
+          const frame: PlainElement = { id: newId(), type: 'image', ...fitted.frame, z: 0, src: await save(shown), name: 'picture' };
+          // …and a soft, blurred copy behind it fills the new shape.
+          const soft = await sharp(pic).resize(Math.round(fmt.size.w / 2), Math.round(fmt.size.h / 2), { fit: 'cover' }).blur(18).modulate({ brightness: 1.04 }).png().toBuffer();
+          out = { ...out, meta: { ...out.meta, background: { type: 'image', src: await save(soft) } }, elements: [frame, ...out.elements] };
+        }
+      }
+    } else {
+      out = resizeSlide(slide, deck.size, fmt.size);
+      if (bg) out.meta = { ...out.meta, background: { type: 'image', src: (await copy(bg))! } };
+    }
+    for (const e of out.elements) if (e.src) e.src = await copy(e.src);
+    await slidesSvc.init(created.id, name, { ...deck, name, size: fmt.size, slides: [{ ...out, no: undefined }] });
+    return { resourceId: created.id, url: `/slides/${created.id}`, name, size: fmt.size, mode };
+  }
+
   // ── Jobs ──────────────────────────────────────────────────────────────────
 
   async start(actor: Actor, input: JobInput) {
     const s = await this.settings(actor.workspaceId);
     if (!s.enabled) throw new BadRequestException('AI is turned off for this organisation (Admin → AI)');
     const p = await this.prompt(actor, input.promptKey);
-    if (!input.request.trim() && !input.variables?.selection?.trim() && !['docs.summarize'].includes(p.key)) throw new BadRequestException('Describe what you want');
+    if (!input.request.trim() && !input.variables?.selection?.trim() && !['docs.summarize'].includes(p.key) && p.output !== 'layers') throw new BadRequestException('Describe what you want');
+    if ((p.output === 'layers' || p.output === 'retext') && !input.targetId) throw new BadRequestException('Open the presentation with the picture first');
+    if ((p.output === 'image' || p.output === 'layers' || input.background === 'ai') && !(await this.moduleRef.get(ImageStudioService, { strict: false }).provider((await this.settings(actor.workspaceId)).images)) && p.output !== 'layers') {
+      throw new BadRequestException('Connect an image AI first (AI → Model & settings → Image AI: OpenAI or Gemini — or Demo to try it)');
+    }
     if (input.targetId) {
       const { row } = await this.perms.require(actor, input.targetId, p.output === 'markdown' || p.output === 'text' ? 'viewer' : 'editor');
-      const want = { flow: 'flow', sheet: 'spreadsheet', deck: 'presentation' }[p.output as 'flow' | 'sheet' | 'deck'];
+      const want = { flow: 'flow', sheet: 'spreadsheet', deck: 'presentation', image: 'presentation', layers: 'presentation', retext: 'presentation' }[p.output as 'flow' | 'sheet' | 'deck' | 'image' | 'layers' | 'retext'];
       if (want && row.type !== want) throw new BadRequestException(`This prompt writes into a ${want}, not a ${row.type}`);
     }
     if ((p.output === 'design' || p.output === 'template') && input.format && !DESIGN_FORMATS[input.format]) throw new BadRequestException('Unknown format');
@@ -299,8 +432,8 @@ export class AiService {
         return res.text;
       };
       // Small models build a workbook far better one sheet at a time (plan → sheets → report).
-      const answer = p.key === 'sheet.generate' && p.output === 'sheet' ? await this.sheetSteps(actor, gen, job.request) : await gen('', p, p.output === 'template' ? (isCard(p.key, input.format) ? CARD_COPY_SCHEMA : BANNER_COPY_SCHEMA) : OUTPUT_SCHEMA[p.output], MAX_TOKENS[p.output]);
-      const result = await this.apply(actor, p, { ...input, request: job.request }, answer, format?.size ?? null);
+      const answer = p.output === 'image' || p.output === 'layers' || p.output === 'retext' ? '' : p.key === 'sheet.generate' && p.output === 'sheet' ? await this.sheetSteps(actor, gen, job.request) : await gen('', p, p.output === 'template' ? (isCard(p.key, input.format) ? CARD_COPY_SCHEMA : BANNER_COPY_SCHEMA) : OUTPUT_SCHEMA[p.output], MAX_TOKENS[p.output]);
+      const result = await this.apply(actor, p, { ...input, request: job.request }, answer, format?.size ?? null, gen, live);
       await this.db
         .update(aiRuns)
         .set({ status: 'done', answer: (totals.steps > 1 ? `${done}\n▸ Result\n${answer}` : answer).slice(0, 200_000), result: { ...result, ...(totals.steps > 1 ? { steps: totals.steps } : {}) }, promptTokens: totals.promptTokens, outputTokens: totals.outputTokens, ms: Date.now() - live.started, finishedAt: new Date().toISOString() })
@@ -358,8 +491,28 @@ export class AiService {
     return JSON.stringify({ title: plan.title, sheets: plan.sheets.map((s) => tables.get(s.name)).filter(Boolean), ...(read && plan === read.plan ? { hints: read.hints } : {}) });
   }
 
+  /**
+   * A picture from the image AI, stored in the presentation: the local model first writes the picture prompt from
+   * the brief (in English, no text in the picture, calm space for the design's text), then the provider paints it.
+   */
+  private async makePicture(actor: Actor, resourceId: string, brief: string, space: string, size: { w: number; h: number }, gen: Gen, live: Live) {
+    const s = await this.settings(actor.workspaceId);
+    const studio = this.moduleRef.get(ImageStudioService, { strict: false });
+    const provider = studio.provider(s.images);
+    if (!provider) throw new Error('Connect an image AI first (AI → Model & settings → Image AI)');
+    const promptP = await this.prompt(actor, 'image.prompt');
+    const written = parseJsonLoose<{ prompt?: string }>(await gen('Picture prompt', promptP, { type: 'object', properties: { prompt: { type: 'string', maxLength: 900 } }, required: ['prompt'] }, 400, { request: brief, space }));
+    // Whatever the model wrote, the picture must stay free of text: the design puts its own.
+    const prompt = `${String(written.prompt ?? brief).trim()} No text, no letters, no numbers, no logos, no watermark.`;
+    live.text += `\n▸ Painting the picture with ${provider.id} (${provider.model})…`;
+    const out = await provider.generate(prompt, size, live.abort.signal);
+    const png = await fitTo(out.data, size.w, size.h);
+    const url = await studio.store(actor, resourceId, png);
+    return { url, provider: out.provider, model: out.model, prompt };
+  }
+
   /** Turns the answer into what the prompt promises. */
-  private async apply(actor: Actor, p: PromptView, input: JobInput, text: string, size: DeckSize | null): Promise<Record<string, unknown>> {
+  private async apply(actor: Actor, p: PromptView, input: JobInput, text: string, size: DeckSize | null, gen: Gen, live: Live): Promise<Record<string, unknown>> {
     const resourcesSvc = this.moduleRef.get(ResourcesService, { strict: false });
     const editor = { id: actor.id, name: `${actor.name} (AI)` };
     const where = { spaceId: input.spaceId ?? null, parentId: input.parentId ?? null };
@@ -455,9 +608,99 @@ export class AiService {
       const slides = card ? cardSlides(copy as Partial<CardCopy>, sz, input.request) : bannerSlides(copy as Partial<BannerCopy>, sz, input.request);
       const name = String((card ? `${copy.name ?? 'Card'} · business card` : copy.headline) ?? 'AI design').slice(0, 120);
       const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      let picture: Record<string, unknown> | null = null;
+      if (input.background === 'ai') {
+        // The picture goes behind the brand side (cards) or the whole banner; the template's own decoration steps aside.
+        const space = card ? 'the centre' : sz.w >= sz.h * 1.3 ? 'the left half' : 'the upper and lower thirds';
+        const made = await this.makePicture(actor, created.id, `${input.request}\n(Design: ${String(copy.headline ?? copy.company ?? copy.name ?? '')})`, space, card ? { w: sz.w * 4, h: sz.h * 4 } : { w: Math.max(1600, sz.w), h: Math.round((Math.max(1600, sz.w) * sz.h) / sz.w) }, gen, live);
+        adaptForPicture(slides[0], sz, made.url, card);
+        picture = { provider: made.provider, model: made.model, prompt: made.prompt };
+      }
       await this.moduleRef.get(SlidesService, { strict: false }).init(created.id, name, deckOf(name, sz, themeById('master'), slides));
       await mark(created.id);
-      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, pages: slides.length, size: sz, template: copy.template ?? null, palette: copy.palette ?? null };
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, pages: slides.length, size: sz, template: copy.template ?? null, palette: copy.palette ?? null, ...(picture ? { picture } : {}) };
+    }
+
+    if (p.output === 'image') {
+      // A picture from the image AI: on a slide of the open deck, or as a new one-page design.
+      const slidesSvc = this.moduleRef.get(SlidesService, { strict: false });
+      if (input.targetId) {
+        const deck = await slidesSvc.deck(input.targetId);
+        const slideId = input.slideId && deck.slides.some((s) => s.id === input.slideId) ? input.slideId : deck.slides[0]?.id;
+        if (!slideId) throw new Error('The presentation has no slide');
+        const made = await this.makePicture(actor, input.targetId, input.request, input.as === 'element' ? 'none' : 'some calm areas for text', { w: Math.max(1600, deck.size.w), h: Math.round((Math.max(1600, deck.size.w) * deck.size.h) / deck.size.w) }, gen, live);
+        await this.moduleRef.get(ImageStudioService, { strict: false }).place(actor, input.targetId, slideId, made.url, input.as === 'element' ? 'element' : 'background', deck.size);
+        return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: 'Picture added', slideId, provider: made.provider, model: made.model, prompt: made.prompt };
+      }
+      const sz = size ?? DESIGN_FORMATS['banner-web'].size;
+      const name = input.request.split(/[.\n]/)[0].slice(0, 80) || 'AI picture';
+      const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      const made = await this.makePicture(actor, created.id, input.request, 'some calm areas for text', { w: Math.max(1600, sz.w), h: Math.round((Math.max(1600, sz.w) * sz.h) / sz.w) }, gen, live);
+      const slide = { id: crypto.randomUUID().slice(0, 12), meta: { layout: 'blank' as const, background: { type: 'image' as const, src: made.url } }, notes: `Picture by ${made.provider} (${made.model}). Prompt: ${made.prompt}`, elements: [] };
+      await slidesSvc.init(created.id, name, deckOf(name, sz, themeById('master'), [slide]));
+      await mark(created.id);
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, size: sz, provider: made.provider, model: made.model, prompt: made.prompt };
+    }
+
+    if (p.output === 'layers') {
+      // Photoshop-like: the text of a picture becomes editable text layers; the picture keeps everything else.
+      const studio = this.moduleRef.get(ImageStudioService, { strict: false });
+      const s = await this.settings(actor.workspaceId);
+      await studio.requireEditor(actor, input.targetId!);
+      const deck = await this.moduleRef.get(SlidesService, { strict: false }).deck(input.targetId!);
+      const src = await studio.sourceOf(input.targetId!, input.slideId ?? null, input.elementId ?? null, deck.size);
+      const original = await studio.bytesOf(input.targetId!, src.src);
+      const models = await new OllamaClient(s.url).models(15_000).catch(() => [] as LlmModel[]);
+      const readP = await this.prompt(actor, 'image.readText');
+      const head = '▸ Reading the text of the picture\n';
+      live.text = head;
+      const lines = await studio.readText(original, s.images, { url: s.url, models }, readP, live.abort.signal, (t, n) => ((live.text = head + t), (live.tokens = n)));
+      if (!lines.length) throw new Error('No text was found in the picture');
+      live.text += '\n▸ Placing every line exactly (local OCR)';
+      const exact = await studio.exactBoxes(original, lines);
+      lines.splice(0, lines.length, ...exact.lines);
+      live.text += ` — ${exact.snapped} of ${lines.length} lines placed to the pixel`;
+      live.text += `\n▸ Taking the text off the picture (${lines.length} lines)`;
+      const removeP = await this.prompt(actor, 'image.removeText');
+      const cleaned = await studio.removeText(original, lines, studio.provider(s.images), removeP.system, live.abort.signal);
+      const r = await studio.makeEditable(actor, input.targetId!, src, lines, original, cleaned.data, deck.size);
+      return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: `${r.lines} text layers`, lines: lines.map((l) => l.text), placed: exact.snapped, removedBy: cleaned.by, slideId: src.slideId };
+    }
+
+    if (p.output === 'retext') {
+      // New information into the text layers of the slide on screen: exact pairs and facts in code, the rest by the
+      // model — whose changes must only add words of the request (retext.ts).
+      const studio = this.moduleRef.get(ImageStudioService, { strict: false });
+      await studio.requireEditor(actor, input.targetId!);
+      const deck = await this.moduleRef.get(SlidesService, { strict: false }).deck(input.targetId!);
+      const { slideId, items } = await studio.textsOf(input.targetId!, input.slideId ?? null);
+      if (!items.length) throw new Error('This slide has no text to change — make the picture’s text editable first');
+      const plan = planRetext(input.request, items);
+      const by: string[] = plan.exact.length ? ['exact'] : [];
+      const rejected: string[] = [];
+      if (plan.rest) {
+        const view = items.map((it) => ({ ...it, text: plan.texts.get(it.id) ?? it.text }));
+        const lines = view.map((t, i) => `${i + 1}: ${t.text.replace(/\n/g, ' / ')}`).join('\n');
+        const answer = await gen('', p, RETEXT_SCHEMA, MAX_TOKENS.retext, { lines, request: plan.rest });
+        const spec = parseJsonLoose<{ c?: { i?: number; t?: string }[] }>(answer);
+        for (const c of spec.c ?? []) {
+          if (!Number.isInteger(c.i) || c.i! < 1 || c.i! > view.length || typeof c.t !== 'string' || !c.t.trim()) continue;
+          const it = view[c.i! - 1];
+          const to = c.t.replace(/\s+\/\s+/g, '\n').trim();
+          if (to === it.text) continue;
+          if (!acceptChange(it.text, to, plan.rest)) {
+            rejected.push(`${it.text} → ${to}`);
+            continue;
+          }
+          plan.texts.set(it.id, to);
+        }
+        by.push('AI');
+      }
+      const changes = [...plan.texts].map(([id, text]) => ({ id, text }));
+      if (!changes.length) throw new Error('Nothing to change: no line of the slide matches the request');
+      const n = await studio.retext(actor, input.targetId!, slideId, changes, deck.size);
+      const was = new Map(items.map((x) => [x.id, x.text]));
+      return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: `${n} text layers changed`, slideId, by: by.join(' + '), exact: plan.exact, changes: changes.map((c) => ({ from: was.get(c.id), to: c.text })), ...(rejected.length ? { warnings: rejected.map((r) => `Not applied (adds words the request does not have): ${r}`) } : {}) };
     }
 
     if (p.output === 'design') {

@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpen, Brain, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Copy, CreditCard, FileText, Image as ImageIcon, LayoutTemplate, Loader2, MessageSquare, Presentation, Replace, Settings2, Sheet, Sparkles, Square, TextCursorInput, Workflow, X } from 'lucide-react';
+import { BookOpen, Brain, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Copy, CreditCard, FileText, Image as ImageIcon, Layers, LayoutTemplate, Loader2, MessageSquare, Presentation, Replace, Settings2, Sheet, Sparkles, Square, TextCursorInput, Upload, Wand2, Workflow, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -20,6 +20,8 @@ interface Action {
   format?: string;
   /** Docs: how the text comes back. */
   docs?: 'insert' | 'replace' | 'summary';
+  /** Pictures (§81): paint one with the image AI, make a picture's text editable, or bring one in from elsewhere. */
+  picture?: 'generate' | 'editable' | 'import' | 'retext';
 }
 
 const NEW_FILE: Action[] = [
@@ -28,6 +30,7 @@ const NEW_FILE: Action[] = [
   { id: 'deck', promptKey: 'slides.deck', label: 'New presentation', note: 'An outline on slides with notes', icon: <Presentation size={16} /> },
   { id: 'banner', promptKey: 'slides.banner', label: 'New banner', note: 'Web, social post, story or poster', icon: <ImageIcon size={16} />, format: 'banner-web' },
   { id: 'card', promptKey: 'slides.businessCard', label: 'New business card', note: 'Two sides, print-safe', icon: <CreditCard size={16} />, format: 'business-card-eu' },
+  { id: 'picture', promptKey: 'image.generate', label: 'New picture', note: 'Painted by the image AI (OpenAI / Gemini)', icon: <Wand2 size={16} />, format: 'banner-web', picture: 'generate' },
   { id: 'ask', promptKey: 'general.ask', label: 'Ask', note: 'A question, an idea, a draft', icon: <MessageSquare size={16} /> },
 ];
 
@@ -39,7 +42,14 @@ function actionsFor(ctx: AiContext | null): Action[] {
     case 'sheets':
       return [{ id: 'sheet-tabs', promptKey: 'sheet.generate', label: 'Add sheets here', note: 'New tabs in this workbook', icon: <Sheet size={16} />, intoFile: true }, ...NEW_FILE.filter((a) => a.id !== 'sheet')];
     case 'slides':
-      return [{ id: 'deck-slides', promptKey: 'slides.deck', label: 'Add slides here', note: 'Appended to this presentation', icon: <Presentation size={16} />, intoFile: true }, ...NEW_FILE.filter((a) => a.id !== 'deck')];
+      return [
+        { id: 'deck-slides', promptKey: 'slides.deck', label: 'Add slides here', note: 'Appended to this presentation', icon: <Presentation size={16} />, intoFile: true },
+        { id: 'slide-picture', promptKey: 'image.generate', label: 'AI picture on this slide', note: 'Painted as the background — your text stays on top', icon: <Wand2 size={16} />, intoFile: true, picture: 'generate' },
+        { id: 'slide-editable', promptKey: 'image.editable', label: 'Make the picture’s text editable', note: 'Like Photoshop: the text of the picture becomes text boxes', icon: <Layers size={16} />, intoFile: true, picture: 'editable' },
+        { id: 'slide-retext', promptKey: 'image.retext', label: 'Put new information into this design', note: 'New dates, prices, offers… into the text of the slide', icon: <Replace size={16} />, intoFile: true, picture: 'retext' },
+        { id: 'slide-import', promptKey: 'image.editable', label: 'Bring in a picture from ChatGPT / Gemini', note: 'As a new slide, then its text becomes editable', icon: <Upload size={16} />, intoFile: true, picture: 'import' },
+        ...NEW_FILE.filter((a) => a.id !== 'deck'),
+      ];
     case 'docs':
       return [
         { id: 'draft', promptKey: 'docs.draft', label: 'Write here', note: 'Inserted where the cursor is', icon: <TextCursorInput size={16} />, docs: 'insert' },
@@ -63,7 +73,8 @@ export function AiPanel() {
   const { data: jobs } = useAiJobs();
   const a = useAiActions();
   const router = useRouter();
-  const actions = useMemo(() => actionsFor(context), [context]);
+  const imagesReady = !!status?.images?.ready;
+  const actions = useMemo(() => actionsFor(context).filter((x) => x.picture !== 'generate' || imagesReady), [context, imagesReady]);
   const [actionId, setActionId] = useState<string>(actions[0].id);
   const [request, setRequest] = useState('');
   const [format, setFormat] = useState<string>('banner-web');
@@ -72,6 +83,8 @@ export function AiPanel() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [showLive, setShowLive] = useState(false);
   const [customKey, setCustomKey] = useState('');
+  const [bgAi, setBgAi] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const { data: job } = useAiJob(jobId);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -105,19 +118,31 @@ export function AiPanel() {
       variables.selection = text.selection;
     }
     if (action.docs === 'insert' && text?.document) variables.context = `The document so far (for tone and context):\n${text.document.slice(0, 3000)}`;
-    if (context && !action.docs) variables.context = `The open file is “${context.name}”.`;
+    if (context && !action.docs && !action.picture) variables.context = `The open file is “${context.name}”.`;
+    if (action.picture === 'import') return fileInput.current?.click();
+    const slide = action.picture ? context?.getSlide?.() : null;
     a.start.mutate(
       {
+        slideId: slide?.slideId ?? null,
+        elementId: action.picture === 'editable' ? (slide?.elementId ?? null) : null,
+        background: prompt?.output === 'template' && bgAi && imagesReady ? 'ai' : null,
         promptKey: customKey || action.promptKey,
         request: request.trim(),
         variables,
         targetId: action.intoFile && context?.editable ? context.resourceId : null,
-        format: prompt?.output === 'design' || prompt?.output === 'template' ? format : null,
+        format: prompt?.output === 'design' || prompt?.output === 'template' || (prompt?.output === 'image' && !action.intoFile) ? format : null,
         model: model || null,
         notation: notation === 'auto' ? null : notation,
       },
       { onSuccess: (j) => (setJobId(j.id), setShowLive(false)) },
     );
+  };
+
+  const imported = async (file: File) => {
+    if (!context) return;
+    const res = await a.importPicture.mutateAsync({ id: context.resourceId, file });
+    toast.success('Picture added as a new slide — reading its text…');
+    a.start.mutate({ promptKey: 'image.editable', request: '', targetId: context.resourceId, slideId: res.slideId }, { onSuccess: (j) => (setJobId(j.id), setShowLive(false)) });
   };
 
   const finish = (j: AiJob) => {
@@ -147,6 +172,7 @@ export function AiPanel() {
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-surface" data-testid="ai-panel">
+      <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => (e.target.files?.[0] && void imported(e.target.files[0]), (e.target.value = ''))} data-testid="ai-picture-input" />
       <header className="flex items-center gap-2.5 border-b border-line px-4 py-3">
         <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 text-white">
           <Sparkles size={16} />
@@ -223,7 +249,7 @@ export function AiPanel() {
 
         <div className="space-y-2">
           {prompt?.description && <p className="text-[11.5px] leading-snug text-muted">{prompt.description}</p>}
-          {action.docs !== 'summary' && (
+          {action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import' && (
             <textarea
               ref={box}
               value={request}
@@ -236,7 +262,15 @@ export function AiPanel() {
               data-testid="ai-request"
             />
           )}
-          {(prompt?.output === 'design' || prompt?.output === 'template') && (
+          {action.picture === 'editable' && <p className="rounded-lg bg-canvas px-3 py-2 text-[12px] text-muted">Works on the selected picture, or the picture of the slide on screen. The text is read by {status?.images?.vision === 'gemini' ? 'Gemini' : `the local vision model (${status?.images?.visionModel ?? 'none — pull qwen2.5vl:7b'})`}; {status?.images?.ready && status.images.provider !== 'demo' ? `${status.images.provider} takes it off the picture.` : 'it is taken off the picture locally (connect OpenAI or Gemini for a cleaner result).'} A local read takes 3–5 minutes on a CPU.</p>}
+          {action.picture === 'import' && <p className="rounded-lg bg-canvas px-3 py-2 text-[12px] text-muted">Save the picture from ChatGPT or Gemini (or any design), then choose it here. It becomes a new slide; its text is then made editable.</p>}
+          {prompt?.output === 'template' && (
+            <label className={cn('flex items-center gap-2 text-[12.5px]', imagesReady ? 'text-ink-2' : 'text-muted')} title={imagesReady ? '' : 'Connect an image AI in AI → Model & settings'}>
+              <input type="checkbox" disabled={!imagesReady} checked={bgAi && imagesReady} onChange={(e) => setBgAi(e.target.checked)} className="accent-brand-600" data-testid="ai-bg-ai" />
+              Background painted by the image AI{imagesReady ? ` (${status?.images?.provider})` : ' — not connected'}
+            </label>
+          )}
+          {(prompt?.output === 'design' || prompt?.output === 'template' || (prompt?.output === 'image' && !action.intoFile)) && (
             <select value={format} onChange={(e) => setFormat(e.target.value)} className={field} aria-label="Format" data-testid="ai-format">
               {status?.formats
                 .filter((f) => f.id !== 'deck' && (/card/i.test(prompt.key) ? f.id.startsWith('business') : !f.id.startsWith('business')))
@@ -265,8 +299,8 @@ export function AiPanel() {
                 </option>
               ))}
             </select>
-            <Button variant="primary" icon={<Sparkles size={14} />} onClick={run} loading={a.start.isPending} disabled={!!running || !status?.reachable || (!request.trim() && action.docs !== 'summary')} data-testid="ai-run">
-              Generate
+            <Button variant="primary" icon={<Sparkles size={14} />} onClick={run} loading={a.start.isPending} disabled={!!running || !status?.reachable || (!request.trim() && action.docs !== 'summary' && action.picture !== 'editable' && action.picture !== 'import')} data-testid="ai-run">
+              {action.picture === 'import' ? 'Choose a picture' : action.picture === 'editable' ? 'Make editable' : 'Generate'}
             </Button>
           </div>
           <p className="text-[11px] text-muted">Runs on the organisation’s own model server — nothing leaves it. Ctrl+Enter to start.</p>
@@ -300,6 +334,15 @@ export function AiPanel() {
                   <ul className="list-disc pl-4 text-[11.5px] text-muted">
                     {[...((job.result.fixes as string[]) ?? []), ...((job.result.warnings as string[]) ?? [])].slice(0, 6).map((f) => (
                       <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                )}
+                {Array.isArray(job.result.changes) && (
+                  <ul className="space-y-0.5 text-[12px]" data-testid="ai-changes">
+                    {(job.result.changes as { from: string; to: string }[]).map((c, i) => (
+                      <li key={i}>
+                        <s className="text-muted">{c.from}</s> → <b className="text-ink">{c.to}</b>
+                      </li>
                     ))}
                   </ul>
                 )}

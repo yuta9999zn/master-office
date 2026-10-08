@@ -23,7 +23,7 @@
     "test:approvals": "node test/approvals.mjs",
     "test:base": "npx tsx test/base-model.ts && node test/base.mjs",
     "test:flow": "node test/flow.mjs && node test/flow-automation.mjs",
-    "test:ai": "node test/ai.mjs",
+    "test:ai": "node test/ai.mjs && node test/image-studio.mjs",
     "test:wiki": "node test/wiki.mjs",
     "test:auth": "node test/auth.mjs && node test/teams.mjs && node test/storage.mjs"
   },
@@ -56,7 +56,9 @@
     "quickjs-emscripten": "^0.32.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sharp": "^0.35.5",
     "smtp-server": "^3.19.0",
+    "tesseract.js": "^7.0.0",
     "ws": "^8.22.0",
     "yjs": "^13.6.33",
     "zod": "^3.25.0"

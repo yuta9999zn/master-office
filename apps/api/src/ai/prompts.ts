@@ -9,7 +9,7 @@
 
 export type PromptApp = 'flow' | 'sheets' | 'slides' | 'docs' | 'general';
 /** What the answer is turned into. */
-export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'markdown' | 'text';
+export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
 
 export interface PromptDef {
   key: string;
@@ -239,6 +239,87 @@ Answer with JSON only.`,
 - font: elegant (serif — beauty, luxury, law), modern, classic.
 Answer with JSON only.`,
     template: 'Card details:\n{{request}}',
+  },
+  // ── Pictures (§81): image AI connections and editable text on pictures ───
+  {
+    key: 'image.generate',
+    name: 'Picture from a description',
+    app: 'slides',
+    output: 'image',
+    description: 'A picture painted by the connected image AI (OpenAI gpt-image or Google Gemini): on the open slide as its background, or as a new design. It has no text — add yours on top as editable layers.',
+    temperature: 0.6,
+    variables: [{ ...REQUEST, example: 'Phòng spa sang trọng tông hồng nhạt, khăn trắng, hoa sen, nến, ánh sáng mềm, chừa khoảng trống bên trái' }],
+    system: 'Steps: image.prompt writes the picture prompt; the image AI paints it.',
+    template: '{{request}}',
+  },
+  {
+    key: 'image.prompt',
+    name: 'Picture · write the prompt for the image AI',
+    app: 'slides',
+    output: 'text',
+    partOf: 'image.generate',
+    description: 'Turns a brief (any language) into an English prompt for the image AI: one picture, no text in it, calm space where the design’s text will go.',
+    temperature: 0.5,
+    variables: [
+      { ...REQUEST, example: '' },
+      { name: 'space', label: 'Where the text will go', example: 'the left half' },
+    ],
+    system: `You write prompts for an image generator (OpenAI gpt-image, Google Gemini). From the brief, describe ONE picture in English, 40–90 words: subject, setting, people or objects, mood, light, colour palette, style (e.g. "soft-focus lifestyle photograph, studio light").
+The picture is the background of a design: it must contain no text, letters, numbers, logos or watermarks. Keep {{space}} calm and uncluttered (soft, out of focus, plain colour) so text can sit there.
+Answer with JSON: {"prompt": "…"}.`,
+    template: 'Brief:\n{{request}}',
+  },
+  {
+    key: 'image.editable',
+    name: 'Make the text of a picture editable',
+    app: 'slides',
+    output: 'layers',
+    description: 'Photoshop-like: for a picture on the open slide (made in ChatGPT, Gemini or anywhere — uploaded or pasted), every line of its text becomes an editable text box in place; the picture keeps everything else and loses its text (removed by the image AI when connected, else filled in locally).',
+    temperature: 0,
+    variables: [],
+    system: 'Steps: image.readText reads every line with its box; image.removeText takes the text off the picture; the lines come back as text boxes.',
+    template: '—',
+  },
+  {
+    key: 'image.readText',
+    name: 'Editable text · read the text of the picture',
+    app: 'slides',
+    output: 'text',
+    partOf: 'image.editable',
+    description: 'For the vision model (local Qwen2.5-VL on Ollama, or Gemini): every line of text in the picture with its box.',
+    temperature: 0,
+    variables: [
+      { name: 'width', label: 'Picture width (px)', example: '1288' },
+      { name: 'height', label: 'Picture height (px)', example: '672' },
+    ],
+    system: 'You read text in pictures exactly, keeping every accent and capital. Answer with JSON.',
+    template: 'This picture is {{width}} × {{height}} pixels. List every separate line of text in it, top to bottom. For each line: t = the exact text, b = its bounding box [x1, y1, x2, y2] in pixels of this picture. Text on icons or logos counts too.',
+  },
+  {
+    key: 'image.removeText',
+    name: 'Editable text · take the text off the picture',
+    app: 'slides',
+    output: 'text',
+    partOf: 'image.editable',
+    description: 'The instruction sent with the picture to the image AI’s edit (OpenAI / Gemini). Without one, a local patch fill is used.',
+    temperature: 0,
+    variables: [],
+    system: 'Remove all text, letters, numbers and logo lettering from this picture and fill those places naturally, as if they had never been there. Keep everything else exactly the same: composition, people, objects, decorations, colours, light and size.',
+    template: '—',
+  },
+  {
+    key: 'image.retext',
+    name: 'Put new information into a design',
+    app: 'slides',
+    output: 'retext',
+    description: 'Changes the words of the text layers of the slide on screen (a banner, card or poster — e.g. one whose text was made editable from a ChatGPT picture) to the new information you give; looks, places and every other line stay. "old → new" lines are applied exactly, without the model.',
+    temperature: 0.1,
+    variables: [
+      { ...REQUEST, example: 'Đổi sang khuyến mãi tháng 11, giảm 40%, hotline 0909 123 456' },
+      { name: 'lines', label: 'Text lines of the slide (filled in)', example: '1: GIẢM 30%\n2: Khuyến mãi tháng 10\n3: Hotline 0901 000 000' },
+    ],
+    system: 'You update the text of a design (banner, business card, poster) with new information. Change only what the request asks — dates, months, prices, percentages, names, phone numbers, addresses, offers — and keep the language, tone, capitals and about the same length of every line. Never add lines. Answer with JSON.',
+    template: 'The design has these text lines (number: text; " / " separates lines inside one box):\n{{lines}}\n\nRequest: {{request}}\n\nReturn in c only the lines that must change: i = the line number, t = its complete new text.',
   },
   {
     key: 'docs.draft',

@@ -9,7 +9,9 @@ import { ResourcesService } from '../resources/resources.service';
 import { DocsService } from './docs.service';
 
 const exportQuery = z.object({
-  format: z.enum(['docx', 'pdf', 'html', 'txt', 'xlsx', 'csv', 'pptx', 'png']),
+  format: z.enum(['docx', 'pdf', 'html', 'txt', 'xlsx', 'csv', 'pptx', 'png', 'jpg']),
+  /** Pictures (png / jpg): 1, 2, 3, 4 × the slide size; 3.125 = print at 300 dpi. */
+  scale: z.coerce.number().min(0.25).max(4).optional(),
   sheet: z.string().max(64).optional(),
   slide: z.coerce.number().int().min(1).max(10_000).optional(),
   inline: z.enum(['1', 'true']).optional(),
@@ -48,9 +50,9 @@ export class DocsController {
 
   @Get(':id/export')
   async export(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Query() q: unknown, @Res() res: Response) {
-    const { format, inline, sheet, slide } = parse(exportQuery, q);
+    const { format, inline, sheet, slide, scale } = parse(exportQuery, q);
     // ?slide is 1-based like PowerPoint's slide numbers.
-    const f = await this.docs.export(a, id, format, sheet, slide !== undefined ? slide - 1 : undefined);
+    const f = await this.docs.export(a, id, format, sheet, slide !== undefined ? slide - 1 : undefined, { scale });
     res.setHeader('Content-Type', f.mime);
     // inline=1 powers Print preview (the PDF opens in the browser viewer).
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));

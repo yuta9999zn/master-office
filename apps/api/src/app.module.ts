@@ -41,6 +41,7 @@ import { FlowService } from './flow/flow.service';
 import { FlowRunnerService } from './flow/flow-runner.service';
 import { FlowController } from './flow/flow.controller';
 import { AiService } from './ai/ai.service';
+import { ImageStudioService } from './ai/image-studio';
 import { AiController } from './ai/ai.controller';
 import { WikiController } from './wiki/wiki.controller';
 import { WikiService } from './wiki/wiki.service';
@@ -94,6 +95,7 @@ import { StorageController } from './storage/storage.controller';
     FlowService,
     FlowRunnerService,
     AiService,
+    ImageStudioService,
     WikiService,
     SettingsService,
     AuthService,

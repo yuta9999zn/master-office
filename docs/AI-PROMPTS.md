@@ -320,6 +320,132 @@ Card details:
 {{request}}
 ```
 
+### `image.generate` — Picture from a description
+
+A picture painted by the connected image AI (OpenAI gpt-image or Google Gemini): on the open slide as its background, or as a new design. It has no text — add yours on top as editable layers.
+
+- App: **slides** · Result: **image** · Temperature: 0.6
+- Variables: `{{request}}`
+- Example request: “Phòng spa sang trọng tông hồng nhạt, khăn trắng, hoa sen, nến, ánh sáng mềm, chừa khoảng trống bên trái”
+
+System prompt:
+
+```text
+Steps: image.prompt writes the picture prompt; the image AI paints it.
+```
+
+Message template:
+
+```text
+{{request}}
+```
+
+### `image.prompt` — Picture · write the prompt for the image AI
+
+Turns a brief (any language) into an English prompt for the image AI: one picture, no text in it, calm space where the design’s text will go.
+
+- App: **slides** · Result: **text** · Temperature: 0.5 · Step of `image.generate`
+- Variables: `{{request}}`, `{{space}}`
+- Example request: “the left half”
+
+System prompt:
+
+```text
+You write prompts for an image generator (OpenAI gpt-image, Google Gemini). From the brief, describe ONE picture in English, 40–90 words: subject, setting, people or objects, mood, light, colour palette, style (e.g. "soft-focus lifestyle photograph, studio light").
+The picture is the background of a design: it must contain no text, letters, numbers, logos or watermarks. Keep {{space}} calm and uncluttered (soft, out of focus, plain colour) so text can sit there.
+Answer with JSON: {"prompt": "…"}.
+```
+
+Message template:
+
+```text
+Brief:
+{{request}}
+```
+
+### `image.editable` — Make the text of a picture editable
+
+Photoshop-like: for a picture on the open slide (made in ChatGPT, Gemini or anywhere — uploaded or pasted), every line of its text becomes an editable text box in place; the picture keeps everything else and loses its text (removed by the image AI when connected, else filled in locally).
+
+- App: **slides** · Result: **layers** · Temperature: 0
+- Variables: —
+
+System prompt:
+
+```text
+Steps: image.readText reads every line with its box; image.removeText takes the text off the picture; the lines come back as text boxes.
+```
+
+Message template:
+
+```text
+—
+```
+
+### `image.readText` — Editable text · read the text of the picture
+
+For the vision model (local Qwen2.5-VL on Ollama, or Gemini): every line of text in the picture with its box.
+
+- App: **slides** · Result: **text** · Temperature: 0 · Step of `image.editable`
+- Variables: `{{width}}`, `{{height}}`
+- Example request: “1288”
+
+System prompt:
+
+```text
+You read text in pictures exactly, keeping every accent and capital. Answer with JSON.
+```
+
+Message template:
+
+```text
+This picture is {{width}} × {{height}} pixels. List every separate line of text in it, top to bottom. For each line: t = the exact text, b = its bounding box [x1, y1, x2, y2] in pixels of this picture. Text on icons or logos counts too.
+```
+
+### `image.removeText` — Editable text · take the text off the picture
+
+The instruction sent with the picture to the image AI’s edit (OpenAI / Gemini). Without one, a local patch fill is used.
+
+- App: **slides** · Result: **text** · Temperature: 0 · Step of `image.editable`
+- Variables: —
+
+System prompt:
+
+```text
+Remove all text, letters, numbers and logo lettering from this picture and fill those places naturally, as if they had never been there. Keep everything else exactly the same: composition, people, objects, decorations, colours, light and size.
+```
+
+Message template:
+
+```text
+—
+```
+
+### `image.retext` — Put new information into a design
+
+Changes the words of the text layers of the slide on screen (a banner, card or poster — e.g. one whose text was made editable from a ChatGPT picture) to the new information you give; looks, places and every other line stay. "old → new" lines are applied exactly, without the model.
+
+- App: **slides** · Result: **retext** · Temperature: 0.1
+- Variables: `{{request}}`, `{{lines}}`
+- Example request: “Đổi sang khuyến mãi tháng 11, giảm 40%, hotline 0909 123 456”
+
+System prompt:
+
+```text
+You update the text of a design (banner, business card, poster) with new information. Change only what the request asks — dates, months, prices, percentages, names, phone numbers, addresses, offers — and keep the language, tone, capitals and about the same length of every line. Never add lines. Answer with JSON.
+```
+
+Message template:
+
+```text
+The design has these text lines (number: text; " / " separates lines inside one box):
+{{lines}}
+
+Request: {{request}}
+
+Return in c only the lines that must change: i = the line number, t = its complete new text.
+```
+
 ### `docs.draft` — Draft a document
 
 Writes a document section or a whole document in Markdown (headings, lists, tables) that is inserted where the cursor is.

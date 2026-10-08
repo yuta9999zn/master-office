@@ -48,6 +48,7 @@ export interface AppDef {
 
 export const APPS: AppDef[] = [
   { id: 'home', label: 'Home', tagline: 'Your day at a glance', href: '/home', icon: House, from: '#3b82f6', to: '#2563eb', phase: 1, primary: true },
+  { id: 'ai', label: 'AI', tagline: 'Your assistant for everything', href: '/ai', icon: Sparkles, from: '#818cf8', to: '#6366f1', phase: 1, primary: true },
   { id: 'chat', label: 'Chat', tagline: 'Connect with your team', href: '/chat', icon: MessageCircle, from: '#60a5fa', to: '#2563eb', phase: 5, primary: true },
   { id: 'mail', label: 'Mail', tagline: 'Focus on what matters', href: '/mail', icon: Mail, from: '#38bdf8', to: '#2563eb', phase: 7, primary: true },
   { id: 'calendar', label: 'Calendar', tagline: 'Plan your time', href: '/calendar', icon: CalendarDays, from: '#fb7185', to: '#e11d48', phase: 7, primary: true },
@@ -67,7 +68,6 @@ export const APPS: AppDef[] = [
   { id: 'approvals', label: 'Approvals', tagline: 'Streamline requests', href: '/approvals', icon: Stamp, from: '#fb923c', to: '#ea580c', phase: 7, primary: true },
   { id: 'contacts', label: 'Contacts', tagline: 'People & departments', href: '/contacts', icon: Contact, from: '#2dd4bf', to: '#0f766e', phase: 5, primary: true },
   { id: 'analytics', label: 'Analytics', tagline: 'Insights & performance', href: '/analytics', icon: ChartColumn, from: '#fbbf24', to: '#f59e0b', phase: 7 },
-  { id: 'ai', label: 'AI', tagline: 'Your assistant for everything', href: '/ai', icon: Sparkles, from: '#818cf8', to: '#6366f1', phase: 1 },
   { id: 'admin', label: 'Admin', tagline: 'Manage workspace', href: '/admin', icon: Settings, from: '#94a3b8', to: '#475569', phase: 7, primary: true },
 ];
 

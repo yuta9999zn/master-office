@@ -4,12 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { create } from 'zustand';
-import { api } from './api';
+import { api, uploadFile } from './api';
 
 // The AI layer (docs/ARCHITECTURE.md §80): one assistant in the top bar for every app.
 
 export type PromptApp = 'flow' | 'sheets' | 'slides' | 'docs' | 'general';
-export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'markdown' | 'text';
+export type PromptOutput = 'flow' | 'sheet' | 'deck' | 'design' | 'template' | 'image' | 'layers' | 'retext' | 'markdown' | 'text';
 
 export interface AiPrompt {
   key: string;
@@ -49,6 +49,8 @@ export interface AiStatus {
   numCtx: number;
   queue: number;
   formats: { id: string; label: string; size: { w: number; h: number }; note: string }[];
+  /** Image AI connection (§81). */
+  images: { provider: 'none' | 'openai' | 'gemini' | 'demo'; ready: boolean; model: string | null; vision: 'local' | 'gemini'; visionModel: string | null };
 }
 
 export interface AiJob {
@@ -68,6 +70,16 @@ export interface AiJob {
   finishedAt: string | null;
 }
 
+export interface ImageSettingsView {
+  provider: 'none' | 'openai' | 'gemini' | 'demo';
+  openaiModel: string;
+  openaiBaseUrl?: string;
+  geminiModel: string;
+  vision: 'local' | 'gemini';
+  visionModel: string;
+  hasOpenaiKey: boolean;
+  hasGeminiKey: boolean;
+}
 export interface AiSettings {
   enabled: boolean;
   provider: 'ollama';
@@ -75,6 +87,7 @@ export interface AiSettings {
   model: string;
   models: Partial<Record<PromptApp, string>>;
   numCtx: number;
+  images: ImageSettingsView;
 }
 
 export const useAiStatus = (enabled = true) => useQuery({ queryKey: ['ai', 'status'], queryFn: () => api<AiStatus>('/ai/status'), staleTime: 30_000, enabled });
@@ -97,7 +110,7 @@ export function useAiActions() {
   const qc = useQueryClient();
   return {
     start: useMutation({
-      mutationFn: (b: { promptKey: string; request: string; variables?: Record<string, string>; targetId?: string | null; format?: string | null; model?: string | null; notation?: 'flowchart' | 'bpmn' | null }) => api<AiJob>('/ai/jobs', { method: 'POST', json: b }),
+      mutationFn: (b: { promptKey: string; request: string; variables?: Record<string, string>; targetId?: string | null; format?: string | null; model?: string | null; notation?: 'flowchart' | 'bpmn' | null; slideId?: string | null; elementId?: string | null; as?: 'background' | 'element' | null; background?: 'template' | 'ai' | null }) => api<AiJob>('/ai/jobs', { method: 'POST', json: b }),
       onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'jobs'] }),
       onError,
     }),
@@ -109,8 +122,19 @@ export function useAiActions() {
       onError,
     }),
     deletePrompt: useMutation({ mutationFn: (key: string) => api(`/ai/prompts/${encodeURIComponent(key)}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'prompts'] }), onError }),
+    testImages: useMutation({ mutationFn: () => api<{ ok: boolean; provider: string; model: string; bytes: number; ms: number }>('/ai/settings/test-images', { method: 'POST' }), onError }),
+    importPicture: useMutation({
+      mutationFn: ({ id, file, slideId }: { id?: string | null; file: File; slideId?: string | null }) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        if (slideId) (fd.append('slideId', slideId), fd.append('newSlide', '0'));
+        // Without a presentation the picture becomes a new design in its own shape.
+        return uploadFile<{ slideId: string; url: string; resourceId?: string }>(id ? `/ai/pictures/${id}/import` : '/ai/pictures/import', fd);
+      },
+      onError,
+    }),
     saveSettings: useMutation({
-      mutationFn: (b: Partial<AiSettings>) => api<AiSettings>('/ai/settings', { method: 'PUT', json: b }),
+      mutationFn: (b: Partial<Omit<AiSettings, 'images'>> & { images?: Partial<ImageSettingsView> & { openaiKey?: string; geminiKey?: string } }) => api<AiSettings>('/ai/settings', { method: 'PUT', json: b }),
       onSuccess: () => qc.invalidateQueries({ queryKey: ['ai'] }),
       onError,
     }),
@@ -127,6 +151,8 @@ export interface AiContext {
   getText?: () => { selection: string; document: string };
   /** Docs: puts Markdown at the cursor, or replaces the selection with text. */
   insert?: (markdown: string, mode: 'insert' | 'replace') => void;
+  /** Slides: the slide on screen and the one selected element (pictures work on them). */
+  getSlide?: () => { slideId: string | null; elementId: string | null };
   editable: boolean;
 }
 
@@ -147,7 +173,7 @@ export const useAiUi = create<AiUi>((set) => ({
   setContext: (context) => set({ context }),
 }));
 
-export const OUTPUT_LABEL: Record<PromptOutput, string> = { flow: 'Workflow', sheet: 'Workbook', deck: 'Presentation', design: 'Free-form design', template: 'Design from a template', markdown: 'Text (Markdown)', text: 'Text' };
+export const OUTPUT_LABEL: Record<PromptOutput, string> = { flow: 'Workflow', sheet: 'Workbook', deck: 'Presentation', design: 'Free-form design', template: 'Design from a template', image: 'Picture (image AI)', layers: 'Editable text from a picture', retext: 'New information into a design', markdown: 'Text (Markdown)', text: 'Text' };
 export const APP_LABEL: Record<PromptApp, string> = { flow: 'Flow', sheets: 'Sheets', slides: 'Slides', docs: 'Docs', general: 'General' };
 
 /** Tells the assistant which file is open (cleared when the editor closes). */
@@ -159,7 +185,7 @@ export function useRegisterAi(ctx: AiContext | null) {
     if (!ref.current) return;
     // Getter functions read the latest editor through the ref.
     const c = ref.current;
-    useAiUi.getState().setContext({ ...c, getText: c.getText ? () => ref.current!.getText!() : undefined, insert: c.insert ? (m, mode) => ref.current!.insert!(m, mode) : undefined });
+    useAiUi.getState().setContext({ ...c, getText: c.getText ? () => ref.current!.getText!() : undefined, insert: c.insert ? (m, mode) => ref.current!.insert!(m, mode) : undefined, getSlide: c.getSlide ? () => ref.current!.getSlide!() : undefined });
     return () => {
       if (useAiUi.getState().context?.resourceId === c.resourceId) useAiUi.getState().setContext(null);
     };

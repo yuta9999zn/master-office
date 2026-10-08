@@ -88,6 +88,7 @@ import {
   PenLine,
   Link2,
   SpellCheck,
+  Scaling,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ContextMenu as CM, DropdownMenu as DM } from 'radix-ui';
@@ -106,6 +107,7 @@ import { folderHrefOf, TitleBar, type TitleBarHandle } from '../editor/TitleBar'
 import { Button, cn, Dialog, EmptyState, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Skeleton, Tip } from '../ui/primitives';
 import { allRunsHave, DeckStore, LOCAL, setAlignEverywhere, setMarkEverywhere, setTextStyleEverywhere, useDeck, type DeckSnapshot } from './deck-store';
 import { DiagramDialog } from './DiagramDialog';
+import { PictureDownloadDialog, ResizeDialog } from './PictureDialogs';
 import { VideoDialog } from './MediaDialog';
 import { MotionPanel } from './MotionPanel';
 import { Presenter } from './Presenter';
@@ -121,7 +123,6 @@ import { SlideStyles, SlideView } from './SlideView';
 const EXPORTS = [
   { f: 'pptx', label: 'Microsoft PowerPoint (.pptx)' },
   { f: 'pdf', label: 'PDF document (.pdf)' },
-  { f: 'png', label: 'PNG images (.zip, one per slide)' },
   { f: 'html', label: 'Web page (.html)' },
 ];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 96];
@@ -154,11 +155,11 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   }, [store]);
   const deck = useDeck(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
-  useRegisterAi({ app: 'slides', resourceId: r.id, name: r.name, editable });
 
   const [current, setCurrent] = useState<string | null>(null);
   const [slideSel, setSlideSel] = useState<string[]>([]);
   const [selection, setSelection] = useState<string[]>([]);
+  useRegisterAi({ app: 'slides', resourceId: r.id, name: r.name, editable, getSlide: () => ({ slideId: current, elementId: selection.length === 1 ? selection[0] : null }) });
   const [editing, setEditingState] = useState<string | null>(null);
   const [selectAllOnEdit, setSelectAllOnEdit] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -181,6 +182,8 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   const audioInput = useRef<HTMLInputElement>(null);
   const [videoDialog, setVideoDialog] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [pictureOpen, setPictureOpen] = useState(false);
+  const [resizeOpen, setResizeOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [diagramDialog, setDiagramDialog] = useState(false);
   const replaceTarget = useRef<string | null>(null);
@@ -821,8 +824,11 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
                 Download as {x.label}
               </MenuItem>
             ))}
-            <MenuItem icon={<ImageIcon />} onSelect={() => (window.location.href = exportUrl('png', `&slide=${index + 1}`))}>
-              Download current slide as PNG
+            <MenuItem icon={<ImageIcon />} onSelect={() => setPictureOpen(true)}>
+              Download as picture (PNG, JPG)…
+            </MenuItem>
+            <MenuItem icon={<Scaling />} onSelect={() => setResizeOpen(true)}>
+              Resize to another format…
             </MenuItem>
             {r.mimeType && (
               <MenuItem icon={<Download />} onSelect={() => (window.location.href = `/api/resources/${r.id}/download`)}>
@@ -1571,6 +1577,8 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
 
       <ShareDialog resource={share ? r : null} onClose={() => setShare(false)} />
       <PublishDialog r={r} open={publishOpen} canEdit={editable} onClose={() => setPublishOpen(false)} />
+      {pictureOpen && deck && <PictureDownloadDialog open onClose={() => setPictureOpen(false)} resourceId={r.id} slideNo={index + 1} slides={deck.slides.length} size={deck.size} />}
+      {resizeOpen && deck && <ResizeDialog open onClose={() => setResizeOpen(false)} resourceId={r.id} slideId={current} size={deck.size} picture={deck.slides.find((s) => s.id === current)?.meta.background?.type === 'image'} />}
       <ActivityDashboard r={r} open={activityOpen} onClose={() => setActivityOpen(false)} />
       <Dialog open={shortcuts} onOpenChange={setShortcuts} title="Keyboard shortcuts" width={520}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">

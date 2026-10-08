@@ -1,16 +1,17 @@
 'use client';
 
-import { BookOpen, Copy, Cpu, CreditCard, FileText, Image as ImageIcon, Plus, Presentation, RotateCcw, Save, Settings2, Sheet, Sparkles, Trash2, Workflow } from 'lucide-react';
+import { BookOpen, Copy, Plus, RotateCcw, Save, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAdminRole } from '@/lib/admin';
+import { AiWorkspace } from './AiWorkspace';
 import { APP_LABEL, OUTPUT_LABEL, useAiActions, useAiPrompts, useAiSettings, useAiStatus, useAiUi, type AiPrompt, type AiSettings, type PromptApp, type PromptOutput } from '@/lib/ai';
 import { formatBytes, timeAgo } from '@/lib/format';
 import { Button, cn, EmptyState, Skeleton } from '../ui/primitives';
 
 const TABS = [
-  { id: 'home', label: 'Overview', icon: Sparkles },
+  { id: 'workspace', label: 'Workspace', icon: Sparkles },
   { id: 'prompts', label: 'Prompt library', icon: BookOpen },
   { id: 'settings', label: 'Model & settings', icon: Settings2 },
 ] as const;
@@ -21,7 +22,7 @@ const field = 'w-full rounded-lg border border-line-strong bg-surface px-3 py-2 
 export function AiHome() {
   const params = useSearchParams();
   const router = useRouter();
-  const tab = (TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'home') as Tab;
+  const tab = (TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'workspace') as Tab;
   return (
     <div className="flex h-full min-h-0" data-testid="ai-home">
       <aside className="w-56 shrink-0 border-r border-line bg-surface p-3">
@@ -36,8 +37,8 @@ export function AiHome() {
         </nav>
       </aside>
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[1100px] p-6">
-          {tab === 'home' && <Overview />}
+        <div className="mx-auto max-w-[1400px] p-6">
+          {tab === 'workspace' && <AiWorkspace />}
           {tab === 'prompts' && <Library />}
           {tab === 'settings' && <Settings />}
         </div>
@@ -46,58 +47,10 @@ export function AiHome() {
   );
 }
 
-function Overview() {
-  const { data: status } = useAiStatus();
-  const open = useAiUi((s) => s.setOpen);
-  const cards: { key: string; label: string; note: string; icon: typeof Sparkles }[] = [
-    { key: 'flow.generate', label: 'Workflow', note: 'Describe a process; get a diagram with decisions, roles and automation steps.', icon: Workflow },
-    { key: 'sheet.generate', label: 'Workbook', note: 'Describe a register or tracker; get sheets with lookups, totals and a report.', icon: Sheet },
-    { key: 'slides.deck', label: 'Presentation', note: 'An outline on slides with speaker notes.', icon: Presentation },
-    { key: 'slides.banner', label: 'Banner', note: 'Web, social, story or poster — like a Canva template.', icon: ImageIcon },
-    { key: 'slides.businessCard', label: 'Business card', note: 'Front and back, print-safe.', icon: CreditCard },
-    { key: 'docs.draft', label: 'Writing', note: 'In Docs: write, summarize, improve the selection.', icon: FileText },
-  ];
-  return (
-    <section>
-      <h1 className="text-[22px] font-semibold text-ink">AI Assistant</h1>
-      <p className="mt-1 max-w-2xl text-[13px] text-muted">One assistant for every app. Open it from the top bar (or Ctrl+J): inside a file it works on that file, elsewhere it creates new files. It runs on the organisation’s own model server.</p>
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-4" data-testid="ai-server">
-        <Cpu size={18} className={status?.reachable ? 'text-emerald-600' : 'text-red-600'} />
-        <div className="min-w-0 flex-1 text-[13px]">
-          {status ? (
-            status.reachable ? (
-              <>
-                <b className="text-ink">{status.model}</b> on {status.url} · {status.models.length} model{status.models.length === 1 ? '' : 's'} available
-              </>
-            ) : (
-              <span className="text-red-700">{status.error}</span>
-            )
-          ) : (
-            'Checking the model server…'
-          )}
-        </div>
-      </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((c) => (
-          <button key={c.key} onClick={() => open(true, { promptKey: c.key })} className="card flex items-start gap-3 p-4 text-left hover:ring-brand-300" data-testid="ai-start">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-100 text-indigo-600">
-              <c.icon size={18} />
-            </span>
-            <span>
-              <span className="block text-[14px] font-semibold text-ink">{c.label}</span>
-              <span className="block text-[12.5px] text-muted">{c.note}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // ── Prompt library ──────────────────────────────────────────────────────────
 
 const APPS: PromptApp[] = ['flow', 'sheets', 'slides', 'docs', 'general'];
-const OUTPUTS: PromptOutput[] = ['flow', 'sheet', 'deck', 'template', 'design', 'markdown', 'text'];
+const OUTPUTS: PromptOutput[] = ['flow', 'sheet', 'deck', 'template', 'design', 'image', 'layers', 'retext', 'markdown', 'text'];
 type Draft = Omit<AiPrompt, 'builtIn' | 'overridden' | 'canEdit' | 'updatedAt' | 'partOf'>;
 
 function Library() {
@@ -359,11 +312,121 @@ function Settings() {
               </Labeled>
             ))}
           </div>
-          <Button variant="primary" loading={a.saveSettings.isPending} onClick={() => a.saveSettings.mutate(draft, { onSuccess: () => toast.success('AI settings saved') })} data-testid="ai-settings-save">
+          <Button
+            variant="primary"
+            loading={a.saveSettings.isPending}
+            onClick={() => {
+              const { images: _images, ...rest } = draft;
+              void _images;
+              a.saveSettings.mutate(rest, { onSuccess: () => toast.success('AI settings saved') });
+            }}
+            data-testid="ai-settings-save"
+          >
             Save
           </Button>
         </div>
       )}
+      {admin && settings && <ImageConnections settings={settings} visionModels={status?.models.filter((m) => m.vision).map((m) => m.name) ?? []} />}
     </section>
+  );
+}
+
+/**
+ * Image AI connections (§81): who paints pictures (OpenAI gpt-image, Google Gemini, or a key-less demo) and who reads
+ * the text in pictures (the local vision model or Gemini). Keys are sent once and stored encrypted; they never come back.
+ */
+function ImageConnections({ settings, visionModels }: { settings: AiSettings; visionModels: string[] }) {
+  const a = useAiActions();
+  const cur = settings.images;
+  const [provider, setProvider] = useState(cur.provider);
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [openaiModel, setOpenaiModel] = useState(cur.openaiModel);
+  const [geminiModel, setGeminiModel] = useState(cur.geminiModel);
+  const [vision, setVision] = useState(cur.vision);
+  const [visionModel, setVisionModel] = useState(cur.visionModel);
+  const [tested, setTested] = useState<string | null>(null);
+  useEffect(() => {
+    setProvider(cur.provider);
+    setOpenaiModel(cur.openaiModel);
+    setGeminiModel(cur.geminiModel);
+    setVision(cur.vision);
+    setVisionModel(cur.visionModel);
+  }, [cur.provider, cur.openaiModel, cur.geminiModel, cur.vision, cur.visionModel]);
+  const save = () =>
+    a.saveSettings.mutate(
+      { images: { provider, openaiModel, geminiModel, vision, visionModel, ...(openaiKey ? { openaiKey } : {}), ...(geminiKey ? { geminiKey } : {}) } },
+      { onSuccess: () => (setOpenaiKey(''), setGeminiKey(''), toast.success('Image AI saved')) },
+    );
+  const options: { id: typeof provider; label: string; note: string }[] = [
+    { id: 'none', label: 'Off', note: 'No pictures are painted; text in pictures is still made editable locally.' },
+    { id: 'openai', label: 'OpenAI', note: 'gpt-image-1 — the pictures of ChatGPT. Needs an API key from platform.openai.com (billed by OpenAI).' },
+    { id: 'gemini', label: 'Google Gemini', note: 'gemini-2.5-flash-image — strong at editing (removing text). API key from aistudio.google.com.' },
+    { id: 'demo', label: 'Demo', note: 'No key: soft generated backgrounds, to try the studio. Not real pictures.' },
+  ];
+  return (
+    <div className="mt-6" data-testid="ai-images">
+      <h2 className="text-[16px] font-semibold text-ink">Image AI (pictures and editable text on pictures)</h2>
+      <p className="mt-1 max-w-3xl text-[13px] text-muted">
+        Like Photoshop layers: a picture painted by OpenAI or Gemini (or one you made in ChatGPT / Gemini and bring in) is the background, and its text becomes editable text boxes on top. Prompts sent to these services are in the prompt library (Picture …, Editable text …).
+      </p>
+      <div className="mt-3 card space-y-4 p-5">
+        <div className="grid gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Image AI">
+          {options.map((o) => (
+            <button key={o.id} role="radio" aria-checked={provider === o.id} onClick={() => setProvider(o.id)} className={cn('rounded-lg border px-3 py-2 text-left', provider === o.id ? 'border-brand-500 bg-brand-50' : 'border-line hover:bg-hover')} data-testid="image-provider" data-provider={o.id}>
+              <div className="text-[13px] font-medium text-ink">{o.label}</div>
+              <div className="text-[11.5px] leading-snug text-muted">{o.note}</div>
+            </button>
+          ))}
+        </div>
+        {provider === 'openai' && (
+          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <Labeled label={`OpenAI API key ${cur.hasOpenaiKey ? '(saved — type to replace)' : ''}`}>
+              <input type="password" autoComplete="off" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder={cur.hasOpenaiKey ? '••••••••••••' : 'sk-…'} className={field} aria-label="OpenAI API key" />
+            </Labeled>
+            <Labeled label="Model">
+              <input value={openaiModel} onChange={(e) => setOpenaiModel(e.target.value)} className={field} aria-label="OpenAI image model" />
+            </Labeled>
+          </div>
+        )}
+        {(provider === 'gemini' || vision === 'gemini') && (
+          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <Labeled label={`Gemini API key ${cur.hasGeminiKey ? '(saved — type to replace)' : ''}`}>
+              <input type="password" autoComplete="off" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={cur.hasGeminiKey ? '••••••••••••' : 'AIza…'} className={field} aria-label="Gemini API key" />
+            </Labeled>
+            <Labeled label="Model">
+              <input value={geminiModel} onChange={(e) => setGeminiModel(e.target.value)} className={field} aria-label="Gemini image model" />
+            </Labeled>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-[260px_1fr]">
+          <Labeled label="Who reads the text in pictures">
+            <select value={vision} onChange={(e) => setVision(e.target.value as typeof vision)} className={field} aria-label="Text reader">
+              <option value="local">The local vision model (private, ~3–5 min on a CPU)</option>
+              <option value="gemini">Gemini (fast, needs its key)</option>
+            </select>
+          </Labeled>
+          {vision === 'local' && (
+            <Labeled label="Local vision model">
+              <select value={visionModel} onChange={(e) => setVisionModel(e.target.value)} className={field} aria-label="Local vision model">
+                <option value="">Automatic {visionModels[0] ? `(${visionModels[0]})` : '— none on the server: ollama pull qwen2.5vl:7b'}</option>
+                {visionModels.map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            </Labeled>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" loading={a.saveSettings.isPending} onClick={save} data-testid="image-save">
+            Save
+          </Button>
+          <Button variant="secondary" disabled={cur.provider === 'none'} loading={a.testImages.isPending} onClick={() => a.testImages.mutate(undefined, { onSuccess: (r) => setTested(`${r.provider} · ${r.model} · ${Math.round(r.bytes / 1024)} KB in ${(r.ms / 1000).toFixed(1)} s`) })} data-testid="image-test">
+            Test: paint one picture
+          </Button>
+          {tested && <span className="text-[12px] text-emerald-700" data-testid="image-tested">✓ {tested}</span>}
+        </div>
+      </div>
+    </div>
   );
 }

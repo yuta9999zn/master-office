@@ -1,4 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { SlidesService } from '../slides/slides.service';
+import { ImageStudioService } from './image-studio';
 import { z } from 'zod';
 import { OrgService } from '../admin/org.service';
 import { type Actor, CurrentUser } from '../common/current-user';
@@ -9,7 +12,7 @@ const apps = z.enum(['flow', 'sheets', 'slides', 'docs', 'general']);
 const promptBody = z.object({
   name: z.string().trim().min(1).max(120),
   app: apps,
-  output: z.enum(['flow', 'sheet', 'deck', 'design', 'template', 'markdown', 'text']),
+  output: z.enum(['flow', 'sheet', 'deck', 'design', 'template', 'image', 'layers', 'markdown', 'text']),
   description: z.string().max(2000).default(''),
   system: z.string().trim().min(1).max(20_000),
   template: z.string().trim().min(1).max(20_000),
@@ -26,6 +29,11 @@ const jobBody = z.object({
   format: z.string().max(40).nullish(),
   model: z.string().max(120).nullish(),
   notation: z.enum(['flowchart', 'bpmn']).nullish(),
+  /** Pictures (§81): the slide (and image element) to work on, how a new picture is placed, AI background for designs. */
+  slideId: z.string().max(64).nullish(),
+  elementId: z.string().max(64).nullish(),
+  as: z.enum(['background', 'element']).nullish(),
+  background: z.enum(['template', 'ai']).nullish(),
 });
 const settingsBody = z.object({
   enabled: z.boolean().optional(),
@@ -33,6 +41,18 @@ const settingsBody = z.object({
   model: z.string().max(120).optional(),
   models: z.record(apps, z.string().max(120)).optional(),
   numCtx: z.number().int().optional(),
+  images: z
+    .object({
+      provider: z.enum(['none', 'openai', 'gemini', 'demo']).optional(),
+      openaiKey: z.string().max(400).optional(),
+      openaiModel: z.string().max(80).optional(),
+      openaiBaseUrl: z.string().max(300).optional(),
+      geminiKey: z.string().max(400).optional(),
+      geminiModel: z.string().max(80).optional(),
+      vision: z.enum(['local', 'gemini']).optional(),
+      visionModel: z.string().max(120).optional(),
+    })
+    .optional(),
 });
 
 /** The AI layer (docs/ARCHITECTURE.md §80): status, prompt library, jobs, settings. */
@@ -41,6 +61,8 @@ export class AiController {
   constructor(
     private readonly ai: AiService,
     private readonly org: OrgService,
+    private readonly studio: ImageStudioService,
+    private readonly slides: SlidesService,
   ) {}
 
   @Get('status')
@@ -51,7 +73,15 @@ export class AiController {
   @Get('settings')
   async settings(@CurrentUser() a: Actor) {
     await this.org.requireAdmin(a);
-    return this.ai.settings(a.workspaceId);
+    return this.ai.view(await this.ai.settings(a.workspaceId));
+  }
+
+  /** Makes one picture with the connected image AI (checks the key and the model). */
+  @Post('settings/test-images')
+  @HttpCode(200)
+  async testImages(@CurrentUser() a: Actor) {
+    await this.org.requireAdmin(a);
+    return this.ai.testImages(a);
   }
 
   @Put('settings')
@@ -101,6 +131,31 @@ export class AiController {
   @Get('jobs/:id')
   job(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.ai.job(a, id);
+  }
+
+  /** A picture made elsewhere as a new design in its own shape. */
+  @Post('pictures/import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  importAsDesign(@CurrentUser() a: Actor, @UploadedFile() file: Express.Multer.File, @Body() b: unknown) {
+    if (!file) throw new BadRequestException('Choose a picture');
+    const body = parse(z.object({ spaceId: z.string().uuid().optional(), parentId: z.string().uuid().optional() }), b ?? {});
+    return this.ai.importAsDesign(a, file, body);
+  }
+
+  /** A picture made elsewhere (ChatGPT, Gemini…) becomes the background of a new slide (or of the given one). */
+  @Post('pictures/:id/import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  async importPicture(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File, @Body() b: unknown) {
+    if (!file) throw new BadRequestException('Choose a picture');
+    const body = parse(z.object({ slideId: z.string().max(64).optional(), newSlide: z.enum(['0', '1']).optional() }), b ?? {});
+    const deck = await this.slides.deck(id);
+    return this.studio.importPicture(a, id, file, { slideId: body.slideId ?? null, newSlide: body.newSlide !== '0' }, deck.size);
+  }
+
+  /** Magic resize: the slide as a new design in another format (no model involved). */
+  @Post('pictures/:id/resize')
+  resize(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
+    return this.ai.resize(a, id, parse(z.object({ slideId: z.string().max(64).nullish(), format: z.string().max(40), mode: z.enum(['fit', 'fill']).nullish() }), b));
   }
 
   @Post('jobs/:id/cancel')

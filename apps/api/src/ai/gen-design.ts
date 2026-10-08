@@ -353,6 +353,37 @@ export function cardSlides(raw: Partial<CardCopy>, size: DeckSize, request: stri
   return [slide(brandBg, front, `Brand side · template ${tpl} · ${pal.label}`), slide(backBg, back, 'Details side')];
 }
 
+/**
+ * A picture from the image AI becomes the slide's background (§81): the template's drawn decoration and the photo
+ * placeholder step aside, and a soft panel keeps the text readable on any picture. Text, badge and button stay.
+ */
+export function adaptForPicture(slide: PlainSlide, size: DeckSize, src: string, card: boolean) {
+  slide.meta = { ...slide.meta, background: { type: 'image', src } };
+  slide.elements = slide.elements.filter((e) => !/^(decor|photo|band|logo ring)/.test(e.name ?? ''));
+  const texts = slide.elements.filter((e) => e.type === 'text' || (e.type === 'shape' && e.text));
+  if (!texts.length) return;
+  const x1 = Math.min(...texts.map((e) => e.x));
+  const y1 = Math.min(...texts.map((e) => e.y));
+  const x2 = Math.max(...texts.map((e) => e.x + e.w));
+  const y2 = Math.max(...texts.map((e) => e.y + e.h));
+  const pad = Math.min(size.w, size.h) * 0.04;
+  const panel: PlainElement = {
+    id: newId(),
+    type: 'shape',
+    geom: 'roundRect',
+    x: Math.round(Math.max(0, x1 - pad)),
+    y: Math.round(Math.max(0, y1 - pad)),
+    w: Math.round(Math.min(size.w, x2 + pad) - Math.max(0, x1 - pad)),
+    h: Math.round(Math.min(size.h, y2 + pad) - Math.max(0, y1 - pad)),
+    z: 0,
+    name: 'text panel',
+    style: { fill: '#FFFFFF', stroke: null, opacity: card ? 0.55 : 0.72, radius: Math.min(size.w, size.h) * 0.04 },
+  };
+  // Light text on a picture reads badly through a white panel: make it dark.
+  for (const e of texts) if (e.type === 'text' && e.style?.color && /^#F/i.test(e.style.color)) e.style = { ...e.style, color: '#1F2937' };
+  slide.elements.unshift(panel);
+}
+
 /** Contact details and the business name, read from the request itself (a model must not make them up). */
 export function factsOf(request: string) {
   const emails = request.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [];
@@ -391,4 +422,91 @@ function shade(hex: string) {
   const n = parseInt(hex.slice(1), 16);
   const f = (v: number) => Math.max(0, Math.round(v * 0.78));
   return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => f(v).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+// ── Magic resize ────────────────────────────────────────────────────────────
+
+/**
+ * A slide laid out again for another format (Canva's "Resize"): every element keeps its place relative to the page
+ * centre-to-centre, scaled by the smaller of the two ratios so nothing is stretched; fonts follow. A picture that
+ * fills the page keeps filling it (cropped like CSS cover); the background picture is already drawn "cover".
+ */
+export function resizeSlide(slide: PlainSlide, from: DeckSize, to: DeckSize): PlainSlide {
+  const sx = to.w / from.w;
+  const sy = to.h / from.h;
+  const s = Math.min(sx, sy);
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const elements = slide.elements.map((e): PlainElement => {
+    const full = e.type === 'image' && e.x <= from.w * 0.03 && e.y <= from.h * 0.03 && e.x + e.w >= from.w * 0.97 && e.y + e.h >= from.h * 0.97;
+    if (full) {
+      // Crop the picture to the new page's shape instead of squashing it.
+      const crop = { l: e.crop?.l ?? 0, t: e.crop?.t ?? 0, r: e.crop?.r ?? 0, b: e.crop?.b ?? 0 };
+      const was = e.w / e.h;
+      const now = to.w / to.h;
+      if (now > was) {
+        const vh = 1 - crop.t - crop.b;
+        const cut = (vh * (1 - was / now)) / 2;
+        crop.t += cut;
+        crop.b += cut;
+      } else if (now < was) {
+        const vw = 1 - crop.l - crop.r;
+        const cut = (vw * (1 - now / was)) / 2;
+        crop.l += cut;
+        crop.r += cut;
+      }
+      return { ...e, x: 0, y: 0, w: to.w, h: to.h, crop };
+    }
+    const w = e.w * s;
+    const h = e.h * s;
+    const cx = (e.x + e.w / 2) * sx;
+    const cy = (e.y + e.h / 2) * sy;
+    const x = Math.min(Math.max(cx - w / 2, 0), Math.max(0, to.w - w));
+    const y = Math.min(Math.max(cy - h / 2, 0), Math.max(0, to.h - h));
+    const style: ElementStyle | undefined = e.style && {
+      ...e.style,
+      ...(e.style.fontSize ? { fontSize: Math.max(4, round(e.style.fontSize * s)) } : {}),
+      ...(e.style.strokeWidth ? { strokeWidth: round(e.style.strokeWidth * s) } : {}),
+      ...(e.style.radius ? { radius: round(e.style.radius * s) } : {}),
+    };
+    return {
+      ...e,
+      x: Math.round(x),
+      y: Math.round(y),
+      w: Math.round(w),
+      h: Math.round(h),
+      ...(style ? { style } : {}),
+      ...(e.table?.fontSize ? { table: { ...e.table, fontSize: Math.max(4, round(e.table.fontSize * s)) } } : {}),
+    };
+  });
+  return { ...slide, id: newId(), elements };
+}
+
+/**
+ * The whole slide scaled into another format without moving anything relative to anything else (for designs built on
+ * a picture, whose text sits on the picture's own decorations): one scale, centred; the caller fills the margins.
+ */
+export function fitSlide(slide: PlainSlide, from: DeckSize, to: DeckSize): { slide: PlainSlide; frame: { x: number; y: number; w: number; h: number } } {
+  const k = Math.min(to.w / from.w, to.h / from.h);
+  const ox = (to.w - from.w * k) / 2;
+  const oy = (to.h - from.h * k) / 2;
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const elements = slide.elements.map((e): PlainElement => ({
+    ...e,
+    x: Math.round(ox + e.x * k),
+    y: Math.round(oy + e.y * k),
+    w: Math.round(e.w * k),
+    h: Math.round(e.h * k),
+    ...(e.style
+      ? {
+          style: {
+            ...e.style,
+            ...(e.style.fontSize ? { fontSize: Math.max(4, round(e.style.fontSize * k)) } : {}),
+            ...(e.style.strokeWidth ? { strokeWidth: round(e.style.strokeWidth * k) } : {}),
+            ...(e.style.radius ? { radius: round(e.style.radius * k) } : {}),
+          },
+        }
+      : {}),
+    ...(e.table?.fontSize ? { table: { ...e.table, fontSize: Math.max(4, round(e.table.fontSize * k)) } } : {}),
+  }));
+  return { slide: { ...slide, id: newId(), elements }, frame: { x: Math.round(ox), y: Math.round(oy), w: Math.round(from.w * k), h: Math.round(from.h * k) } };
 }

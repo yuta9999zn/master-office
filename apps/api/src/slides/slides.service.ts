@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { blankDeck, deckToHtmlDocument, readDeck, writeDeck, type PlainDeck } from '@workos/slide-model';
 import JSZip from 'jszip';
+import sharp from 'sharp';
 import * as Y from 'yjs';
 import { CollabService } from '../collab/collab.service';
 import { DocStore } from '../docs/doc-store';
@@ -8,14 +9,23 @@ import { PdfRenderer } from '../docs/pdf-renderer';
 import { exportPptx, type ImageLoader } from './pptx-export';
 import { importPptx, type ImageStore, type PptxImportReport } from './pptx-import';
 
-export type SlideExportFormat = 'pptx' | 'pdf' | 'png' | 'html';
+export type SlideExportFormat = 'pptx' | 'pdf' | 'png' | 'jpg' | 'html';
 
 export const SLIDE_EXPORT_MIME: Record<SlideExportFormat, string> = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   pdf: 'application/pdf',
   png: 'image/png',
+  jpg: 'image/jpeg',
   html: 'text/html; charset=utf-8',
 };
+
+/** 300 dpi on a 96-px-per-inch canvas. */
+export const PRINT_SCALE = 3.125;
+/** Pictures are kept under ~40 megapixels: a big format asked at 4× comes back smaller. */
+export function pictureScale(size: { w: number; h: number }, want: number): number {
+  const max = Math.sqrt(40_000_000 / (size.w * size.h));
+  return Math.max(0.25, Math.min(want, max >= want ? want : Math.floor(max * 4) / 4));
+}
 
 export const deckBaseName = (name: string) => name.replace(/\.(pptx?|odp|key)$/i, '');
 
@@ -82,7 +92,7 @@ export class SlidesService {
     return this.collab.replaceDeck(id, deck, editor);
   }
 
-  async export(id: string, name: string, format: SlideExportFormat, loadImage: ImageLoader, opts: { author?: string; slide?: number } = {}) {
+  async export(id: string, name: string, format: SlideExportFormat, loadImage: ImageLoader, opts: { author?: string; slide?: number; scale?: number } = {}) {
     const deck = await this.deck(id, name);
     const title = deckBaseName(name);
     if (format === 'pptx') {
@@ -96,15 +106,23 @@ export class SlidesService {
       if (img) inline.set(src, `data:${img.mime};base64,${img.data.toString('base64')}`);
     }
     const resolveSrc = (src: string) => inline.get(src) ?? src;
-    if (format === 'png') {
+    if (format === 'png' || format === 'jpg') {
+      // Slides are laid out at 96 px per inch: scale 3.125 is print quality (300 dpi), and the file says so.
+      const scale = pictureScale(deck.size, opts.scale ?? 2);
+      const picture = async (png: Buffer) => {
+        const img = sharp(png).withMetadata({ density: Math.round(96 * scale) });
+        return format === 'jpg' ? img.flatten({ background: '#ffffff' }).jpeg({ quality: 92, mozjpeg: true }).toBuffer() : img.png().toBuffer();
+      };
+      const tag = scale === 2 ? '' : ` @${scale === PRINT_SCALE ? '300dpi' : `${scale}x`}`;
       if (opts.slide !== undefined) {
         if (opts.slide < 0 || opts.slide >= deck.slides.length) throw new BadRequestException(`Slide ${opts.slide + 1} does not exist`);
-        const [png] = await this.pdf.screenshots(deckToHtmlDocument(deck, { resolveSrc, only: opts.slide }), deck.size);
-        return { name: `${title} - slide ${opts.slide + 1}.png`, mime: SLIDE_EXPORT_MIME.png, body: png };
+        const [png] = await this.pdf.screenshots(deckToHtmlDocument(deck, { resolveSrc, only: opts.slide }), deck.size, scale);
+        const one = deck.slides.length === 1 ? title : `${title} - slide ${opts.slide + 1}`;
+        return { name: `${one}${tag}.${format}`, mime: SLIDE_EXPORT_MIME[format], body: await picture(png) };
       }
-      const pngs = await this.pdf.screenshots(deckToHtmlDocument(deck, { resolveSrc, includeHidden: true }), deck.size);
+      const pngs = await this.pdf.screenshots(deckToHtmlDocument(deck, { resolveSrc, includeHidden: true }), deck.size, scale);
       const zip = new JSZip();
-      pngs.forEach((p, i) => zip.file(`${title} - slide ${String(i + 1).padStart(2, '0')}.png`, p));
+      for (const [i, p] of pngs.entries()) zip.file(`${title} - slide ${String(i + 1).padStart(2, '0')}${tag}.${format}`, await picture(p));
       return { name: `${title} (slides).zip`, mime: 'application/zip', body: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) };
     }
     const html = deckToHtmlDocument(deck, { resolveSrc, title });
