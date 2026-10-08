@@ -21,6 +21,7 @@ import {
   type PlainFlow,
   type Side,
   type Stored,
+  CONTAINER_SHAPES,
 } from '@workos/flow-model';
 import { useSyncExternalStore } from 'react';
 import * as Y from 'yjs';
@@ -92,6 +93,7 @@ export class FlowStore {
     this.tx(() => this.patch(this.pages, id, (p) => ({ ...p, name })));
   }
   deletePage(id: string) {
+    this.undo.stopCapturing();
     this.tx(() => {
       for (const [nid, m] of [...this.nodes.entries()]) if (field(m, 'page') === id) this.nodes.delete(nid);
       for (const [eid, m] of [...this.edges.entries()]) if (field(m, 'page') === id) this.edges.delete(eid);
@@ -121,11 +123,14 @@ export class FlowStore {
       text: def.text ?? '',
       icon: def.icon ?? null,
       // Containers sit under everything else.
-      z: shape === 'container' || shape === 'lane' ? -1 : this.maxZ(page) + 1,
+      z: CONTAINER_SHAPES.has(shape) ? -1 : this.maxZ(page) + 1,
       style: styleFor(shape),
       data: {},
       ...extra,
     };
+    // Adding and removing are always their own undo steps: merged with a preceding edit of the same shape (within
+    // captureTimeout) the old value could not be restored, since each shape is one flat map value.
+    this.undo.stopCapturing();
     this.tx(() => this.nodes.set(id, toPlain(node)));
     return id;
   }
@@ -168,6 +173,7 @@ export class FlowStore {
   addEdge(page: string, from: string, to: string, fromSide: Side | null, toSide: Side | null, extra: Partial<FlowEdge> = {}) {
     const id = newId('e');
     const e: FlowEdge = { id, page, from, to, fromSide, toSide, label: '', style: { ...DEFAULT_EDGE_STYLE }, ...extra };
+    this.undo.stopCapturing();
     this.tx(() => this.edges.set(id, toPlain(e)));
     return id;
   }
@@ -179,6 +185,7 @@ export class FlowStore {
   /** Deletes nodes (and the edges touching them) and edges, in one undo step. */
   remove(nodeIds: string[], edgeIds: string[]) {
     const gone = new Set(nodeIds);
+    this.undo.stopCapturing();
     this.tx(() => {
       for (const id of nodeIds) this.nodes.delete(id);
       for (const [id, m] of [...this.edges.entries()]) if (edgeIds.includes(id) || gone.has(String(field(m, 'from'))) || gone.has(String(field(m, 'to')))) this.edges.delete(id);

@@ -22,7 +22,7 @@
     "test:meetings": "node test/meetings.mjs",
     "test:approvals": "node test/approvals.mjs",
     "test:base": "npx tsx test/base-model.ts && node test/base.mjs",
-    "test:flow": "node test/flow.mjs",
+    "test:flow": "node test/flow.mjs && node test/flow-automation.mjs",
     "test:wiki": "node test/wiki.mjs",
     "test:auth": "node test/auth.mjs && node test/teams.mjs && node test/storage.mjs"
   },

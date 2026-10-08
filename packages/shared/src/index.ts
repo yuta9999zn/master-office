@@ -456,7 +456,7 @@ export type RealtimeEvent =
 
 // ── Notifications (§66) ─────────────────────────────────────────────────────
 
-export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'task.request' | 'task.gate' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment';
+export type NotificationKind = 'chat.mention' | 'chat.reply' | 'resource.shared' | 'comment.created' | 'comment.reply' | 'calendar.invite' | 'calendar.response' | 'task.assigned' | 'task.comment' | 'task.request' | 'task.gate' | 'meeting.call' | 'approval.pending' | 'approval.result' | 'approval.cc' | 'approval.comment' | 'flow.run';
 
 export interface AppNotification {
   id: string;

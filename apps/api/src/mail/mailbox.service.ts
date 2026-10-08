@@ -23,6 +23,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { StorageService } from '../storage/storage.service';
 import { QuotaService } from '../storage/quota.service';
+import { flowHooks } from '../flow/flow-hooks';
 import { MailService } from './mail.service';
 
 type Box = typeof mailboxes.$inferSelect;
@@ -683,6 +684,8 @@ export class MailboxService {
       }
     });
     await this.touched(boxes.map((b) => b.id), received);
+    for (const r of received)
+      flowHooks.fire('mail.received', r.box.workspaceId, { mailboxId: r.box.id, address: r.box.address, from: m.from.address, fromName: m.from.name ?? null, subject: m.subject, text: m.text.slice(0, 5000), messageId: m.messageId, threadId: r.threadId, attachments: m.attachments.map((a) => a.name) });
     return received.length;
   }
 }

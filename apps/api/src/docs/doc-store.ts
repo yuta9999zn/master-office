@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { hasWorkbook, readWorkbook, workbookText } from '@workos/sheet-model';
 import { deckText, hasDeck, readDeck } from '@workos/slide-model';
 import { formText, hasForm, readForm } from '@workos/form-model';
+import { hasFlow, readFlow } from '@workos/flow-model';
 import * as Y from 'yjs';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
@@ -66,6 +67,12 @@ export class DocStore {
   private readonly log = new Logger('DocStore');
   private lastEditActivity = new Map<string, number>();
   private lastSnapshot = new Map<string, number>();
+  private savedListeners: ((resourceId: string, doc: Y.Doc) => unknown)[] = [];
+
+  /** Runs after every save — the flow runner keeps its trigger index this way (§77 batch 2). */
+  onSaved(fn: (resourceId: string, doc: Y.Doc) => unknown) {
+    this.savedListeners.push(fn);
+  }
 
   constructor(
     @InjectDb() private readonly db: Db,
@@ -95,6 +102,10 @@ export class DocStore {
       const deck = readDeck(doc);
       text = deckText(deck);
       stats = { slideCount: deck.slides.length };
+    } else if (hasFlow(doc)) {
+      const f = readFlow(doc);
+      text = f.nodes.map((n) => n.text).filter(Boolean).join('\n');
+      stats = { nodeCount: f.nodes.length, pageCount: f.pages.length };
     } else {
       const json = documentJSON(doc);
       text = toPlainText(json);
@@ -105,6 +116,7 @@ export class DocStore {
       .insert(ydocStates)
       .values({ resourceId, state: buf })
       .onConflictDoUpdate({ target: ydocStates.resourceId, set: { state: buf, updatedAt: sql`now()` } });
+    for (const l of this.savedListeners) void Promise.resolve().then(() => l(resourceId, doc)).catch((e: Error) => this.log.warn(`after-save listener: ${e.message}`));
     const [row] = await this.db
       .update(resources)
       .set({

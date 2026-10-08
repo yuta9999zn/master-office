@@ -1,6 +1,6 @@
 'use client';
 
-import { labelPoint, nearestSide, pathD, port, routePoints, SIDES, shapeDef, type FlowEdge, type FlowNode, type PlainFlow, type Side } from '@workos/flow-model';
+import { CONTAINER_SHAPES, labelPoint, nearestSide, pathD, port, routePoints, SIDES, shapeDef, type FlowEdge, type FlowNode, type PlainFlow, type Side } from '@workos/flow-model';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../ui/primitives';
 import type { FlowStore } from './flow-store';
@@ -89,7 +89,7 @@ export function FlowCanvas({
   const nodeAt = (p: { x: number; y: number }, except?: string) =>
     [...nodes]
       .sort((a, b) => b.z - a.z)
-      .find((n) => n.id !== except && p.x >= n.x && p.x <= n.x + n.w && p.y >= n.y && p.y <= n.y + n.h && !(n.shape === 'container' || n.shape === 'lane'));
+      .find((n) => n.id !== except && p.x >= n.x && p.x <= n.x + n.w && p.y >= n.y && p.y <= n.y + n.h && !CONTAINER_SHAPES.has(n.shape));
 
   // Space held = hand tool.
   useEffect(() => {
@@ -252,7 +252,7 @@ export function FlowCanvas({
         <g transform={`translate(${view.x},${view.y}) scale(${view.zoom})`}>
           {/* Containers first, then edges, then the other shapes (by z). */}
           {order
-            .filter((n) => n.shape === 'container' || n.shape === 'lane')
+            .filter((n) => CONTAINER_SHAPES.has(n.shape))
             .map((n) => (
               <NodeG key={n.id} n={live(n)} selected={selected.has(n.id)} peer={peerSel.get(n.id)} hideText={editingNode?.id === n.id} onDown={(e) => startNode(n, e)} onDouble={() => editable && setEditing({ kind: 'node', id: n.id })} onHover={setHover} />
             ))}
@@ -286,7 +286,7 @@ export function FlowCanvas({
             );
           })}
           {order
-            .filter((n) => n.shape !== 'container' && n.shape !== 'lane')
+            .filter((n) => !CONTAINER_SHAPES.has(n.shape))
             .map((n) => (
               <NodeG key={n.id} n={live(n)} selected={selected.has(n.id)} peer={peerSel.get(n.id)} hideText={editingNode?.id === n.id} onDown={(e) => startNode(n, e)} onDouble={() => editable && setEditing({ kind: 'node', id: n.id })} onHover={setHover} />
             ))}
@@ -421,8 +421,17 @@ function NodeG({ n, selected, peer, hideText, onDown, onDouble, onHover }: { n: 
       data-node={n.id}
       data-text={n.text}
       data-shape={n.shape}
+      data-automation={n.automation?.role && n.automation.role !== 'none' ? n.automation.role : undefined}
     >
       <NodeShape n={n} hideText={hideText} />
+      {n.automation && n.automation.role !== 'none' && (
+        <g transform={`translate(${n.w - 8},-8)`} pointerEvents="none" data-testid="automation-badge" data-role={n.automation.role}>
+          <circle r={9} fill={n.automation.role === 'trigger' ? '#f59e0b' : n.automation.role === 'condition' ? '#8b5cf6' : '#2563eb'} stroke="#fff" strokeWidth={1.5} />
+          <text textAnchor="middle" dominantBaseline="central" fontSize={n.automation.role === 'trigger' ? 10 : 9} fill="#fff" fontWeight={700} style={{ fontFamily: 'Inter, sans-serif' }}>
+            {n.automation.role === 'trigger' ? '⚡' : n.automation.role === 'condition' ? '?' : '▶'}
+          </text>
+        </g>
+      )}
       {selected && <rect x={-3} y={-3} width={n.w + 6} height={n.h + 6} rx={6} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="0" pointerEvents="none" />}
       {peer && !selected && <rect x={-4} y={-4} width={n.w + 8} height={n.h + 8} rx={7} fill="none" stroke={peer.color} strokeWidth={2} pointerEvents="none" />}
     </g>

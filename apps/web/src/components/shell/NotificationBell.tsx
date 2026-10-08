@@ -1,7 +1,7 @@
 'use client';
 
 import type { AppNotification } from '@workos/shared';
-import { AtSign, Bell, CalendarDays, CheckCheck, CircleCheck, FileText, ListChecks, MessageSquareText, PhoneMissed, Share2, SquareCheckBig } from 'lucide-react';
+import { AtSign, Bell, CalendarDays, CheckCheck, CircleCheck, FileText, ListChecks, MessageSquareText, PhoneMissed, Share2, SquareCheckBig, Workflow } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Popover } from 'radix-ui';
 import { useState } from 'react';
@@ -24,6 +24,7 @@ const KIND_ICON: Record<string, { icon: typeof Bell; color: string }> = {
   'approval.result': { icon: CircleCheck, color: '#10b981' },
   'approval.cc': { icon: ListChecks, color: '#0ea5e9' },
   'approval.comment': { icon: MessageSquareText, color: '#f59e0b' },
+  'flow.run': { icon: Workflow, color: '#8b5cf6' },
 };
 
 type Tab = 'all' | 'unread' | 'mentions';

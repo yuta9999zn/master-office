@@ -7,6 +7,7 @@
 // Each node / edge is one plain value: changes replace it whole, so undoing a delete brings it back exactly
 // (deleted nested Y.Maps do not always come back with their content). Readers also accept the older Y.Map form.
 import * as Y from 'yjs';
+import type { NodeAutomation } from './automation';
 import { DEFAULT_EDGE_STYLE, DEFAULT_NODE_STYLE, type FlowEdge, type FlowInfo, type FlowNode, type FlowPage, type PlainFlow } from './types';
 
 export const INFO_MAP = 'flowInfo';
@@ -48,8 +49,12 @@ export function readInfo(doc: Y.Doc): FlowInfo {
     trigger: String(m.get('trigger') ?? 'Manual'),
     tags: (m.get('tags') as string[]) ?? [],
     description: String(m.get('description') ?? ''),
+    automation: m.get('automation') === true,
   };
 }
+
+/** Is this Y.Doc a flow (and not a document / workbook / deck / form)? */
+export const hasFlow = (doc: Y.Doc) => doc.getMap(INFO_MAP).has('status');
 
 export function readPages(doc: Y.Doc): FlowPage[] {
   const pages = doc.getMap<Stored>(PAGES_MAP);
@@ -76,6 +81,7 @@ export function readNode(id: string, s: Stored): FlowNode {
     style: { ...DEFAULT_NODE_STYLE, ...((m.get('style') as object) ?? {}) },
     z: Number(m.get('z') ?? 0),
     data: (m.get('data') as Record<string, string>) ?? {},
+    automation: (m.get('automation') as NodeAutomation | null | undefined) ?? null,
   };
 }
 

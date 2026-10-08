@@ -37,6 +37,7 @@ import { ResourcesService } from '../resources/resources.service';
 import { SheetsService } from '../sheets/sheets.service';
 import { MacroTriggersService } from '../sheets/macro-triggers.service';
 import { StorageService } from '../storage/storage.service';
+import { flowHooks } from '../flow/flow-hooks';
 import { QuotaService } from '../storage/quota.service';
 
 const csvCell = (v: string | number) => {
@@ -218,6 +219,18 @@ export class FormsService {
     }
     this.collab.notify(id, { type: 'responses' });
     void this.notifySubscribers(row, form, { respondent: actor?.name ?? null, email, answers, score });
+    // Flows that start on this form (§77 batch 2): answers by question title for {{trigger.answers.Question}}.
+    flowHooks.fire('form.submitted', row.workspaceId, {
+      formId: id,
+      formName: row.name,
+      spaceId: row.spaceId,
+      responseId: created.id,
+      email,
+      respondent: actor ? { id: actor.id, name: actor.name } : null,
+      answers: Object.fromEntries(form.items.filter((it) => answers[it.id] !== undefined).map((it) => [it.title || it.id, answers[it.id]])),
+      answersById: answers,
+      score,
+    });
     if (wantsCopy) void this.sendCopy(id, form, { email: email!, answers, score, editToken, released: false });
     return this.receipt(form, created.id, editToken, score);
   }

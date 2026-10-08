@@ -3,7 +3,10 @@
 import { bounds, type FlowEdge, type FlowNode } from '@workos/flow-model';
 import type { ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
-import { ChevronDown, ChevronLeft, ChevronRight, Download, FileJson, FileImage, Hand, Maximize, MessageSquarePlus, MousePointer2, Pencil, Play, Plus, Redo2, Spline, Sparkles, SquarePlus, Trash2, Undo2, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Download, FileJson, FileImage, Hand, Maximize, MessageSquarePlus, MousePointer2, Pencil, Play, Plus, Redo2, Spline, Sparkles, SquarePlus, Trash2, Undo2, Upload, X } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { useFlowActions } from '@/lib/flow';
+import { RunsPanel } from './RunsPanel';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useMe, useResourceMembers } from '@/lib/queries';
@@ -20,7 +23,7 @@ import { ShapeLibrary } from './ShapeLibrary';
 import { api } from '@/lib/api';
 import type { PlainFlow } from '@workos/flow-model';
 
-type Tab = 'design' | 'prototype' | 'collaborate' | 'history';
+type Tab = 'design' | 'runs' | 'prototype' | 'collaborate' | 'history';
 // Copied shapes survive switching flows in the same tab.
 let clipboard: { nodes: FlowNode[]; edges: FlowEdge[] } | null = null;
 
@@ -33,7 +36,14 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
   useEffect(() => () => store?.destroy(), [store]);
   const flow = useFlow(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
-  const [tab, setTab] = useState<Tab>('design');
+  const params = useSearchParams();
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'runs' ? 'runs' : 'design');
+  const flowActions = useFlowActions(r.id);
+  const importInput = useRef<HTMLInputElement>(null);
+  const selectNode = useCallback((id: string) => {
+    setTab('design');
+    setSel({ nodes: [id], edges: [] });
+  }, []);
   const [share, setShare] = useState(false);
   const [pageId, setPageId] = useState<string | null>(null);
   const page = flow?.pages.find((p) => p.id === pageId)?.id ?? flow?.pages[0]?.id ?? null;
@@ -214,13 +224,21 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
                 <MenuItem icon={<FileJson size={15} />} onSelect={() => flow && download(`${r.name}.flow.json`, new Blob([JSON.stringify({ info: flow.info, pages: flow.pages, nodes: flow.nodes, edges: flow.edges }, null, 2)], { type: 'application/json' }))}>
                   Flow data (.json)
                 </MenuItem>
+                {editable && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem icon={<Upload size={15} />} onSelect={() => importInput.current?.click()}>
+                      Import flow data (.json)…
+                    </MenuItem>
+                  </>
+                )}
               </MenuContent>
             </Menu>
           </>
         }
       />
       <nav className="mt-1 flex gap-1 border-b border-line px-5" role="tablist">
-        {(['design', 'prototype', 'collaborate', 'history'] as Tab[]).map((t) => (
+        {(['design', 'runs', 'prototype', 'collaborate', 'history'] as Tab[]).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('-mb-px border-b-2 px-3 py-2 text-[13.5px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-muted hover:text-ink')} data-testid={`flow-tab-${t}`}>
             {t}
           </button>
@@ -329,6 +347,8 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
           </div>
           <Inspector store={store} flow={flow} sel={sel} owner={r.owner ?? null} editable={editable} />
         </div>
+      ) : tab === 'runs' ? (
+        <RunsPanel r={r} flow={flow} store={store} editable={editable} onStateless={collab.onStateless} onSelectNode={selectNode} />
       ) : tab === 'prototype' ? (
         <Prototype flow={flow} page={page} />
       ) : tab === 'collaborate' ? (
@@ -337,6 +357,24 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
         <VersionsTab resourceId={r.id} editable={editable} page={page} />
       )}
 
+      <input
+        ref={importInput}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        aria-label="Import flow data"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const data = JSON.parse(await f.text()) as PlainFlow;
+            flowActions.importFlow.mutate(data, { onSuccess: (res) => toast.success(`Imported ${res.nodes} shapes`) });
+          } catch {
+            toast.error('That file is not a flow export');
+          }
+        }}
+      />
       {present && flow?.ready && page && <Present flow={flow} startPage={page} onClose={() => setPresent(false)} />}
       {exporting && flow && page && (
         <div style={{ position: 'fixed', left: -100000, top: 0 }} aria-hidden>

@@ -225,6 +225,13 @@
       "when": 1791421206976,
       "tag": "0031_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791430853093,
+      "tag": "0032_flow_automation",
+      "breakpoints": true
     }
   ]
 }

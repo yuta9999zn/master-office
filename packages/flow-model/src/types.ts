@@ -2,11 +2,46 @@
 // edges (connectors) — plus the workflow's info (version, status, trigger, tags). Shared by the designer (web),
 // the server (blank / templates / SVG export) and, later, the automation runner.
 
+import type { NodeAutomation } from './automation';
+
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 export const SIDES: Side[] = ['top', 'right', 'bottom', 'left'];
 
 export type Dash = 'solid' | 'dashed' | 'dotted';
-export type ArrowHead = 'none' | 'arrow' | 'open' | 'diamond' | 'circle';
+export type ArrowHead = 'none' | 'arrow' | 'open' | 'triangle' | 'diamond' | 'diamondOpen' | 'circle' | 'crowOne' | 'crowMany' | 'crowOneMany' | 'crowZeroOne' | 'crowZeroMany';
+
+/** Every arrow head with what it means (UML and entity-relationship notation included). */
+export const ARROW_HEADS: { id: ArrowHead; label: string; note: string }[] = [
+  { id: 'none', label: 'None', note: 'A plain line.' },
+  { id: 'arrow', label: 'Arrow', note: 'Flow direction (filled).' },
+  { id: 'open', label: 'Open arrow', note: 'Direction; UML dependency / message flow end.' },
+  { id: 'triangle', label: 'Hollow triangle', note: 'UML generalization (inheritance) / realization — points at the parent.' },
+  { id: 'diamond', label: 'Filled diamond', note: 'UML composition — the whole owns its parts (at the whole).' },
+  { id: 'diamondOpen', label: 'Hollow diamond', note: 'UML aggregation — the whole references its parts (at the whole).' },
+  { id: 'circle', label: 'Circle', note: 'BPMN message flow start; a plain end point.' },
+  { id: 'crowOne', label: 'One (|)', note: 'ER: exactly one.' },
+  { id: 'crowMany', label: 'Many (<)', note: 'ER: many (crow’s foot).' },
+  { id: 'crowOneMany', label: 'One or many (|<)', note: 'ER: at least one.' },
+  { id: 'crowZeroOne', label: 'Zero or one (o|)', note: 'ER: optional, at most one.' },
+  { id: 'crowZeroMany', label: 'Zero or many (o<)', note: 'ER: optional, any number.' },
+];
+
+/** Ready-made connector styles for the common notations (the Preset menu of a connector). */
+export const EDGE_PRESETS: { id: string; label: string; style: Partial<EdgeStyle>; note: string }[] = [
+  { id: 'flow', label: 'Sequence flow', style: { dash: 'solid', startArrow: 'none', endArrow: 'arrow' }, note: 'What happens next.' },
+  { id: 'message', label: 'Message flow (BPMN)', style: { dash: 'dashed', startArrow: 'circle', endArrow: 'open' }, note: 'A message between pools.' },
+  { id: 'association', label: 'Association', style: { dash: 'dotted', startArrow: 'none', endArrow: 'none' }, note: 'Attaches data / notes; UML plain association when solid.' },
+  { id: 'generalization', label: 'Generalization (UML)', style: { dash: 'solid', startArrow: 'none', endArrow: 'triangle' }, note: 'Child → parent (inherits).' },
+  { id: 'realization', label: 'Realization (UML)', style: { dash: 'dashed', startArrow: 'none', endArrow: 'triangle' }, note: 'Class → interface it implements.' },
+  { id: 'dependency', label: 'Dependency (UML)', style: { dash: 'dashed', startArrow: 'none', endArrow: 'open' }, note: 'Uses / depends on.' },
+  { id: 'aggregation', label: 'Aggregation (UML)', style: { dash: 'solid', startArrow: 'diamondOpen', endArrow: 'none' }, note: 'Whole (diamond) has parts that can live alone.' },
+  { id: 'composition', label: 'Composition (UML)', style: { dash: 'solid', startArrow: 'diamond', endArrow: 'none' }, note: 'Whole (diamond) owns parts that die with it.' },
+  { id: 'er11', label: 'ER 1 — 1', style: { dash: 'solid', startArrow: 'crowOne', endArrow: 'crowOne' }, note: 'One to one.' },
+  { id: 'er1n', label: 'ER 1 — n', style: { dash: 'solid', startArrow: 'crowOne', endArrow: 'crowMany' }, note: 'One to many (the foot at the many side).' },
+  { id: 'ernn', label: 'ER n — n', style: { dash: 'solid', startArrow: 'crowMany', endArrow: 'crowMany' }, note: 'Many to many (usually resolved by a join table).' },
+  { id: 'er01n', label: 'ER 0..1 — 0..n', style: { dash: 'solid', startArrow: 'crowZeroOne', endArrow: 'crowZeroMany' }, note: 'Optional one to optional many.' },
+  { id: 'er1_1n', label: 'ER 1 — 1..n', style: { dash: 'solid', startArrow: 'crowOne', endArrow: 'crowOneMany' }, note: 'One to at least one.' },
+];
 export type Route = 'orthogonal' | 'straight' | 'curved';
 
 export interface NodeStyle {
@@ -44,6 +79,8 @@ export interface FlowNode {
   z: number;
   /** Free key / value properties (the Data tab). */
   data: Record<string, string>;
+  /** What the shape does when the flow runs (§77 batch 2); absent = a plain diagram step. */
+  automation?: NodeAutomation | null;
 }
 
 export interface EdgeStyle {
@@ -77,10 +114,12 @@ export type FlowStatus = 'draft' | 'review' | 'published' | 'archived';
 export interface FlowInfo {
   version: string;
   status: FlowStatus;
-  /** What starts the workflow (shown in Workflow info; the runner uses it in §77 batch 2). */
+  /** What starts the workflow, as people describe it (the runner reads the trigger shapes instead). */
   trigger: string;
   tags: string[];
   description: string;
+  /** Automation on: trigger shapes start runs (§77 batch 2). */
+  automation: boolean;
 }
 
 export interface PlainFlow {

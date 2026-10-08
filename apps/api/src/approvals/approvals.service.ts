@@ -20,6 +20,7 @@ import {
 } from '@workos/shared';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { CalendarService } from '../calendar/calendar.service';
+import { flowHooks } from '../flow/flow-hooks';
 import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
@@ -467,6 +468,19 @@ export class ApprovalsService {
         .notify(actor, [req.submittedBy], { kind: 'approval.result', title: `Your ${t.name.toLowerCase()} was ${fx.finished}`, body: `${approvalSerial(req.serial)} · ${summary}`, url })
         .catch(() => undefined);
       if (fx.finished === 'approved') await this.onApproved(t, req, submitter).catch(() => undefined);
+      // Flows that start when a request is decided (§77 batch 2): values by field label.
+      const fields = (t.fields as { id: string; label: string }[]) ?? [];
+      flowHooks.fire('approval.finished', req.workspaceId, {
+        requestId: req.id,
+        templateId: t.id,
+        templateName: t.name,
+        serial: req.serial,
+        status: fx.finished,
+        submitter: { id: submitter.id, name: submitter.name, email: submitter.email },
+        decidedBy: { id: actor.id, name: actor.name },
+        values: Object.fromEntries(fields.map((f) => [f.label || f.id, req.values[f.id]])),
+        valuesById: req.values,
+      });
     }
     await this.changed(req.id);
   }

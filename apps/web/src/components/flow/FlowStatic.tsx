@@ -1,6 +1,6 @@
 'use client';
 
-import { bounds, type PlainFlow } from '@workos/flow-model';
+import { bounds, CONTAINER_SHAPES, type PlainFlow } from '@workos/flow-model';
 import { forwardRef } from 'react';
 import { EdgeShape, NodeShape } from './render';
 
@@ -13,8 +13,8 @@ export const FlowStatic = forwardRef<SVGSVGElement, { flow: PlainFlow; page: str
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const b = bounds(nodes, pad);
   const vb = nodes.length ? `${b.x} ${b.y} ${b.w} ${b.h}` : '0 0 800 600';
-  const back = nodes.filter((n) => n.shape === 'container' || n.shape === 'lane');
-  const front = nodes.filter((n) => n.shape !== 'container' && n.shape !== 'lane');
+  const back = nodes.filter((n) => CONTAINER_SHAPES.has(n.shape));
+  const front = nodes.filter((n) => !CONTAINER_SHAPES.has(n.shape));
   return (
     <svg ref={ref} xmlns="http://www.w3.org/2000/svg" viewBox={vb} width={nodes.length ? b.w : 800} height={nodes.length ? b.h : 600} className={className} style={{ background: '#ffffff' }}>
       {back.map((n) => (

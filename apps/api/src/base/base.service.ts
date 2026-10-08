@@ -41,6 +41,7 @@ import { baseComments, baseFields, baseRecords, baseTables, baseViews, blobs, re
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { StorageService } from '../storage/storage.service';
+import { flowHooks } from '../flow/flow-hooks';
 import { QuotaService } from '../storage/quota.service';
 
 type TableRow = typeof baseTables.$inferSelect;
@@ -595,6 +596,7 @@ export class BaseService implements OnModuleInit {
     const dtos = created.map((r) => this.recordDto(r));
     if (added.size) this.push(t.baseId, { kind: 'schema' });
     this.push(t.baseId, { kind: 'records', tableId, upserted: dtos });
+    for (const d of dtos) flowHooks.fire('base.recordCreated', row.workspaceId, this.hookPayload(t, fields, d));
     return dtos;
   }
 
@@ -654,7 +656,21 @@ export class BaseService implements OnModuleInit {
     const dtos = updated.map((r) => this.recordDto(r));
     if (added.size) this.push(t.baseId, { kind: 'schema' });
     this.push(t.baseId, { kind: 'records', tableId, upserted: dtos });
+    dtos.forEach((d, i) => flowHooks.fire('base.recordUpdated', row.workspaceId, { ...this.hookPayload(t, fields, d), changed: Object.keys(patches[i]).map((fid) => fields.find((f) => f.id === fid)?.name ?? fid) }));
     return dtos;
+  }
+
+  /** What a flow sees of a record (§77 batch 2): values by field name, plus ids. */
+  private hookPayload(t: { id: string; baseId: string; name: string }, fields: { id: string; name: string }[], r: BaseRecord) {
+    return {
+      baseId: t.baseId,
+      tableId: t.id,
+      tableName: t.name,
+      recordId: r.id,
+      autoNumber: r.autoNumber,
+      record: Object.fromEntries(fields.map((f) => [f.name, r.values[f.id]])),
+      values: r.values,
+    };
   }
 
   /** Manual order: drops a record between two others. */

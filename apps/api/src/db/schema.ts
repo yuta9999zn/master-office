@@ -1408,6 +1408,60 @@ export const authTokens = pgTable(
   (t) => [uniqueIndex('auth_tokens_token_idx').on(t.tokenHash)],
 );
 
+// ── Flow automation (docs/ARCHITECTURE.md §77 batch 2) ──────────────────────
+
+/** Trigger shapes of every flow, kept in sync from the Yjs document on save, so events find the flows to start. */
+export const flowTriggers = pgTable(
+  'flow_triggers',
+  {
+    flowId: uuid('flow_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    nodeId: text('node_id').notNull(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    pageId: text('page_id').notNull(),
+    type: text('type').notNull(),
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    /** The flow's automation switch (info.automation). */
+    enabled: boolean('enabled').notNull().default(false),
+    nextRunAt: ts('next_run_at'),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.flowId, t.nodeId] }), index('flow_triggers_type_idx').on(t.workspaceId, t.type, t.enabled), index('flow_triggers_due_idx').on(t.enabled, t.nextRunAt)],
+);
+
+/** One run of a flow: the trigger that started it, every step with its result, and where it waits. */
+export const flowRuns = pgTable(
+  'flow_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flowId: uuid('flow_id')
+      .notNull()
+      .references(() => resources.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    pageId: text('page_id').notNull(),
+    triggerNodeId: text('trigger_node_id').notNull(),
+    triggerType: text('trigger_type').notNull(),
+    trigger: jsonb('trigger').$type<Record<string, unknown>>().notNull().default({}),
+    status: text('status').$type<'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'>().notNull().default('running'),
+    steps: jsonb('steps').$type<Record<string, unknown>[]>().notNull().default([]),
+    /** Outputs by step (`steps.<nodeId>`) for later templates. */
+    context: jsonb('context').$type<Record<string, unknown>>().notNull().default({}),
+    /** Node ids still to visit when the run resumes after a wait. */
+    pending: jsonb('pending').$type<string[]>().notNull().default([]),
+    resumeAt: ts('resume_at'),
+    error: text('error'),
+    runBy: uuid('run_by').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: ts('started_at').notNull().default(sql`now()`),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('flow_runs_flow_idx').on(t.flowId, t.startedAt), index('flow_runs_due_idx').on(t.status, t.resumeAt)],
+);
+
 /** Workspace settings by key (e.g. `smtp`); secrets inside are encrypted (AES-256-GCM). */
 export const systemSettings = pgTable(
   'system_settings',

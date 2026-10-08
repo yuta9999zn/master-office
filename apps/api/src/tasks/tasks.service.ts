@@ -33,6 +33,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
+import { flowHooks } from '../flow/flow-hooks';
 import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, taskWorklogs, workspaceMembers } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -815,6 +816,8 @@ export class TasksService {
         .notify(actor, [next.reporterId], { kind: 'task.request', title: `${actor.name} accepted your request "${next.title}"`, body: null, url: `/tasks?project=${next.projectId}&task=${next.id}` })
         .catch(() => undefined);
     await this.changed(next.projectId, next);
+    if (next.status !== before.status)
+      flowHooks.fire('task.statusChanged', actor.workspaceId, { taskId: next.id, projectId: next.projectId, title: next.title, from: before.status, to: next.status, assigneeId: next.assigneeId, by: { id: actor.id, name: actor.name } });
     return (await this.views(actor, [next]))[0];
   }
 

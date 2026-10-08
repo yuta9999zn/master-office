@@ -1,6 +1,6 @@
 'use client';
 
-import { FONTS, PALETTE, SHAPES, STATUS_LABEL, TRIGGERS, type ArrowHead, type FlowEdge, type FlowNode, type FlowStatus, type NodeStyle, type PlainFlow } from '@workos/flow-model';
+import { ARROW_HEADS, EDGE_PRESETS, FONTS, PALETTE, SHAPES, STATUS_LABEL, TRIGGERS, type ArrowHead, type FlowEdge, type FlowNode, type FlowStatus, type NodeStyle, type PlainFlow } from '@workos/flow-model';
 import type { UserSummary } from '@workos/shared';
 import { AlignCenter, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, ArrowDownToLine, ArrowUpToLine, Bold, Italic, Plus, Strikethrough, Underline, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -8,6 +8,7 @@ import { Avatar, cn } from '../ui/primitives';
 import type { FlowStore } from './flow-store';
 import type { Selection } from './FlowCanvas';
 import { ICON_COMPONENTS } from './render';
+import { AutomationPanel } from './AutomationPanel';
 
 const field = 'h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-[12.5px] text-ink outline-none focus:border-brand-500 disabled:bg-canvas';
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -37,7 +38,7 @@ function Color({ value, onChange, label, disabled }: { value: string; onChange: 
 }
 
 export function Inspector({ store, flow, sel, owner, editable }: { store: FlowStore; flow: PlainFlow; sel: Selection; owner: UserSummary | null; editable: boolean }) {
-  const [tab, setTab] = useState<'style' | 'text' | 'arrange' | 'data'>('style');
+  const [tab, setTab] = useState<'style' | 'text' | 'arrange' | 'data' | 'automation'>('style');
   const nodes = sel.nodes.map((id) => flow.nodes.find((n) => n.id === id)).filter((n): n is FlowNode => !!n);
   const edge = !nodes.length && sel.edges.length === 1 ? flow.edges.find((e) => e.id === sel.edges[0]) : undefined;
   const first = nodes[0];
@@ -46,9 +47,9 @@ export function Inspector({ store, flow, sel, owner, editable }: { store: FlowSt
   return (
     <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-surface" data-testid="inspector">
       <nav className="flex border-b border-line px-2" role="tablist">
-        {(['style', 'text', 'arrange', 'data'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('-mb-px border-b-2 px-3 py-2.5 text-[13px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-muted hover:text-ink')} data-testid={`inspector-${t}`}>
-            {t}
+        {(['style', 'text', 'arrange', 'data', 'automation'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('-mb-px border-b-2 px-2.5 py-2.5 text-[13px] capitalize', tab === t ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-muted hover:text-ink')} data-testid={`inspector-${t}`}>
+            {t === 'automation' ? 'Auto' : t}
           </button>
         ))}
       </nav>
@@ -179,6 +180,9 @@ export function Inspector({ store, flow, sel, owner, editable }: { store: FlowSt
         {first && tab === 'arrange' && <Arrange store={store} nodes={nodes} ro={ro} />}
         {first && tab === 'data' && nodes.length === 1 && <DataTab store={store} n={first} ro={ro} />}
         {first && tab === 'data' && nodes.length > 1 && <p className="text-[12.5px] text-muted">Select one shape to edit its data.</p>}
+        {first && tab === 'automation' && nodes.length === 1 && <AutomationPanel store={store} flow={flow} n={first} ro={ro} />}
+        {first && tab === 'automation' && nodes.length > 1 && <p className="text-[12.5px] text-muted">Select one shape to set what it does when the flow runs.</p>}
+        {!first && !edge && tab === 'automation' && <p className="text-[12.5px] text-muted">Select a shape: give it the Trigger, Action or Condition role to make the diagram run. The Runs tab starts it and shows every run.</p>}
 
         {edge && <EdgeStyleEditor store={store} e={edge} ro={ro} />}
 
@@ -326,7 +330,7 @@ function DataTab({ store, n, ro }: { store: FlowStore; n: FlowNode; ro: boolean 
 }
 
 function EdgeStyleEditor({ store, e, ro }: { store: FlowStore; e: FlowEdge; ro: boolean }) {
-  const arrows: ArrowHead[] = ['none', 'arrow', 'open', 'diamond', 'circle'];
+  const arrows = ARROW_HEADS;
   return (
     <div className="space-y-4" data-testid="edge-inspector">
       <Row label="Label">
@@ -360,14 +364,35 @@ function EdgeStyleEditor({ store, e, ro }: { store: FlowStore; e: FlowEdge; ro: 
           </select>
         </div>
       </Row>
+      <Row label="Preset">
+        <select
+          disabled={ro}
+          value={EDGE_PRESETS.find((p) => Object.entries(p.style).every(([k, v]) => (e.style as unknown as Record<string, unknown>)[k] === v))?.id ?? ''}
+          onChange={(ev) => {
+            const p = EDGE_PRESETS.find((x) => x.id === ev.target.value);
+            if (p) store.updateEdge(e.id, { style: p.style });
+          }}
+          className={field}
+          aria-label="Connector preset"
+          data-testid="edge-preset"
+        >
+          <option value="">Custom…</option>
+          {EDGE_PRESETS.map((p) => (
+            <option key={p.id} value={p.id} title={p.note}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] text-muted">{EDGE_PRESETS.find((p) => Object.entries(p.style).every(([k, v]) => (e.style as unknown as Record<string, unknown>)[k] === v))?.note ?? 'UML: triangle = inherits, diamond = owns. ER: | one, < many, o optional.'}</p>
+      </Row>
       <Row label="Arrow">
         <div className="grid grid-cols-2 gap-1.5">
           <label>
             <span className="text-[11px] text-muted">Start</span>
             <select disabled={ro} value={e.style.startArrow} onChange={(ev) => store.updateEdge(e.id, { style: { startArrow: ev.target.value as ArrowHead } })} className={field} aria-label="Start arrow">
               {arrows.map((a) => (
-                <option key={a} value={a} className="capitalize">
-                  {a}
+                <option key={a.id} value={a.id} title={a.note}>
+                  {a.label}
                 </option>
               ))}
             </select>
@@ -376,8 +401,8 @@ function EdgeStyleEditor({ store, e, ro }: { store: FlowStore; e: FlowEdge; ro: 
             <span className="text-[11px] text-muted">End</span>
             <select disabled={ro} value={e.style.endArrow} onChange={(ev) => store.updateEdge(e.id, { style: { endArrow: ev.target.value as ArrowHead } })} className={field} aria-label="End arrow">
               {arrows.map((a) => (
-                <option key={a} value={a}>
-                  {a}
+                <option key={a.id} value={a.id} title={a.note}>
+                  {a.label}
                 </option>
               ))}
             </select>
@@ -418,6 +443,11 @@ function WorkflowInfo({ store, flow, owner, ro }: { store: FlowStore; flow: Plai
             <option key={t}>{t}</option>
           ))}
         </select>
+        <span className="text-muted">Automation</span>
+        <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+          <input type="checkbox" disabled={ro} checked={i.automation} onChange={(e) => store.setInfo({ automation: e.target.checked })} className="accent-brand-600" aria-label="Automation on" data-testid="info-automation" />
+          {i.automation ? 'On — trigger shapes start runs' : 'Off'}
+        </label>
         <span className="self-start pt-1 text-muted">Tags</span>
         <div className="flex flex-wrap gap-1">
           {i.tags.map((t) => (
