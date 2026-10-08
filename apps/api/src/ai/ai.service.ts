@@ -1,0 +1,547 @@
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { EDGES_MAP, NODES_MAP, PAGE_ORDER, PAGES_MAP } from '@workos/flow-model';
+import { createYSheet, RESOURCES_MAP, SHEETS_MAP, WB_MAP } from '@workos/sheet-model';
+import { createYSlide, DECK_MAP, ORDER_ARRAY, readDeck, SLIDES_MAP, type DeckSize, type Theme } from '@workos/slide-model';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import * as Y from 'yjs';
+import { SettingsService } from '../admin/settings.service';
+import { CollabService } from '../collab/collab.service';
+import type { Actor } from '../common/current-user';
+import type { Db } from '../db/client';
+import { InjectDb } from '../db/db.module';
+import { aiPrompts, aiRuns, resources, workspaceMembers } from '../db/schema';
+import { PermissionsService } from '../permissions/permissions.service';
+import { ResourcesService } from '../resources/resources.service';
+import { SheetsService } from '../sheets/sheets.service';
+import { SlidesService } from '../slides/slides.service';
+import { FlowRunnerService } from '../flow/flow-runner.service';
+import { FLOW_SPEC_SCHEMA, flowFromSpec, repairFlowSpec, type FlowSpec } from './gen-flow';
+import { alignColumns, catalogText, cleanPlan, planFromRequest, planText, SHEET_PLAN_SCHEMA, SHEET_SPEC_SCHEMA, SHEET_SUMMARY_SCHEMA, SHEET_TABLE_SCHEMA, workbookFromSpec, type SheetPlan, type SheetSpec, type SheetSpecTable } from './gen-sheet';
+import { DECK_OUTLINE_SCHEMA, DESIGN_FORMATS, DESIGN_SCHEMA, deckOf, slidesFromDesign, slidesFromOutline, themeById, type DeckOutline, type DesignSpec } from './gen-slides';
+import { OllamaClient, parseJsonLoose, type LlmModel } from './llm';
+import { BANNER_COPY_SCHEMA, bannerSlides, CARD_COPY_SCHEMA, cardSlides, type BannerCopy, type CardCopy } from './gen-design';
+import { BUILTIN_PROMPTS, builtinPrompt, fillTemplate, guessLanguage, type PromptApp, type PromptDef, type PromptOutput } from './prompts';
+
+/** Workspace AI settings (system_settings key `ai`). */
+export interface AiSettings {
+  enabled: boolean;
+  provider: 'ollama';
+  url: string;
+  /** Default model; empty = the first one the server has. */
+  model: string;
+  /** Per-app model, e.g. a small fast one for docs and a larger one for sheets. */
+  models: Partial<Record<PromptApp, string>>;
+  /** Context window (tokens): larger reads more but is slower on a CPU. */
+  numCtx: number;
+}
+const DEFAULT_SETTINGS: AiSettings = { enabled: true, provider: 'ollama', url: process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434', model: process.env.OLLAMA_MODEL ?? '', models: {}, numCtx: 8192 };
+
+export interface PromptView extends PromptDef {
+  builtIn: boolean;
+  /** A built-in prompt changed in this workspace. */
+  overridden: boolean;
+  canEdit: boolean;
+  updatedAt: string | null;
+}
+
+export interface JobInput {
+  promptKey: string;
+  request: string;
+  /** Extra template variables (selection, context, …). */
+  variables?: Record<string, string>;
+  /** Write into this open file (flow → new page, sheet → new tabs, deck → slides) instead of creating a new one. */
+  targetId?: string | null;
+  /** Where a new file goes. */
+  spaceId?: string | null;
+  parentId?: string | null;
+  format?: string | null;
+  model?: string | null;
+  notation?: 'flowchart' | 'bpmn' | null;
+}
+
+type RunRow = typeof aiRuns.$inferSelect;
+/** One model call of a job: a step name for the progress view, the prompt, its schema, a token cap, extra variables. */
+type Gen = (step: string, prompt: PromptDef, schema: object | undefined, maxTokens: number, extra?: Record<string, string>) => Promise<string>;
+interface Live {
+  text: string;
+  tokens: number;
+  started: number;
+  abort: AbortController;
+}
+
+const OUTPUT_SCHEMA: Partial<Record<PromptOutput, object>> = { flow: FLOW_SPEC_SCHEMA, sheet: SHEET_SPEC_SCHEMA, deck: DECK_OUTLINE_SCHEMA, design: DESIGN_SCHEMA };
+/** Generous caps: a CPU writes ~5–15 tokens / s, so these bound a job to a few minutes. */
+const MAX_TOKENS: Record<PromptOutput, number> = { flow: 1500, sheet: 3500, deck: 2500, design: 1800, template: 500, markdown: 1800, text: 900 };
+/** Template designs: a business card or a banner, by the chosen format. */
+const isCard = (key: string, format?: string | null) => (format ? format.startsWith('business-card') : /card/i.test(key));
+
+/**
+ * The AI layer (docs/ARCHITECTURE.md §80): one assistant for every app. Runs prompts from the library against the
+ * workspace's model (a local Ollama by default), one job at a time — a CPU cannot run two — and turns answers into
+ * flows, workbooks, decks, designs or text. Everything it creates is marked `metadata.aiGenerated` and logged in
+ * ai_runs; it acts with the person's own permissions.
+ */
+@Injectable()
+export class AiService {
+  private readonly log = new Logger(AiService.name);
+  private readonly live = new Map<string, Live>();
+  private queue: string[] = [];
+  private working = false;
+  private lastModels: { url: string; models: LlmModel[]; at: number } | null = null;
+
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly settingsSvc: SettingsService,
+    private readonly perms: PermissionsService,
+    private readonly collab: CollabService,
+    private readonly moduleRef: ModuleRef,
+  ) {}
+
+  // ── Settings & status ─────────────────────────────────────────────────────
+
+  async settings(workspaceId: string): Promise<AiSettings> {
+    const v = await this.settingsSvc.getValue<Partial<AiSettings>>(workspaceId, 'ai');
+    return { ...DEFAULT_SETTINGS, ...(v ?? {}), models: { ...(v?.models ?? {}) } };
+  }
+
+  async setSettings(actor: Actor, patch: Partial<AiSettings>) {
+    const cur = await this.settings(actor.workspaceId);
+    const next: AiSettings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models ?? {}) } };
+    if (!/^https?:\/\/[^\s]+$/i.test(next.url)) throw new BadRequestException('The model server address must start with http:// or https://');
+    next.numCtx = Math.min(131072, Math.max(2048, Math.round(next.numCtx)));
+    for (const k of Object.keys(next.models) as PromptApp[]) if (!next.models[k]) delete next.models[k];
+    await this.settingsSvc.putValue(actor, actor.workspaceId, 'ai', next);
+    return next;
+  }
+
+  async status(actor: Actor) {
+    const s = await this.settings(actor.workspaceId);
+    let models: LlmModel[] = [];
+    let error: string | null = null;
+    try {
+      models = await new OllamaClient(s.url).models(15_000);
+      this.lastModels = { url: s.url, models, at: Date.now() };
+    } catch (e) {
+      // A CPU busy writing an answer can be slow to list its models: keep the last list for a few minutes.
+      if (this.lastModels?.url === s.url && Date.now() - this.lastModels.at < 300_000) models = this.lastModels.models;
+      else error = `The model server at ${s.url} does not answer (${(e as Error).message}). Start Ollama, or set its address in Admin → AI.`;
+    }
+    const pick = (app?: PromptApp) => this.pickModel(s, models, app);
+    return {
+      enabled: s.enabled,
+      provider: s.provider,
+      url: s.url,
+      reachable: !error,
+      error,
+      models,
+      model: pick(),
+      perApp: Object.fromEntries((['flow', 'sheets', 'slides', 'docs', 'general'] as PromptApp[]).map((a) => [a, pick(a)])),
+      numCtx: s.numCtx,
+      queue: this.queue.length + (this.working ? 1 : 0),
+      formats: Object.entries(DESIGN_FORMATS).map(([id, f]) => ({ id, ...f })),
+    };
+  }
+
+  private pickModel(s: AiSettings, models: LlmModel[], app?: PromptApp) {
+    const want = (app && s.models[app]) || s.model;
+    if (want && (!models.length || models.some((m) => m.name === want))) return want;
+    // Prefer a text model over a vision one, then the larger.
+    const text = models.filter((m) => !m.vision);
+    const byParams = (xs: LlmModel[]) => [...xs].sort((a, b) => parseFloat(b.parameters ?? '0') - parseFloat(a.parameters ?? '0'));
+    return byParams(text)[0]?.name ?? byParams(models)[0]?.name ?? want ?? '';
+  }
+
+  // ── Prompt library ───────────────────────────────────────────────────────
+
+  private async isAdmin(actor: Actor) {
+    const [m] = await this.db.select({ role: workspaceMembers.role }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, actor.workspaceId), eq(workspaceMembers.userId, actor.id)));
+    return m?.role === 'owner' || m?.role === 'admin';
+  }
+
+  async prompts(actor: Actor): Promise<PromptView[]> {
+    const rows = await this.db.select().from(aiPrompts).where(eq(aiPrompts.workspaceId, actor.workspaceId));
+    const admin = await this.isAdmin(actor);
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    const out: PromptView[] = BUILTIN_PROMPTS.map((b) => {
+      const o = byKey.get(b.key);
+      return o ? { ...this.rowDef(o), partOf: b.partOf, builtIn: true, overridden: true, canEdit: admin, updatedAt: o.updatedAt } : { ...b, builtIn: true, overridden: false, canEdit: admin, updatedAt: null };
+    });
+    for (const r of rows) if (!builtinPrompt(r.key)) out.push({ ...this.rowDef(r), builtIn: false, overridden: false, canEdit: admin || r.createdBy === actor.id, updatedAt: r.updatedAt });
+    return out;
+  }
+
+  private rowDef(r: typeof aiPrompts.$inferSelect): PromptDef {
+    return { key: r.key, name: r.name, app: r.app as PromptApp, output: r.output as PromptOutput, description: r.description, system: r.system, template: r.template, temperature: r.temperature, variables: r.variables };
+  }
+
+  async prompt(actor: Actor, key: string): Promise<PromptView> {
+    const p = (await this.prompts(actor)).find((x) => x.key === key);
+    if (!p) throw new NotFoundException('Prompt not found');
+    return p;
+  }
+
+  /** Built-in: saves this workspace's version (admins). Custom: creates or updates (its author or admins). */
+  async savePrompt(actor: Actor, key: string | null, input: Omit<PromptDef, 'key'>) {
+    const admin = await this.isAdmin(actor);
+    const k = key ?? `custom.${crypto.randomUUID().slice(0, 8)}`;
+    const builtIn = !!builtinPrompt(k);
+    if (builtIn && !admin) throw new ForbiddenException('Only administrators change the built-in prompts');
+    if (!builtIn && !k.startsWith('custom.')) throw new BadRequestException('Unknown prompt');
+    const [existing] = await this.db.select().from(aiPrompts).where(and(eq(aiPrompts.workspaceId, actor.workspaceId), eq(aiPrompts.key, k)));
+    if (existing && !builtIn && !admin && existing.createdBy !== actor.id) throw new ForbiddenException('Only its author or an administrator can change this prompt');
+    if (!existing && key && !builtIn) throw new NotFoundException('Prompt not found');
+    const values = { name: input.name, app: input.app, output: input.output, description: input.description, system: input.system, template: input.template, temperature: input.temperature, variables: input.variables, updatedBy: actor.id, updatedAt: new Date().toISOString() };
+    if (existing) await this.db.update(aiPrompts).set(values).where(eq(aiPrompts.id, existing.id));
+    else await this.db.insert(aiPrompts).values({ ...values, workspaceId: actor.workspaceId, key: k, createdBy: actor.id });
+    return this.prompt(actor, k);
+  }
+
+  /** Custom: deletes it. Built-in: back to the shipped version. */
+  async deletePrompt(actor: Actor, key: string) {
+    const [row] = await this.db.select().from(aiPrompts).where(and(eq(aiPrompts.workspaceId, actor.workspaceId), eq(aiPrompts.key, key)));
+    if (!row) throw new NotFoundException(builtinPrompt(key) ? 'This built-in prompt has not been changed' : 'Prompt not found');
+    if (!(await this.isAdmin(actor)) && (builtinPrompt(key) || row.createdBy !== actor.id)) throw new ForbiddenException();
+    await this.db.delete(aiPrompts).where(eq(aiPrompts.id, row.id));
+  }
+
+  // ── Jobs ──────────────────────────────────────────────────────────────────
+
+  async start(actor: Actor, input: JobInput) {
+    const s = await this.settings(actor.workspaceId);
+    if (!s.enabled) throw new BadRequestException('AI is turned off for this organisation (Admin → AI)');
+    const p = await this.prompt(actor, input.promptKey);
+    if (!input.request.trim() && !input.variables?.selection?.trim() && !['docs.summarize'].includes(p.key)) throw new BadRequestException('Describe what you want');
+    if (input.targetId) {
+      const { row } = await this.perms.require(actor, input.targetId, p.output === 'markdown' || p.output === 'text' ? 'viewer' : 'editor');
+      const want = { flow: 'flow', sheet: 'spreadsheet', deck: 'presentation' }[p.output as 'flow' | 'sheet' | 'deck'];
+      if (want && row.type !== want) throw new BadRequestException(`This prompt writes into a ${want}, not a ${row.type}`);
+    }
+    if ((p.output === 'design' || p.output === 'template') && input.format && !DESIGN_FORMATS[input.format]) throw new BadRequestException('Unknown format');
+    const [row] = await this.db
+      .insert(aiRuns)
+      .values({ workspaceId: actor.workspaceId, userId: actor.id, promptKey: p.key, output: p.output, request: input.request.slice(0, 20_000), input: { ...input, request: undefined, actorName: actor.name } as Record<string, unknown> })
+      .returning();
+    this.queue.push(row.id);
+    void this.pump();
+    return this.dto(row);
+  }
+
+  private async pump() {
+    if (this.working) return;
+    this.working = true;
+    try {
+      while (this.queue.length) {
+        const id = this.queue.shift()!;
+        await this.run(id).catch((e: Error) => this.log.warn(`job ${id}: ${e.message}`));
+      }
+    } finally {
+      this.working = false;
+    }
+  }
+
+  private async run(id: string) {
+    const [job] = await this.db.select().from(aiRuns).where(eq(aiRuns.id, id));
+    if (!job || job.status !== 'queued') return;
+    const input = job.input as unknown as JobInput & { actorName: string };
+    const actor: Actor = { id: job.userId, name: input.actorName ?? 'AI', workspaceId: job.workspaceId };
+    const live: Live = { text: '', tokens: 0, started: Date.now(), abort: new AbortController() };
+    this.live.set(id, live);
+    try {
+      const s = await this.settings(job.workspaceId);
+      const client = new OllamaClient(s.url);
+      const models = await client.models().catch(() => [] as LlmModel[]);
+      const p = await this.prompt(actor, job.promptKey);
+      const model = input.model || this.pickModel(s, models, p.app);
+      if (!model) throw new Error('No model on the model server: pull one with “ollama pull qwen2.5:3b”');
+      await this.db.update(aiRuns).set({ status: 'running', model }).where(eq(aiRuns.id, id));
+
+      const format = p.output === 'design' || p.output === 'template' ? DESIGN_FORMATS[input.format ?? (isCard(p.key) ? 'business-card-eu' : 'banner-web')] ?? DESIGN_FORMATS['banner-web'] : null;
+      const h = format?.size.h ?? 720;
+      const vars: Record<string, string> = {
+        request: job.request,
+        language: input.variables?.language || guessLanguage(job.request || input.variables?.selection || ''),
+        today: new Date().toISOString().slice(0, 10),
+        context: input.variables?.context ?? '',
+        selection: (input.variables?.selection ?? '').slice(0, 24_000),
+        format: format?.label ?? '',
+        canvas: format ? `${format.size.w} × ${format.size.h} px, ${format.size.w >= format.size.h * 1.3 ? 'wide' : format.size.h >= format.size.w * 1.3 ? 'tall' : 'square'}` : '',
+        // Font sizes in pt that read well on this canvas.
+        headline: String(Math.max(9, Math.round(h * (p.key.includes('Card') ? 0.075 : 0.085)))),
+        subhead: String(Math.max(7, Math.round(h * (p.key.includes('Card') ? 0.05 : 0.04)))),
+        small: String(Math.max(6, Math.round(h * (p.key.includes('Card') ? 0.04 : 0.026)))),
+        ...(input.variables ?? {}),
+      };
+      // One model call; the progress view shows the steps done so far and the answer streaming in.
+      let done = '';
+      const totals = { promptTokens: 0, outputTokens: 0, steps: 0 };
+      const gen: Gen = async (step, prompt, schema, maxTokens, extra = {}) => {
+        const v = { ...vars, ...extra };
+        const head = step ? `▸ ${step}\n` : '';
+        const res = await client.chat({
+          model,
+          system: fillTemplate(prompt.system, v),
+          prompt: fillTemplate(prompt.template, v),
+          format: schema,
+          temperature: prompt.temperature,
+          numCtx: s.numCtx,
+          maxTokens,
+          signal: live.abort.signal,
+          onText: (text, tokens) => {
+            live.text = `${done}${head}${text}`;
+            live.tokens = totals.outputTokens + tokens;
+          },
+        });
+        totals.promptTokens += res.promptTokens;
+        totals.outputTokens += res.outputTokens;
+        totals.steps++;
+        done += `${head}${res.text}\n`;
+        return res.text;
+      };
+      // Small models build a workbook far better one sheet at a time (plan → sheets → report).
+      const answer = p.key === 'sheet.generate' && p.output === 'sheet' ? await this.sheetSteps(actor, gen, job.request) : await gen('', p, p.output === 'template' ? (isCard(p.key, input.format) ? CARD_COPY_SCHEMA : BANNER_COPY_SCHEMA) : OUTPUT_SCHEMA[p.output], MAX_TOKENS[p.output]);
+      const result = await this.apply(actor, p, { ...input, request: job.request }, answer, format?.size ?? null);
+      await this.db
+        .update(aiRuns)
+        .set({ status: 'done', answer: (totals.steps > 1 ? `${done}\n▸ Result\n${answer}` : answer).slice(0, 200_000), result: { ...result, ...(totals.steps > 1 ? { steps: totals.steps } : {}) }, promptTokens: totals.promptTokens, outputTokens: totals.outputTokens, ms: Date.now() - live.started, finishedAt: new Date().toISOString() })
+        .where(eq(aiRuns.id, id));
+    } catch (e) {
+      const cancelled = live.abort.signal.aborted;
+      await this.db
+        .update(aiRuns)
+        .set({ status: cancelled ? 'cancelled' : 'failed', error: cancelled ? null : String((e as Error).message ?? e).slice(0, 1000), answer: live.text.slice(0, 200_000) || null, ms: Date.now() - live.started, finishedAt: new Date().toISOString() })
+        .where(eq(aiRuns.id, id));
+    } finally {
+      this.live.delete(id);
+    }
+  }
+
+  /**
+   * "sheet.generate" in steps (each step is a prompt of the library, so it can be tuned): plan the sheets, detail the
+   * master lists, then the data sheets — told which codes the master lists hold, so their lookups find real rows —
+   * and last the report sheets, which pick figures from the finished columns. Returns one SheetSpec as JSON.
+   */
+  private async sheetSteps(actor: Actor, gen: Gen, request: string): Promise<string> {
+    const [planP, tableP, summaryP] = await Promise.all(['sheet.plan', 'sheet.table', 'sheet.summary'].map((k) => this.prompt(actor, k)));
+    // A request that lists its sheets and columns is the plan itself: no model call, nothing forgotten.
+    const read = planFromRequest(request);
+    const plan = read && read.plan.sheets.filter((x) => x.kind !== 'summary').length >= 2 ? read.plan : cleanPlan(parseJsonLoose<Partial<SheetPlan>>(await gen('Plan', planP, SHEET_PLAN_SCHEMA, 900)));
+    if (!plan.sheets.some((s) => s.kind !== 'summary')) throw new Error('The model planned no data sheet');
+    const tables = new Map<string, SheetSpecTable>();
+    const samples: string[] = [];
+    const planned = planText(plan);
+    for (const s of plan.sheets.filter((x) => x.kind !== 'summary')) {
+      const out = parseJsonLoose<Partial<SheetSpecTable>>(
+        await gen(s.name, tableP, SHEET_TABLE_SCHEMA, 1400, {
+          plan: planned,
+          sheet: s.name,
+          columns: s.columns.join(', '),
+          samples: samples.length ? `Codes and names already in the master sheets (use these):\n${samples.join('\n')}` : '',
+        }),
+      );
+      const { columns, rows } = alignColumns(s.columns, Array.isArray(out.columns) ? out.columns : [], Array.isArray(out.rows) ? out.rows : []);
+      tables.set(s.name, { name: s.name, columns, rows, totals: !!out.totals });
+      if (s.kind === 'master') {
+        // The key column, and any column another sheet repeats by name, are what data sheets refer to.
+        const others = new Set(plan.sheets.filter((x) => x !== s).flatMap((x) => x.columns.map((c) => c.toLowerCase())));
+        columns.forEach((c, ci) => {
+          if (ci !== 0 && !others.has(c.name.toLowerCase())) return;
+          const values = [...new Set(rows.map((r) => r[ci]).filter((v) => v !== null && v !== ''))].slice(0, 12);
+          if (values.length) samples.push(`${s.name} › ${c.name}: ${values.join(', ')}`);
+        });
+      }
+    }
+    for (const s of plan.sheets.filter((x) => x.kind === 'summary')) {
+      const out = parseJsonLoose<Partial<SheetSpecTable>>(await gen(s.name, summaryP, SHEET_SUMMARY_SCHEMA, 900, { catalog: catalogText([...tables.values()]), sheet: s.name, asked: read?.asked[s.name]?.length ? `Figures asked for: ${read.asked[s.name].join(', ')}` : '' }));
+      tables.set(s.name, { name: s.name, metrics: out.metrics ?? [], breakdowns: out.breakdowns ?? [] });
+    }
+    return JSON.stringify({ title: plan.title, sheets: plan.sheets.map((s) => tables.get(s.name)).filter(Boolean), ...(read && plan === read.plan ? { hints: read.hints } : {}) });
+  }
+
+  /** Turns the answer into what the prompt promises. */
+  private async apply(actor: Actor, p: PromptView, input: JobInput, text: string, size: DeckSize | null): Promise<Record<string, unknown>> {
+    const resourcesSvc = this.moduleRef.get(ResourcesService, { strict: false });
+    const editor = { id: actor.id, name: `${actor.name} (AI)` };
+    const where = { spaceId: input.spaceId ?? null, parentId: input.parentId ?? null };
+    const mark = (id: string) => this.db.update(resources).set({ metadata: sql`${resources.metadata} || ${JSON.stringify({ aiGenerated: true, aiPrompt: p.key })}::jsonb` }).where(eq(resources.id, id));
+
+    if (p.output === 'markdown' || p.output === 'text') return { text: text.trim() };
+
+    if (p.output === 'flow') {
+      const { spec, fixes } = repairFlowSpec(parseJsonLoose<Partial<FlowSpec>>(text));
+      if (input.notation) spec.notation = input.notation;
+      if (input.targetId) {
+        const page = `p${crypto.randomUUID().slice(0, 6)}`;
+        const plain = flowFromSpec(spec, { page, idPrefix: `${page}_` });
+        await this.collab.transact(input.targetId, editor, (doc) => {
+          doc.getMap(PAGES_MAP).set(page, { name: `AI · ${spec.title}`.slice(0, 60) });
+          doc.getArray<string>(PAGE_ORDER).push([page]);
+          const nodes = doc.getMap(NODES_MAP);
+          for (const { id, ...n } of plain.nodes) nodes.set(id, JSON.parse(JSON.stringify(n)));
+          const edges = doc.getMap(EDGES_MAP);
+          for (const { id, ...e } of plain.edges) edges.set(id, JSON.parse(JSON.stringify(e)));
+        });
+        return { resourceId: input.targetId, pageId: page, url: `/flow/${input.targetId}?page=${page}`, title: spec.title, steps: spec.steps.length, fixes };
+      }
+      const created = await resourcesSvc.create(actor, { name: spec.title || 'AI workflow', type: 'flow', ...where });
+      await this.moduleRef.get(FlowRunnerService, { strict: false }).importFlow(actor, created.id, flowFromSpec(spec, { page: 'p1' }));
+      await mark(created.id);
+      return { resourceId: created.id, url: `/flow/${created.id}`, title: spec.title, steps: spec.steps.length, fixes };
+    }
+
+    if (p.output === 'sheet') {
+      const spec = parseJsonLoose<Partial<SheetSpec>>(text);
+      const lang = guessLanguage(input.request);
+      const { workbook, warnings, fixes } = workbookFromSpec(spec, { locale: lang === 'Vietnamese' ? 'vi' : lang === 'Japanese' ? 'ja' : 'en', hints: spec.hints });
+      if (input.targetId) {
+        await this.collab.transact(input.targetId, editor, (doc) => {
+          const sheets = doc.getMap(SHEETS_MAP);
+          const meta = doc.getMap(WB_MAP);
+          const taken = new Set<string>();
+          sheets.forEach((m) => taken.add(String(((m as Y.Map<unknown>).get('meta') as { name?: string } | undefined)?.name ?? '').toLowerCase()));
+          for (const s of workbook.sheets) {
+            let name = s.meta.name;
+            for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${s.meta.name.slice(0, 27)} ${i}`;
+            taken.add(name.toLowerCase());
+            s.meta = { ...s.meta, name };
+            sheets.set(s.id, createYSheet(s));
+          }
+          meta.set('sheetOrder', [...((meta.get('sheetOrder') as string[]) ?? []), ...workbook.sheets.map((s) => s.id)]);
+          const res = doc.getMap<string>(RESOURCES_MAP);
+          for (const [k, v] of Object.entries(workbook.resources ?? {})) {
+            const merged = { ...(res.get(k) ? (JSON.parse(res.get(k)!) as object) : {}), ...(JSON.parse(v) as object) };
+            res.set(k, JSON.stringify(merged));
+          }
+        });
+        return { resourceId: input.targetId, url: `/sheets/${input.targetId}`, title: workbook.name, sheets: workbook.sheets.map((s) => s.meta.name), warnings, fixes };
+      }
+      const created = await resourcesSvc.create(actor, { name: workbook.name || 'AI workbook', type: 'spreadsheet', ...where });
+      await this.moduleRef.get(SheetsService, { strict: false }).init(created.id, workbook, editor);
+      await mark(created.id);
+      return { resourceId: created.id, url: `/sheets/${created.id}`, title: workbook.name, sheets: workbook.sheets.map((s) => s.meta.name), warnings, fixes };
+    }
+
+    if (p.output === 'deck') {
+      const outline = parseJsonLoose<Partial<DeckOutline>>(text);
+      if (input.targetId) {
+        const slidesSvc = this.moduleRef.get(SlidesService, { strict: false });
+        const deck = await slidesSvc.deck(input.targetId);
+        const slides = slidesFromOutline(outline, deck.size, deck.theme);
+        await this.collab.transact(input.targetId, editor, (doc) => {
+          const map = doc.getMap<Y.Map<unknown>>(SLIDES_MAP);
+          for (const s of slides) {
+            const y = createYSlide(s);
+            map.set(s.id, y.map);
+            y.fill();
+          }
+          doc.getArray<string>(ORDER_ARRAY).push(slides.map((s) => s.id));
+        });
+        return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: outline.title ?? '', slides: slides.length };
+      }
+      const theme = themeById(outline.theme && outline.theme !== 'master' ? outline.theme : /spa|beauty|làm đẹp|thẩm mỹ|da|nail|salon|mỹ phẩm/i.test(input.request) ? 'natural-beauty' : /xanh lá|thiên nhiên|organic|nông/i.test(input.request) ? 'forest' : outline.theme);
+      const sz = DESIGN_FORMATS.deck.size;
+      const slides = slidesFromOutline(outline, sz, theme);
+      const name = String(outline.title ?? 'AI presentation').slice(0, 120);
+      const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      await this.moduleRef.get(SlidesService, { strict: false }).init(created.id, name, deckOf(name, sz, theme, slides));
+      await mark(created.id);
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, slides: slides.length };
+    }
+
+    if (p.output === 'template') {
+      const sz = size ?? DESIGN_FORMATS['banner-web'].size;
+      const card = isCard(p.key, input.format);
+      const copy = parseJsonLoose<Record<string, unknown>>(text);
+      const slides = card ? cardSlides(copy as Partial<CardCopy>, sz, input.request) : bannerSlides(copy as Partial<BannerCopy>, sz, input.request);
+      const name = String((card ? `${copy.name ?? 'Card'} · business card` : copy.headline) ?? 'AI design').slice(0, 120);
+      const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      await this.moduleRef.get(SlidesService, { strict: false }).init(created.id, name, deckOf(name, sz, themeById('master'), slides));
+      await mark(created.id);
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, pages: slides.length, size: sz, template: copy.template ?? null, palette: copy.palette ?? null };
+    }
+
+    if (p.output === 'design') {
+      const spec = parseJsonLoose<Partial<DesignSpec>>(text);
+      const sz = size ?? DESIGN_FORMATS['banner-web'].size;
+      const theme: Theme = themeById('master');
+      const { slides, warnings } = slidesFromDesign(spec, sz, theme);
+      const name = String(spec.title ?? 'AI design').slice(0, 120);
+      const created = await resourcesSvc.create(actor, { name, type: 'presentation', ...where });
+      await this.moduleRef.get(SlidesService, { strict: false }).init(created.id, name, deckOf(name, sz, theme, slides));
+      await mark(created.id);
+      return { resourceId: created.id, url: `/slides/${created.id}`, title: name, pages: slides.length, size: sz, warnings };
+    }
+    throw new Error(`Unknown output ${p.output}`);
+  }
+
+  async cancel(actor: Actor, id: string) {
+    const [row] = await this.db.select().from(aiRuns).where(and(eq(aiRuns.id, id), eq(aiRuns.userId, actor.id)));
+    if (!row) throw new NotFoundException('Job not found');
+    if (row.status === 'queued') {
+      this.queue = this.queue.filter((x) => x !== id);
+      await this.db.update(aiRuns).set({ status: 'cancelled', finishedAt: new Date().toISOString() }).where(eq(aiRuns.id, id));
+    } else if (row.status === 'running') this.live.get(id)?.abort.abort();
+    else throw new BadRequestException('The job has already finished');
+    return this.job(actor, id);
+  }
+
+  async job(actor: Actor, id: string) {
+    const [row] = await this.db.select().from(aiRuns).where(and(eq(aiRuns.id, id), eq(aiRuns.workspaceId, actor.workspaceId)));
+    if (!row || (row.userId !== actor.id && !(await this.isAdmin(actor)))) throw new NotFoundException('Job not found');
+    return this.dto(row);
+  }
+
+  async jobs(actor: Actor, limit = 20) {
+    const rows = await this.db
+      .select()
+      .from(aiRuns)
+      .where(and(eq(aiRuns.workspaceId, actor.workspaceId), eq(aiRuns.userId, actor.id)))
+      .orderBy(desc(aiRuns.createdAt))
+      .limit(Math.min(100, limit));
+    return rows.map((r) => this.dto(r));
+  }
+
+  private dto(r: RunRow) {
+    const live = this.live.get(r.id);
+    const position = this.queue.indexOf(r.id);
+    return {
+      id: r.id,
+      promptKey: r.promptKey,
+      output: r.output,
+      model: r.model,
+      status: r.status,
+      request: r.request,
+      result: r.result,
+      error: r.error,
+      // While it runs: the answer so far (for the progress view) and its size.
+      partial: live ? live.text.slice(-4000) : r.status === 'done' || r.status === 'failed' ? (r.answer ?? '').slice(0, 20_000) : '',
+      tokens: live ? live.tokens : (r.outputTokens ?? 0),
+      elapsedMs: live ? Date.now() - live.started : (r.ms ?? 0),
+      queuePosition: position >= 0 ? position + 1 + (this.working ? 1 : 0) : 0,
+      createdAt: r.createdAt,
+      finishedAt: r.finishedAt,
+    };
+  }
+
+  /** For tests and the playground: jobs of these ids, newest first. */
+  async jobsByIds(actor: Actor, ids: string[]) {
+    if (!ids.length) return [];
+    const rows = await this.db.select().from(aiRuns).where(and(eq(aiRuns.workspaceId, actor.workspaceId), inArray(aiRuns.id, ids)));
+    return rows.map((r) => this.dto(r));
+  }
+
+  /** Reads a deck's slide titles, sheet names or flow pages so a prompt can mention what is already there. */
+  async contextOf(actor: Actor, id: string): Promise<string> {
+    const { row } = await this.perms.require(actor, id, 'viewer');
+    if (row.type === 'presentation') {
+      const state = await this.collab.currentState(id);
+      if (!state) return '';
+      const doc = new Y.Doc();
+      Y.applyUpdate(doc, state);
+      const deck = readDeck(doc);
+      void DECK_MAP;
+      return `The presentation "${row.name}" already has ${deck.slides.length} slides.`;
+    }
+    return `The file is "${row.name}".`;
+  }
+}

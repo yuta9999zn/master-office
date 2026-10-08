@@ -12,6 +12,7 @@ import { useMe, useUsers } from '@/lib/queries';
 import { useUi } from '@/lib/store';
 import { Avatar, Button, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Wordmark } from '../ui/primitives';
 import { NewMenu } from './NewMenu';
+import { AiButton } from '../ai/AiButton';
 import { NotificationBell } from './NotificationBell';
 
 export function TopBar() {
@@ -37,6 +38,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-1">
+        <AiButton />
         <NewMenu
           trigger={
             <Button variant="primary" icon={<Plus size={16} />} className="mr-2">

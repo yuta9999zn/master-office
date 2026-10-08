@@ -4,6 +4,7 @@ import {
   boolean,
   date,
   integer,
+  real,
   customType,
   bigserial,
   index,
@@ -1460,6 +1461,65 @@ export const flowRuns = pgTable(
     finishedAt: ts('finished_at'),
   },
   (t) => [index('flow_runs_flow_idx').on(t.flowId, t.startedAt), index('flow_runs_due_idx').on(t.status, t.resumeAt)],
+);
+
+// ── AI (docs/ARCHITECTURE.md §80) ───────────────────────────────────────────
+
+/**
+ * The prompt library of a workspace: overrides of built-in prompts (same key as the built-in) and people's own
+ * prompts (key "custom.<id>"). Built-ins themselves live in code (apps/api/src/ai/prompts.ts).
+ */
+export const aiPrompts = pgTable(
+  'ai_prompts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    name: text('name').notNull(),
+    app: text('app').notNull(),
+    output: text('output').notNull(),
+    description: text('description').notNull().default(''),
+    system: text('system').notNull(),
+    template: text('template').notNull(),
+    temperature: real('temperature').notNull().default(0.3),
+    variables: jsonb('variables').$type<{ name: string; label: string; example: string }[]>().notNull().default([]),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('ai_prompts_key_idx').on(t.workspaceId, t.key)],
+);
+
+/** One AI job: the prompt it ran, the model, the answer, what it produced (a file, a page) — history and audit. */
+export const aiRuns = pgTable(
+  'ai_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    promptKey: text('prompt_key').notNull(),
+    output: text('output').notNull(),
+    model: text('model'),
+    status: text('status').$type<'queued' | 'running' | 'done' | 'failed' | 'cancelled'>().notNull().default('queued'),
+    request: text('request').notNull().default(''),
+    input: jsonb('input').$type<Record<string, unknown>>().notNull().default({}),
+    answer: text('answer'),
+    result: jsonb('result').$type<Record<string, unknown>>(),
+    error: text('error'),
+    promptTokens: integer('prompt_tokens'),
+    outputTokens: integer('output_tokens'),
+    ms: integer('ms'),
+    createdAt: ts('created_at').notNull().default(sql`now()`),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('ai_runs_user_idx').on(t.workspaceId, t.userId, t.createdAt)],
 );
 
 /** Workspace settings by key (e.g. `smtp`); secrets inside are encrypted (AES-256-GCM). */

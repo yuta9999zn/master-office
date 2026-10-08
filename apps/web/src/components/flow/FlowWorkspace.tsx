@@ -7,6 +7,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Download, FileJson, FileImage, 
 import { useSearchParams } from 'next/navigation';
 import { useFlowActions } from '@/lib/flow';
 import { RunsPanel } from './RunsPanel';
+import { useAiUi, useRegisterAi } from '@/lib/ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useMe, useResourceMembers } from '@/lib/queries';
@@ -36,6 +37,8 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
   useEffect(() => () => store?.destroy(), [store]);
   const flow = useFlow(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
+  useRegisterAi({ app: 'flow', resourceId: r.id, name: r.name, editable });
+  const openAi = useAiUi((s) => s.setOpen);
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>(params.get('tab') === 'runs' ? 'runs' : 'design');
   const flowActions = useFlowActions(r.id);
@@ -266,11 +269,7 @@ export function FlowWorkspace({ r }: { r: ResourceDetail }) {
               <ToolBtn disabled={!editable} onClick={() => addAtCenter('process', { text: 'New step' })} label="Add node" icon={<SquarePlus size={16} />} text="Add Node" testid="tool-add" />
               <ToolBtn disabled={!editable} on={tool === 'connect'} onClick={() => setTool(tool === 'connect' ? 'select' : 'connect')} label="Connect (C): drag from one shape to another" icon={<Spline size={16} />} text="Connect" testid="tool-connect" />
               <ToolBtn disabled={!editable} onClick={() => addAtCenter('note', { text: `${me?.user.name ?? 'Comment'}: ` })} label="Comment: a sticky note on the canvas" icon={<MessageSquarePlus size={16} />} text="Comment" testid="tool-comment" />
-              <Tip label="AI suggestions arrive with the AI assistant (Phase 6)">
-                <span className="flex h-8 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] text-violet-400">
-                  <Sparkles size={16} /> AI Suggest
-                </span>
-              </Tip>
+              <ToolBtn disabled={!editable} onClick={() => openAi(true, { promptKey: 'flow.generate' })} label="AI: draw a workflow from a description (opens the assistant)" icon={<Sparkles size={16} className="text-violet-500" />} text="AI Suggest" testid="tool-ai" />
             </div>
             {/* Pages and zoom */}
             <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-line bg-surface p-1 shadow-md" data-testid="flow-pages">

@@ -2,6 +2,7 @@
 
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
+import { useRegisterAi } from '@/lib/ai';
 import { cellValue, colName, formatValue, usedRange, type PlainWorkbook } from '@workos/sheet-model';
 import { AlertTriangle, ArrowLeft, BarChart3, BarChartHorizontal, Brush, CheckSquare, Circle, Columns3, CopyMinus, Table2, Code2, Download, FolderOpen, Globe, History, MessageSquareText, PencilLine, Play, Printer, RotateCcw, Share2, Square, Trash2, X, Paintbrush, Sigma, ListTree, Filter } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -103,6 +104,7 @@ export function SheetsWorkspace({ r }: { r: ResourceDetail }) {
     if (panel === 'Filter view') setPanel(null);
   };
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
+  useRegisterAi({ app: 'sheets', resourceId: r.id, name: r.name, editable });
   const report = (r.metadata as { import?: ImportReport } | undefined)?.import;
   const run = async (m: MacroDef) => {
     if (!grid || running) return;

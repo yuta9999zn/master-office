@@ -11,7 +11,8 @@ import { DocTabsPanel, useDocTabs } from './DocTabs';
 import { ChartDialog } from './doc-chart';
 import { copyAsMarkdown, markdownPasteEnabled, pasteMarkdown, setColumns, setMarkdownPaste } from './columns';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
-import { DEFAULT_TAB, expandTokens, paperSize, tabField, watermarkSvg, type JSONContent } from '@workos/doc-model';
+import { DEFAULT_TAB, expandTokens, markdownToHtml, paperSize, tabField, watermarkSvg, type JSONContent } from '@workos/doc-model';
+import { useAiUi, useRegisterAi } from '@/lib/ai';
 import type { ImportReport, ResourceDetail, ResourceType } from '@workos/shared';
 import { can } from '@workos/shared';
 import {
@@ -64,7 +65,7 @@ import { PersonalDictionaryDialog, setUnderlinePref, SpellingCard, underlinePref
 import { MM_TO_PX, PageSetupDialog, PrintPreview, useDocSettings } from './PageLayout';
 import { SuggestionsPanel } from './SuggestionsPanel';
 
-type Panel = 'Comments' | 'Suggestions' | 'AI Assistant' | 'History' | 'Citations';
+type Panel = 'Comments' | 'Suggestions' | 'History' | 'Citations';
 
 
 export function DocsWorkspace({ r, kind }: { r: ResourceDetail; kind: 'docs' | 'wiki' }) {
@@ -235,6 +236,24 @@ function DocBody({
         return cc?.words && cc.characters ? { w: cc.words(), c: cc.characters() } : { w: 0, c: 0 };
       },
     }) ?? { w: 0, c: 0 };
+
+  useRegisterAi({
+    app: 'docs',
+    resourceId: r.id,
+    name: r.name,
+    editable: canEdit,
+    getText: () => {
+      if (!editor) return { selection: '', document: '' };
+      const { from, to } = editor.state.selection;
+      return { selection: from < to ? editor.state.doc.textBetween(from, to, '\n') : '', document: editor.getText({ blockSeparator: '\n' }) };
+    },
+    insert: (markdown, mode) => {
+      if (!editor) return;
+      if (mode === 'replace') editor.chain().focus().insertContent(markdown.trim()).run();
+      else editor.chain().focus().insertContent(markdownToHtml(markdown)).run();
+    },
+  });
+  const openAi = useAiUi((s) => s.setOpen);
 
   if (!editor) return <Skeleton className="m-5 h-[60vh]" />;
   const report = r.metadata?.import as ImportReport | undefined;
@@ -547,7 +566,7 @@ function DocBody({
           <MenuItem onSelect={() => (setMdPaste(!mdPaste), setMarkdownPaste(!mdPaste))}>
             {mdPaste ? '✓ ' : ''}Automatically detect Markdown
           </MenuItem>
-          <MenuItem icon={<Sparkles />} onSelect={() => setPanel('AI Assistant')}>
+          <MenuItem icon={<Sparkles />} shortcut="Ctrl+J" onSelect={() => openAi(true, { promptKey: 'docs.draft' })}>
             AI Assistant
           </MenuItem>
         </>
@@ -679,7 +698,7 @@ function DocBody({
         {panel && (
           <aside className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-surface">
             <div className="flex items-center gap-4 overflow-x-auto border-b border-line px-4">
-              {(['Comments', 'Suggestions', 'AI Assistant', 'History', ...(panel === 'Citations' ? (['Citations'] as Panel[]) : [])] as Panel[]).map((t) => (
+              {(['Comments', 'Suggestions', 'History', ...(panel === 'Citations' ? (['Citations'] as Panel[]) : [])] as Panel[]).map((t) => (
                 <button key={t} className="tab" aria-current={panel === t ? 'page' : undefined} onClick={() => setPanel(t)}>
                   {t}
                   {t === 'Comments' && threads.some((x) => !x.resolvedAt) && <span className="ml-1.5 rounded-full bg-brand-50 px-1.5 text-[11px] text-brand-600">{threads.filter((x) => !x.resolvedAt).length}</span>}
@@ -707,11 +726,6 @@ function DocBody({
               {panel === 'Suggestions' && <SuggestionsPanel editor={editor} canEdit={canEdit} />}
               {panel === 'History' && <HistoryPanel resourceId={r.id} canEdit={canEdit} previewing={preview} onPreview={setPreview} />}
               {panel === 'Citations' && <CitationsPanel doc={session.doc} editor={editor} canEdit={canEdit} />}
-              {panel === 'AI Assistant' && (
-                <EmptyState icon={<Sparkles size={28} />} title="AI Assistant — Phase 6">
-                  Summarize this document, rewrite a selection, draft sections from company knowledge, or turn it into slides.
-                </EmptyState>
-              )}
             </div>
           </aside>
         )}

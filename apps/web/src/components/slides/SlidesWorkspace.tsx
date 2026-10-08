@@ -3,6 +3,7 @@
 import type { Editor } from '@tiptap/react';
 import type { ImportReport, ResourceDetail } from '@workos/shared';
 import { can } from '@workos/shared';
+import { useRegisterAi } from '@/lib/ai';
 import {
   diagramElements,
   FONTS,
@@ -153,6 +154,7 @@ export function SlidesWorkspace({ r }: { r: ResourceDetail }) {
   }, [store]);
   const deck = useDeck(store);
   const editable = can(collab.session?.role ?? r.myRole, 'editor');
+  useRegisterAi({ app: 'slides', resourceId: r.id, name: r.name, editable });
 
   const [current, setCurrent] = useState<string | null>(null);
   const [slideSel, setSlideSel] = useState<string[]>([]);

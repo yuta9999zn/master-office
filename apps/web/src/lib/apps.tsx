@@ -67,7 +67,7 @@ export const APPS: AppDef[] = [
   { id: 'approvals', label: 'Approvals', tagline: 'Streamline requests', href: '/approvals', icon: Stamp, from: '#fb923c', to: '#ea580c', phase: 7, primary: true },
   { id: 'contacts', label: 'Contacts', tagline: 'People & departments', href: '/contacts', icon: Contact, from: '#2dd4bf', to: '#0f766e', phase: 5, primary: true },
   { id: 'analytics', label: 'Analytics', tagline: 'Insights & performance', href: '/analytics', icon: ChartColumn, from: '#fbbf24', to: '#f59e0b', phase: 7 },
-  { id: 'ai', label: 'AI', tagline: 'Your assistant for everything', href: '/ai', icon: Sparkles, from: '#818cf8', to: '#6366f1', phase: 6 },
+  { id: 'ai', label: 'AI', tagline: 'Your assistant for everything', href: '/ai', icon: Sparkles, from: '#818cf8', to: '#6366f1', phase: 1 },
   { id: 'admin', label: 'Admin', tagline: 'Manage workspace', href: '/admin', icon: Settings, from: '#94a3b8', to: '#475569', phase: 7, primary: true },
 ];
 

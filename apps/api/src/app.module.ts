@@ -40,6 +40,8 @@ import { BaseController } from './base/base.controller';
 import { FlowService } from './flow/flow.service';
 import { FlowRunnerService } from './flow/flow-runner.service';
 import { FlowController } from './flow/flow.controller';
+import { AiService } from './ai/ai.service';
+import { AiController } from './ai/ai.controller';
 import { WikiController } from './wiki/wiki.controller';
 import { WikiService } from './wiki/wiki.service';
 import { BaseService } from './base/base.service';
@@ -69,7 +71,7 @@ import { StorageController } from './storage/storage.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController, FlowController],
+  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController, FlowController, AiController],
   providers: [
     SpellingService,
     RealtimeService,
@@ -91,6 +93,7 @@ import { StorageController } from './storage/storage.controller';
     BaseService,
     FlowService,
     FlowRunnerService,
+    AiService,
     WikiService,
     SettingsService,
     AuthService,

@@ -232,6 +232,13 @@
       "when": 1791430853093,
       "tag": "0032_flow_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791436600306,
+      "tag": "0033_ai",
+      "breakpoints": true
     }
   ]
 }

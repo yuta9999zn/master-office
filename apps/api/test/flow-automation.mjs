@@ -134,7 +134,7 @@ auto = (await call('GET', `/flows/${flow.id}/automation`, { user: claudia })).da
 check('the Base trigger is indexed with its table', auto.triggers.length === 1 && auto.triggers[0].type === 'base.recordCreated' && auto.triggers[0].config.tableId === table.id && auto.triggers[0].enabled === true, auto.triggers);
 await call('POST', `/base/tables/${other.id}/records`, { user: claudia, body: { records: [{ values: {} }] } });
 await call('POST', `/base/tables/${table.id}/records`, { user: claudia, body: { records: [{ values: { [nameField.id]: 'Nguyen Van A' } }] } });
-let fired = await waitFor(async () => (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.find((r) => r.triggerType === 'base.recordCreated'));
+let fired = await waitFor(async () => (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.find((r) => r.triggerType === 'base.recordCreated' && r.status !== 'running'));
 check('a record in the chosen table starts the flow (the other table does not)', fired && fired.status === 'succeeded' && (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.filter((r) => r.triggerType === 'base.recordCreated').length === 1, fired);
 check('… the record is readable by field name in templates and the notification reached the chosen person', fired?.steps[1]?.output?.title === `New lead: Nguyen Van A in ${table.name}` && fired?.steps[1]?.output?.userIds?.includes(hana), fired?.steps);
 check('… the trigger payload carries ids for later actions', fired?.trigger?.recordId && fired?.trigger?.tableId === table.id && fired?.trigger?.baseId === base.id);
@@ -179,7 +179,7 @@ await sleep(800);
 const before = (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.filter((r) => r.triggerType === 'task.statusChanged').length;
 check('a move to another status is ignored when the trigger waits for Done', before === 0, before);
 const moved = await call('PATCH', `/tasks/${t2.id}`, { user: claudia, body: { status: done?.id } });
-fired = moved.status < 300 ? await waitFor(async () => (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.find((r) => r.triggerType === 'task.statusChanged')) : null;
+fired = moved.status < 300 ? await waitFor(async () => (await call('GET', `/flows/${flow.id}/runs`, { user: claudia })).data.find((r) => r.triggerType === 'task.statusChanged' && r.status !== 'running')) : null;
 check('moving the task to Done starts the flow with from / to in the payload', fired?.status === 'succeeded' && fired.steps[1].output.title.includes(`Flow task ${n} moved`) && fired.steps[1].output.title.endsWith(`→ ${done.id}`), { moved: moved.status, fired: fired?.steps });
 
 // ── Schedule: the next run is planned when automation is on ─────────────────
