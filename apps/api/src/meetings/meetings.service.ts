@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { swallow } from '../common/errors';
 import {
   can,
   MEETING_CODE,
@@ -62,6 +63,7 @@ const RING_MS = 45_000;
  */
 @Injectable()
 export class MeetingsService implements OnModuleInit, OnModuleDestroy {
+  private readonly log = new Logger('Meetings');
   private readonly rooms = new Map<string, Room>();
   private readonly rings = new Map<string, Ring>();
   private sweeper?: NodeJS.Timeout;
@@ -77,7 +79,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.realtime.onClientMessage((actor, msg) => this.onSocket(actor, msg));
-    this.sweeper = setInterval(() => void this.sweep().catch(() => undefined), 10_000);
+    this.sweeper = setInterval(() => void this.sweep().catch(swallow(this.log, 'room sweep')), 10_000);
   }
 
   onModuleDestroy() {

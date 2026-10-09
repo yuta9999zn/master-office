@@ -221,7 +221,7 @@ export class SheetsService {
             else reject(new BadRequestException(`The workbook could not be read: ${m.error}`));
           });
           child.once('error', (e) => (clearTimeout(timer), reject(e)));
-          child.once('exit', (code) => code && reject(new Error(`The import worker stopped (code ${code}) — the file may be too large for this server`)));
+          child.once('exit', (code, signal) => (code || signal) && reject(new Error(`The import worker stopped (${signal ? `signal ${signal}` : `code ${code}`}) — the file may be too large for this server`)));
           child.send({ file, name: fileName, out });
         });
       } else result = await importToState({ file, name: fileName, out });

@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, sendCached } from '../common/http';
+import { contentDisposition, pipeStream, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from '../resources/resources.service';
 import { DocsService } from './docs.service';
@@ -101,7 +101,7 @@ export class DocsController {
       res.setHeader('Content-Range', `bytes ${f.range.start}-${f.range.end}/${f.size}`);
       res.setHeader('Content-Length', String(f.range.end - f.range.start + 1));
     } else res.setHeader('Content-Length', String(f.size));
-    (await f.open()).pipe(res);
+    pipeStream(res, await f.open(), `asset ${blobId}`);
   }
 
   @Post(':id/versions')

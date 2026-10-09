@@ -35,7 +35,10 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
       stopOnSignals: false,
       onAuthenticate: async ({ token, documentName, connectionConfig }) => {
         const grant = verifyCollabToken(token);
-        if (!grant || docName(grant.rid) !== documentName) throw new Error('Invalid collaboration token');
+        if (!grant || docName(grant.rid) !== documentName) {
+          this.log.debug(`rejected connection to ${documentName}: ${grant ? 'token for another document' : 'bad or expired token'}`);
+          throw new Error('Invalid collaboration token');
+        }
         // Viewers and commenters sync read-only; comments live outside the Yjs doc.
         if (!can(grant.role, 'editor')) connectionConfig.readOnly = true;
         return { user: { id: grant.uid, name: grant.name }, grant };
@@ -48,11 +51,23 @@ export class CollabService implements OnModuleInit, OnApplicationShutdown {
         new Database({
           fetch: async ({ documentName }) => {
             const rid = resourceIdFromDocName(documentName);
-            return rid ? this.store.load(rid) : null;
+            try {
+              return rid ? await this.store.load(rid) : null;
+            } catch (e) {
+              this.log.error(`load ${documentName}: ${(e as Error).stack ?? (e as Error).message}`);
+              throw e;
+            }
           },
           store: async ({ documentName, state, document, lastContext }) => {
             const rid = resourceIdFromDocName(documentName);
-            if (rid) await this.store.save(rid, state, document, lastContext?.user ?? null);
+            if (!rid) return;
+            try {
+              await this.store.save(rid, state, document, lastContext?.user ?? null);
+            } catch (e) {
+              // Hocuspocus is quiet: without this line a database outage would silently lose every edit.
+              this.log.error(`save ${documentName} (${state.length} bytes): ${(e as Error).stack ?? (e as Error).message}`);
+              throw e;
+            }
           },
         }),
       ],

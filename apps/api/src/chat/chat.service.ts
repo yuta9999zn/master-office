@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { swallow } from '../common/errors';
 import { can, type ChannelCategory, type ChatAccessProblem, type ChatPerms, type ChatAttachment, type ChatFile, type ChatMessage, type ConversationDetail, type ConversationKind, type ConversationMember, type ConversationRole, type ConversationSummary, type Role, type UserSummary } from '@workos/shared';
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { Actor } from '../common/current-user';
@@ -42,6 +43,7 @@ export interface CreateConversationInput {
  */
 @Injectable()
 export class ChatService implements OnModuleInit {
+  private readonly log = new Logger('Chat');
   /** "may read" answers for typing signals, which arrive several times a second. */
   private readonly typingCache = new Map<string, { ok: boolean; at: number }>();
 
@@ -873,7 +875,7 @@ export class ChatService implements OnModuleInit {
     });
     const members = await this.memberIds(id);
     await this.publishRows(actor, members, 'chat.message', [row]);
-    await this.notifyMessage(actor, id, row, root, members).catch(() => undefined);
+    await this.notifyMessage(actor, id, row, root, members).catch(swallow(this.log, `notify for message ${row.id}`));
     if (root) await this.publishRows(actor, members, 'chat.message.updated', [root]);
     else this.realtime.publish([actor.id], { type: 'chat.read', conversationId: id, userId: actor.id, seq: row.seq });
     return (await this.serialize(actor, [row]))[0];

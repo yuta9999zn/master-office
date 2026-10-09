@@ -55,7 +55,15 @@ export function useCollab(resourceId: string, me: { id: string; name: string; co
         name: first.document,
         document: doc,
         // Re-issued on every (re)connect: tokens are short-lived and carry the current role.
-        token: async () => (await api<CollabTokenResponse>(`/resources/${resourceId}/collab-token`)).token,
+        token: async () => {
+          try {
+            return (await api<CollabTokenResponse>(`/resources/${resourceId}/collab-token`)).token;
+          } catch (e) {
+            // Access revoked, signed out, or the server is down: say so instead of reconnecting in silence forever.
+            setError((e as Error).message);
+            throw e;
+          }
+        },
         onSynced: () => {
           setSynced(true);
           setStatus('saved');

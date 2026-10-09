@@ -1,7 +1,8 @@
 import { templateDocument } from '@workos/doc-model';
 import { templateWorkbook } from '@workos/sheet-model';
 import { templateDeck } from '@workos/slide-model';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, NotImplementedException } from '@nestjs/common';
+import { swallow } from '../common/errors';
 import {
   can,
   NATIVE_TYPES,
@@ -45,6 +46,7 @@ function copyName(name: string) {
 
 @Injectable()
 export class ResourcesService {
+  private readonly log = new Logger('Resources');
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly perms: PermissionsService,
@@ -474,7 +476,7 @@ export class ResourcesService {
     });
     if (COLLAB_TYPES.includes(created.type)) {
       // Word → internal model right away; the report (or failure) is kept in metadata.import.
-      await this.docs.importOriginal(actor, created.id, file.buffer).catch(() => undefined);
+      await this.docs.importOriginal(actor, created.id, file.buffer).catch(swallow(this.log, `import of ${created.id} (${file.originalname})`));
       const [fresh] = await this.db.select().from(resources).where(eq(resources.id, created.id));
       return (await this.toDtos(actor, [fresh]))[0];
     }

@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { swallow } from '../common/errors';
 import {
   APPROVAL_FIELD_TYPES,
   approvalConditionHolds,
@@ -68,6 +69,7 @@ const REMIND_EVERY_MS = 10 * 60_000;
  */
 @Injectable()
 export class ApprovalsService {
+  private readonly log = new Logger('Approvals');
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly notifications: NotificationsService,
@@ -467,7 +469,7 @@ export class ApprovalsService {
       await this.notifications
         .notify(actor, [req.submittedBy], { kind: 'approval.result', title: `Your ${t.name.toLowerCase()} was ${fx.finished}`, body: `${approvalSerial(req.serial)} · ${summary}`, url })
         .catch(() => undefined);
-      if (fx.finished === 'approved') await this.onApproved(t, req, submitter).catch(() => undefined);
+      if (fx.finished === 'approved') await this.onApproved(t, req, submitter).catch(swallow(this.log, `after approval of ${approvalSerial(req.serial)}`));
       // Flows that start when a request is decided (§77 batch 2): values by field label.
       const fields = (t.fields as { id: string; label: string }[]) ?? [];
       flowHooks.fire('approval.finished', req.workspaceId, {

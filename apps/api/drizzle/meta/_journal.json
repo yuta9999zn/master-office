@@ -239,6 +239,13 @@
       "when": 1791436600306,
       "tag": "0033_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791567157494,
+      "tag": "0034_mail_retry",
+      "breakpoints": true
     }
   ]
 }

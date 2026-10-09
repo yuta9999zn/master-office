@@ -20,7 +20,7 @@
     "@tiptap/pm": "^3.31.0",
     "@tiptap/starter-kit": "^3.31.0",
     "@tiptap/suggestion": "^3.31.0",
-    "katex": "^0.16"
+    "katex": "^0.18.2"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

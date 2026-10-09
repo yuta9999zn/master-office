@@ -85,7 +85,8 @@ export function RealtimeBridge() {
         ws.onopen = () => {
           retry = 0;
           usePresence.setState({ connected: true });
-          if (wasConnected) void qc.invalidateQueries({ queryKey: ['chat'] });
+          // Events missed while offline are gone: every live-updated area reloads once.
+          if (wasConnected) for (const key of ['chat', 'notifications', 'mail', 'calendar', 'tasks', 'approvals', 'meetings']) void qc.invalidateQueries({ queryKey: [key] });
           wasConnected = true;
         };
         ws.onmessage = (m) => {
@@ -107,13 +108,14 @@ export function RealtimeBridge() {
               delete conv[e.message.sender!.id];
               return { typing: { ...s.typing, [e.conversationId]: conv } };
             });
-          applyChatEvent(qc, e, meId);
-          applyNotificationEvent(qc, e);
-          applyMailEvent(qc, e);
-          applyCalendarEvent(qc, e);
-          applyTasksEvent(qc, e);
-          applyMeetingsEvent(qc, e);
-          applyApprovalsEvent(qc, e);
+          // One handler that chokes on an event must not stop the others (or the listeners) from seeing it.
+          for (const apply of [() => applyChatEvent(qc, e, meId), () => applyNotificationEvent(qc, e), () => applyMailEvent(qc, e), () => applyCalendarEvent(qc, e), () => applyTasksEvent(qc, e), () => applyMeetingsEvent(qc, e), () => applyApprovalsEvent(qc, e)]) {
+            try {
+              apply();
+            } catch (err) {
+              console.error(`realtime ${e.type}`, err);
+            }
+          }
           if (e.type === 'mail.received' && !window.location.pathname.startsWith('/mail'))
             toast(`New mail from ${e.from}`, { description: e.subject, action: { label: 'Open', onClick: () => routerRef.current.push(`/mail?box=${e.mailboxId}&folder=inbox&t=${e.threadId}`) } });
           if (e.type === 'notification') {
@@ -122,7 +124,13 @@ export function RealtimeBridge() {
             if (!window.location.pathname.startsWith(n.url.split('?')[0]))
               toast(n.title, { description: n.body ?? undefined, action: { label: 'Open', onClick: () => routerRef.current.push(n.url) } });
           }
-          for (const l of listeners) l(e);
+          for (const l of listeners) {
+            try {
+              l(e);
+            } catch (err) {
+              console.error(`realtime listener ${e.type}`, err);
+            }
+          }
         };
         ws.onclose = () => {
           if (socket === ws) socket = null;

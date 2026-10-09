@@ -15,19 +15,20 @@ type Init = Omit<RequestInit, 'body'> & { json?: unknown; body?: BodyInit };
 const PUBLIC = /^\/(login|setup|forgot|reset|invite|f|bf|pub|present|qa)(\/|$)/;
 
 /** All calls go through the Next.js `/api` rewrite → apps/api. Identity rides on the `mo_session` cookie (dev: `mo_uid`). */
-export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
-  const { json, headers, ...rest } = init;
-  const res = await fetch(`/api${path}`, {
-    ...rest,
-    credentials: 'same-origin',
-    headers: { ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
+/** A failed request is always an ApiError with a message a person can read; network trouble is status 0. */
+async function request(url: string, init: RequestInit): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    throw new ApiError(0, typeof navigator !== 'undefined' && !navigator.onLine ? 'You are offline' : 'The server cannot be reached', { cause: (e as Error).message });
+  }
   if (res.status === 401 && typeof window !== 'undefined' && !PUBLIC.test(location.pathname)) {
     location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
   }
   if (!res.ok) {
-    let message = res.statusText;
+    let message = res.statusText || `Request failed (${res.status})`;
     let body: unknown;
     try {
       body = await res.json();
@@ -38,6 +39,17 @@ export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
     }
     throw new ApiError(res.status, message, body);
   }
+  return res;
+}
+
+export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
+  const { json, headers, ...rest } = init;
+  const res = await request(`/api${path}`, {
+    ...rest,
+    credentials: 'same-origin',
+    headers: { ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
+    body: json !== undefined ? JSON.stringify(json) : rest.body,
+  });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -53,11 +65,7 @@ export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4
 export const apiWsOrigin = () => (/^https?:/.test(API_ORIGIN) ? API_ORIGIN.replace(/^http/, 'ws') : `${window.location.origin.replace(/^http/, 'ws')}${API_ORIGIN.replace(/\/$/, '')}`);
 
 export async function uploadFile<T>(path: string, body: FormData): Promise<T> {
-  const res = await fetch(`${API_ORIGIN}${path}`, { method: 'POST', body, credentials: 'include' });
-  if (!res.ok) {
-    const msg = await res.json().then((b) => b.message, () => res.statusText);
-    throw new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : msg);
-  }
+  const res = await request(`${API_ORIGIN}${path}`, { method: 'POST', body, credentials: 'include' });
   return res.json() as Promise<T>;
 }
 

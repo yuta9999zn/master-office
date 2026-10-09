@@ -39,12 +39,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       if (url.pathname !== '/realtime') return;
       const actor = this.verify(url.searchParams.get('token') ?? '');
       if (!actor) {
+        this.log.debug(`upgrade rejected (bad or expired token) from ${req.socket.remoteAddress}`);
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
+      socket.on('error', (e) => this.log.debug(`upgrade socket: ${e.message}`));
       this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, actor));
     });
+    this.wss.on('error', (e) => this.log.error(`websocket server: ${e.stack ?? e.message}`));
     // Drops sockets that stopped answering pings (sleeping laptops, killed tabs).
     this.heartbeat = setInterval(() => {
       for (const set of this.sockets.values())
@@ -77,8 +80,12 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const expected = sign(body);
     const given = Buffer.from(mac, 'base64url');
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-    const t = JSON.parse(Buffer.from(body, 'base64url').toString()) as { uid: string; name: string; ws: string; exp: number };
-    return t.exp > Date.now() / 1000 ? { id: t.uid, name: t.name, workspaceId: t.ws } : null;
+    try {
+      const t = JSON.parse(Buffer.from(body, 'base64url').toString()) as { uid: string; name: string; ws: string; exp: number };
+      return t.exp > Date.now() / 1000 ? { id: t.uid, name: t.name, workspaceId: t.ws } : null;
+    } catch {
+      return null;
+    }
   }
 
   private attach(ws: WebSocket, actor: Actor) {
@@ -90,6 +97,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.sockets.set(actor.id, set);
     this.workspaceOf.set(actor.id, actor.workspaceId);
     ws.on('pong', () => (w.alive = true));
+    // A socket error (reset by the peer, oversized frame) must never reach the process-level handler.
+    ws.on('error', (e) => this.log.warn(`socket of ${actor.id.slice(0, 8)}: ${e.message}`));
     ws.on('message', (raw) => {
       let msg: ClientMessage;
       try {
@@ -97,8 +106,16 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       } catch {
         return;
       }
-      if (msg?.type === 'ping') return void ws.send('{"type":"pong"}');
-      for (const h of this.handlers) Promise.resolve(h(actor, msg)).catch((e: Error) => this.log.warn(`client message: ${e.message}`));
+      if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+      if (msg.type === 'ping') return void ws.send('{"type":"pong"}');
+      for (const h of this.handlers) {
+        // Handlers may throw synchronously (bad payload) or reject; either way one message never takes the socket down.
+        try {
+          Promise.resolve(h(actor, msg)).catch((e: Error) => this.log.warn(`client message ${msg.type} from ${actor.id.slice(0, 8)}: ${e.stack ?? e.message}`));
+        } catch (e) {
+          this.log.warn(`client message ${msg.type} from ${actor.id.slice(0, 8)}: ${(e as Error).stack ?? (e as Error).message}`);
+        }
+      }
     });
     ws.on('close', () => {
       set.delete(ws);

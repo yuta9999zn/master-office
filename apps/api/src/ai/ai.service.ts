@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { EDGES_MAP, NODES_MAP, PAGE_ORDER, PAGES_MAP } from '@workos/flow-model';
 import { createYSheet, RESOURCES_MAP, SHEETS_MAP, WB_MAP } from '@workos/sheet-model';
@@ -102,8 +102,22 @@ const isCard = (key: string, format?: string | null) => (format ? format.startsW
  * ai_runs; it acts with the person's own permissions.
  */
 @Injectable()
-export class AiService {
+export class AiService implements OnModuleInit {
   private readonly log = new Logger(AiService.name);
+
+  /** The job queue lives in memory: jobs that were queued or running when the process stopped can only be reported, not resumed. */
+  async onModuleInit() {
+    try {
+      const rows = await this.db
+        .update(aiRuns)
+        .set({ status: 'failed', error: 'Interrupted by a server restart — run it again', finishedAt: new Date().toISOString() })
+        .where(inArray(aiRuns.status, ['queued', 'running']))
+        .returning({ id: aiRuns.id });
+      if (rows.length) this.log.warn(`${rows.length} AI job(s) were interrupted by the restart and marked failed`);
+    } catch (e) {
+      this.log.warn(`recover jobs: ${(e as Error).message}`);
+    }
+  }
   private readonly live = new Map<string, Live>();
   private queue: string[] = [];
   private working = false;
@@ -441,6 +455,7 @@ export class AiService {
         .where(eq(aiRuns.id, id));
     } catch (e) {
       const cancelled = live.abort.signal.aborted;
+      if (!cancelled) this.log.warn(`job ${id} (${job.promptKey}) failed: ${(e as Error).stack ?? (e as Error).message}`);
       await this.db
         .update(aiRuns)
         .set({ status: cancelled ? 'cancelled' : 'failed', error: cancelled ? null : String((e as Error).message ?? e).slice(0, 1000), answer: live.text.slice(0, 200_000) || null, ms: Date.now() - live.started, finishedAt: new Date().toISOString() })

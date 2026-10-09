@@ -453,10 +453,13 @@ export const mailOutbox = pgTable(
     resourceId: uuid('resource_id').references(() => resources.id, { onDelete: 'set null' }),
     status: text('status').notNull().default('queued'),
     error: text('error'),
+    /** Delivery tries so far (§85): 'queued' rows older than a couple of minutes and 'failed' rows are retried up to 3 times. */
+    attempts: integer('attempts').notNull().default(0),
     createdAt: ts('created_at').notNull().default(sql`now()`),
+    updatedAt: ts('updated_at').notNull().default(sql`now()`),
     sentAt: ts('sent_at'),
   },
-  (t) => [index('mail_outbox_resource_idx').on(t.resourceId, t.createdAt)],
+  (t) => [index('mail_outbox_resource_idx').on(t.resourceId, t.createdAt), index('mail_outbox_status_idx').on(t.status, t.createdAt)],
 );
 
 // ── Chat (Phase 5, docs/ARCHITECTURE.md §64, Discord model §68) ─────────────

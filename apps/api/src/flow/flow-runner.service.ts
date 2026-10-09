@@ -87,7 +87,19 @@ export class FlowRunnerService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     this.store.onSaved((id, doc) => (hasFlow(doc) ? this.syncTriggers(id, readFlow(doc)) : undefined));
     flowHooks.on('fire', this.onHook);
-    this.timer = setInterval(() => void this.tick(), TICK_MS);
+    this.timer = setInterval(() => void this.tick().catch((e: Error) => this.log.error(`tick: ${e.stack ?? e.message}`)), TICK_MS);
+    void this.recoverInterrupted().catch((e: Error) => this.log.warn(`recover runs: ${e.message}`));
+  }
+
+  /** Runs that were mid-flight when the process stopped can never continue (one process holds them): mark them so. */
+  private async recoverInterrupted() {
+    const rows = await this.db
+      .update(flowRuns)
+      .set({ status: 'failed', error: 'Interrupted by a server restart', finishedAt: new Date().toISOString(), pending: [] })
+      .where(eq(flowRuns.status, 'running'))
+      .returning({ id: flowRuns.id, flowId: flowRuns.flowId });
+    if (rows.length) this.log.warn(`${rows.length} flow run(s) were interrupted by the restart and marked failed`);
+    for (const r of rows) this.collab.notify(r.flowId, { type: 'runs' });
   }
 
   onModuleDestroy() {
@@ -206,7 +218,17 @@ export class FlowRunnerService implements OnModuleInit, OnModuleDestroy {
       })
       .returning();
     this.collab.notify(flowId, { type: 'runs' });
-    return this.walk(run, f, owner.actor);
+    return this.walkSafely(run, f, owner.actor);
+  }
+
+  /** `walk` only guards the actions; a condition, a template or a DB write that throws must still end the run. */
+  private async walkSafely(run: RunRow, f: PlainFlow, actor: Actor): Promise<RunRow> {
+    try {
+      return await this.walk(run, f, actor);
+    } catch (e) {
+      this.log.error(`run ${run.id} of flow ${run.flowId}: ${(e as Error).stack ?? (e as Error).message}`);
+      return this.finish(run, 'failed', `Internal error: ${(e as Error).message}`.slice(0, 500));
+    }
   }
 
   /** Continues a waiting run (its time came, or someone pressed Continue). */
@@ -222,7 +244,7 @@ export class FlowRunnerService implements OnModuleInit, OnModuleDestroy {
       last.status = 'ok';
       last.finishedAt = new Date().toISOString();
     }
-    return this.walk({ ...claimed, steps: steps as unknown as Record<string, unknown>[] }, f, owner.actor);
+    return this.walkSafely({ ...claimed, steps: steps as unknown as Record<string, unknown>[] }, f, owner.actor);
   }
 
   private async walk(run: RunRow, f: PlainFlow, runAs: Actor): Promise<RunRow> {

@@ -1,4 +1,24 @@
+import { Logger } from '@nestjs/common';
 import type { Response } from 'express';
+import type { Readable } from 'node:stream';
+
+const log = new Logger('Http');
+
+/**
+ * Streams storage content to the client. A stream that breaks mid-way (storage restarted, client gone) is logged and
+ * the response is closed — never left hanging, never turned into an unhandled 'error' event.
+ */
+export function pipeStream(res: Response, stream: Readable, what: string) {
+  stream.on('error', (e) => {
+    log.warn(`stream ${what}: ${e.message}`);
+    if (!res.headersSent) res.status(502).json({ statusCode: 502, message: 'The stored content could not be read' });
+    else res.destroy(e);
+  });
+  res.on('close', () => {
+    if (!stream.destroyed) stream.destroy();
+  });
+  stream.pipe(res);
+}
 
 /** RFC 6266 / 5987 — keeps Vietnamese file names intact. */
 export function contentDisposition(name: string, disposition: 'attachment' | 'inline') {

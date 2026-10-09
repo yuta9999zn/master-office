@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { config } from '../config';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, sendCached } from '../common/http';
+import { contentDisposition, pipeStream, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from './resources.service';
 
@@ -129,7 +129,7 @@ export class ResourcesController {
     res.setHeader('Content-Length', String(f.size));
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
     if ('body' in f) res.send(f.body);
-    else (await f.open()).pipe(res);
+    else pipeStream(res, await f.open(), `download ${id}`);
   }
 
   @Get(':id/activity')

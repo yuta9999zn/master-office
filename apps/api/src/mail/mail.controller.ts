@@ -4,7 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, sendCached } from '../common/http';
+import { contentDisposition, pipeStream, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { config } from '../config';
 import { ResourcesService } from '../resources/resources.service';
@@ -147,7 +147,7 @@ export class MailController {
     res.setHeader('Content-Type', f.mimeType);
     res.setHeader('Content-Length', String(f.size));
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
-    (await f.open()).pipe(res);
+    pipeStream(res, await f.open(), `attachment ${id}`);
   }
 
   /** "Save to Drive": a copy of the attachment as a file in My Files, a folder or a space. */

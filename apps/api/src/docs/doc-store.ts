@@ -111,7 +111,8 @@ export class DocStore {
       const json = documentJSON(doc);
       text = toPlainText(json);
       stats = { wordCount: text.split(/\s+/).filter(Boolean).length };
-      await this.syncLinks(resourceId, json);
+      // Backlinks are a side effect: a failure there must not stop the content from being stored.
+      await this.syncLinks(resourceId, json).catch((e: Error) => this.log.warn(`links of ${resourceId}: ${e.message}`));
     }
     await this.db
       .insert(ydocStates)
@@ -138,9 +139,10 @@ export class DocStore {
     if (now - (this.lastEditActivity.get(key) ?? 0) > EDIT_ACTIVITY_WINDOW_MS) {
       this.lastEditActivity.set(key, now);
       const actor: Actor = { id: editor.id, name: editor.name, workspaceId: row.workspaceId };
-      await this.events.emit(this.db, actor, 'resource.content_changed', { resourceId, spaceId: row.spaceId }, { name: row.name, type: row.type });
+      await this.events.emit(this.db, actor, 'resource.content_changed', { resourceId, spaceId: row.spaceId }, { name: row.name, type: row.type }).catch((e: Error) => this.log.warn(`activity of ${resourceId}: ${e.message}`));
     }
-    await this.maybeAutoSnapshot(resourceId, state, editor.id);
+    // The content is stored by now; a snapshot that fails (storage hiccup) is retried on the next save window.
+    await this.maybeAutoSnapshot(resourceId, state, editor.id).catch((e: Error) => this.log.warn(`auto snapshot of ${resourceId}: ${e.message}`));
   }
 
   /** Outgoing links (page links, embedded files, internal URLs) → resource_links, which powers backlinks. */

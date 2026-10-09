@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { swallow } from '../common/errors';
 import {
   meetingCode,
   can,
@@ -141,6 +142,7 @@ export function toIcs(e: Ev, organizer: { name: string; email: string }, guests:
  */
 @Injectable()
 export class CalendarService {
+  private readonly log = new Logger('Calendar');
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly perms: PermissionsService,
@@ -566,8 +568,9 @@ export class CalendarService {
         text: lines.join('\n'),
         attachmentIds: [file.id],
       });
-    } catch {
-      /* the event stands even if the mail could not go out */
+    } catch (e) {
+      // The event stands even if the mail could not go out — but the operator must be able to see why.
+      this.log.warn(`invitation mail for event ${ev.id}: ${(e as Error).message}`);
     }
   }
 
