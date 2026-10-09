@@ -1,3 +1,6 @@
+'use client';
+
+// APPS entries carry icon components, which a server component could not hand to the client AppIcon (next build fails on prerender).
 import Link from 'next/link';
 import { AppIcon } from '@/components/ui/primitives';
 import { APPS } from '@/lib/apps';

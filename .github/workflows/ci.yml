@@ -19,8 +19,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       # Model-level tests that need no server
-      - run: npx tsx apps/api/test/base-model.ts
-      - run: npx tsx apps/api/test/photodeck.ts
+      # (run from apps/api so tsx picks up its tsconfig path aliases to packages/*)
+      - run: npx tsx test/base-model.ts
+        working-directory: apps/api
+      - run: npx tsx test/photodeck.ts
+        working-directory: apps/api
 
   docker:
     runs-on: ubuntu-latest
