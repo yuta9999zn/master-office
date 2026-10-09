@@ -645,6 +645,12 @@ export class ApprovalsService {
   // ── Reading ───────────────────────────────────────────────────────────────
 
   /** Submitter, people the request has reached, the template's managers. */
+  /** May this person see the request? (flow triggers run with the flow owner's rights, §85 B) */
+  async canSeeRequest(actor: Actor, requestId: string) {
+    const [req] = await this.db.select().from(approvalRequests).where(eq(approvalRequests.id, requestId));
+    return !!req && this.visible(actor, req);
+  }
+
   private async visible(actor: Actor, req: RequestRow, tx: Tx = this.db) {
     if (req.workspaceId !== actor.workspaceId) return false;
     if (req.submittedBy === actor.id) return true;

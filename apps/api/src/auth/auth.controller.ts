@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import { RateLimit } from '../common/ratelimit';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser, readCookie } from '../common/current-user';
@@ -36,6 +37,7 @@ export class AuthController {
     return { needsSetup: await this.org.needsSetup(), signedIn: !!actor, dev: config.auth.dev, userId: actor?.id ?? (config.auth.dev ? (req.actor?.id ?? null) : null) };
   }
 
+  @RateLimit(10, 60)
   @Post('auth/login')
   @HttpCode(200)
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: unknown) {
@@ -66,6 +68,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @RateLimit(5, 600)
   @Post('auth/forgot')
   @HttpCode(200)
   async forgot(@Req() req: Request, @Body() b: unknown) {
@@ -78,6 +81,7 @@ export class AuthController {
     return this.auth.resetInfo(token);
   }
 
+  @RateLimit(10, 600)
   @Post('auth/reset/:token')
   @HttpCode(200)
   async reset(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Param('token') token: string, @Body() b: unknown) {
@@ -92,6 +96,7 @@ export class AuthController {
     return { needsSetup: await this.org.needsSetup() };
   }
 
+  @RateLimit(5, 600)
   @Post('setup')
   async setup(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: unknown) {
     const input = parse(
@@ -117,6 +122,7 @@ export class AuthController {
     return this.org.invitationInfo(token);
   }
 
+  @RateLimit(10, 600)
   @Post('invitations/:token/accept')
   @HttpCode(200)
   async accept(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Param('token') token: string, @Body() b: unknown) {

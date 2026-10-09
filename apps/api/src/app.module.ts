@@ -1,4 +1,6 @@
+import { APP_GUARD } from '@nestjs/core';
 import { HealthController } from './health.controller';
+import { RateLimitGuard } from './common/ratelimit';
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { CalendarController } from './calendar/calendar.controller';
 import { ApprovalsController } from './approvals/approvals.controller';
@@ -75,6 +77,7 @@ import { StorageController } from './storage/storage.controller';
   imports: [DbModule],
   controllers: [HealthController, UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController, FlowController, AiController],
   providers: [
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     SpellingService,
     RealtimeService,
     NotificationsService,

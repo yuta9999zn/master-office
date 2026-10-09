@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { RateLimit } from '../common/ratelimit';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
 import { parse } from '../common/validation';
@@ -43,6 +44,7 @@ export class MacroTriggersController {
     return this.triggers.remove(a, id);
   }
 
+  @RateLimit(20, 60)
   @Post('macro-triggers/:id/run')
   @HttpCode(200)
   run(@CurrentUser() a: Actor, @Param('id', ParseUUIDPipe) id: string) {

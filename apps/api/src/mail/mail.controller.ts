@@ -4,7 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, pipeStream, sendCached } from '../common/http';
+import { contentDisposition, inlineAllowed, pipeStream, sandboxInline, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { config } from '../config';
 import { ResourcesService } from '../resources/resources.service';
@@ -146,7 +146,9 @@ export class MailController {
     if (sendCached(res, f.etag, ifNoneMatch)) return;
     res.setHeader('Content-Type', f.mimeType);
     res.setHeader('Content-Length', String(f.size));
-    res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
+    const showInline = !!inline && inlineAllowed(f.mimeType);
+    if (showInline) sandboxInline(res);
+    res.setHeader('Content-Disposition', contentDisposition(f.name, showInline ? 'inline' : 'attachment'));
     pipeStream(res, await f.open(), `attachment ${id}`);
   }
 

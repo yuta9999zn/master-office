@@ -44,6 +44,7 @@ export class AuthService {
   }
   private failed(keys: string[]) {
     const now = Date.now();
+    if (this.fails.size > 5000) for (const [k, f] of this.fails) if (f.until <= now) this.fails.delete(k);
     for (const k of keys) {
       const f = this.fails.get(k);
       this.fails.set(k, f && f.until > now ? { n: f.n + 1, until: f.until } : { n: 1, until: now + 15 * 60_000 });

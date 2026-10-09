@@ -23,7 +23,7 @@ export class MeetingsController {
 
   /** STUN / TURN servers for the browsers. */
   @Get('config')
-  config() {
+  config(@CurrentUser() _a: Actor) {
     return { iceServers: config.meetings.iceServers };
   }
 

@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { config } from '../config';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, pipeStream, sendCached } from '../common/http';
+import { contentDisposition, inlineAllowed, pipeStream, sandboxInline, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from './resources.service';
 
@@ -127,7 +127,9 @@ export class ResourcesController {
     if ('etag' in f && f.etag && sendCached(res, f.etag, ifNoneMatch)) return;
     res.setHeader('Content-Type', f.mime);
     res.setHeader('Content-Length', String(f.size));
-    res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
+    const showInline = !!inline && inlineAllowed(f.mime);
+    if (showInline) sandboxInline(res);
+    res.setHeader('Content-Disposition', contentDisposition(f.name, showInline ? 'inline' : 'attachment'));
     if ('body' in f) res.send(f.body);
     else pipeStream(res, await f.open(), `download ${id}`);
   }

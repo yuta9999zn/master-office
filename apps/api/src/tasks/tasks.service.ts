@@ -82,6 +82,16 @@ export class TasksService {
     return { read: can(role, 'viewer'), comment: can(role, 'commenter'), write: can(role, 'editor'), manage: can(role, 'admin') || ((p.createdBy === actor.id || p.leadId === actor.id) && can(role, 'editor')) };
   }
 
+  /** May this person read the project? (flow triggers run with the flow owner's rights, §85 B) */
+  async canReadProject(actor: Actor, projectId: string) {
+    try {
+      await this.project(actor, projectId, 'read');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async project(actor: Actor, id: string, need: 'read' | 'comment' | 'write' | 'manage' = 'read', tx: Tx = this.db) {
     const [p] = await tx.select().from(projects).where(eq(projects.id, id));
     if (!p || p.workspaceId !== actor.workspaceId) throw new NotFoundException('Project not found');

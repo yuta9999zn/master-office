@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
-import { contentDisposition, pipeStream, sendCached } from '../common/http';
+import { contentDisposition, pipeStream, sandboxInline, sendCached } from '../common/http';
 import { parse } from '../common/validation';
 import { ResourcesService } from '../resources/resources.service';
 import { DocsService } from './docs.service';
@@ -54,7 +54,9 @@ export class DocsController {
     // ?slide is 1-based like PowerPoint's slide numbers.
     const f = await this.docs.export(a, id, format, sheet, slide !== undefined ? slide - 1 : undefined, { scale });
     res.setHeader('Content-Type', f.mime);
-    // inline=1 powers Print preview (the PDF opens in the browser viewer).
+    // inline=1 powers Print preview (the PDF opens in the browser viewer). Inline HTML is sandboxed: it is built from
+    // collaborative data and must never run with the session.
+    if (inline) sandboxInline(res);
     res.setHeader('Content-Disposition', contentDisposition(f.name, inline ? 'inline' : 'attachment'));
     res.send(f.body);
   }
@@ -95,6 +97,8 @@ export class DocsController {
     const f = await this.docs.asset(a, id, blobId, m ? { start: Number(m[1]), end: m[2] ? Number(m[2]) : undefined } : undefined);
     if (!f.range && sendCached(res, f.etag, req.headers['if-none-match'] as string | undefined, 'private, max-age=86400, immutable')) return;
     res.setHeader('Content-Type', f.mime);
+    // Pictures, video and audio render fine in <img>/<video>; opened directly (e.g. an SVG) they get no origin and no scripts.
+    sandboxInline(res);
     res.setHeader('Accept-Ranges', 'bytes');
     if (f.range) {
       res.status(206);

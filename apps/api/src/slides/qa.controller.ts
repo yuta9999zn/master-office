@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { RateLimit } from '../common/ratelimit';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { type Actor, CurrentUser } from '../common/current-user';
@@ -46,6 +47,7 @@ export class QaController {
     return this.qa.audience(parse(token, t), signedIn(req)?.id ?? (voter && z.string().uuid().safeParse(voter).success ? voter : null));
   }
 
+  @RateLimit(30, 60)
   @Post('qa/:token/questions')
   @HttpCode(204)
   ask(@Req() req: Request, @Param('token') t: string, @Body() b: unknown) {
@@ -53,6 +55,7 @@ export class QaController {
     return this.qa.ask(parse(token, t), signedIn(req), voterOf(req, body.voter), body);
   }
 
+  @RateLimit(60, 60)
   @Post('qa/:token/questions/:qid/vote')
   @HttpCode(204)
   vote(@Req() req: Request, @Param('token') t: string, @Param('qid', ParseUUIDPipe) qid: string, @Body() b: unknown) {

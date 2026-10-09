@@ -112,6 +112,16 @@ export class BaseService implements OnModuleInit {
     return { row, role };
   }
 
+  /** May this person read the table? (flow triggers run with the flow owner's rights, §85 B) */
+  async canReadTable(actor: Actor, tableId: string) {
+    try {
+      await this.table(actor, tableId, 'viewer');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async table(actor: Actor, tableId: string, need: Role, tx: Tx = this.db) {
     const [t] = await tx.select().from(baseTables).where(eq(baseTables.id, tableId));
     if (!t) throw new NotFoundException('Table not found');

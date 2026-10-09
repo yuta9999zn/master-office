@@ -46,6 +46,8 @@ docker run --rm -v master-office_s3data:/data -v "$PWD":/out alpine tar czf /out
 
 Migration CSDL chạy tự động mỗi khi `api` khởi động. Kiểm tra sức khoẻ: `GET /api/health`.
 
+Ở production API **từ chối khởi động** nếu `COLLAB_SECRET` còn là giá trị mẫu hoặc `AUTH_DEV=1`.
+
 **Giữ kỹ `SETTINGS_KEY`**: nó mã hoá mật khẩu SMTP và khoá API AI đã nhập; đổi khoá là mất các giá trị đó (nhập lại ở Admin).
 
 ## 2. Chạy từ mã nguồn (phát triển)
@@ -80,6 +82,8 @@ Kiểm thử: `pnpm typecheck`, `pnpm test` (seed lại + test API từng module
 | `MEETING_ICE_SERVERS` | `[]` | STUN/TURN cho họp video |
 | `OLLAMA_URL`, `OLLAMA_MODEL` | `http://127.0.0.1:11434` | AI local |
 | `OCR_CACHE_DIR` | `.cache/tessdata` | Dữ liệu ngôn ngữ Tesseract (tải một lần) |
+| `LOG_LEVEL` | `log` ở production, `debug` khi dev | `debug` in thêm một dòng cho mỗi request |
+| `FLOW_WEBHOOK_ALLOW_LOCAL` | tắt | `1` cho phép webhook của Flow gọi địa chỉ nội bộ / riêng (mặc định bị chặn chống SSRF) |
 | `NEXT_PUBLIC_API_URL` (web, lúc build) | `http://localhost:4000` | Địa chỉ API cho tải lên và websocket; `/api` khi sau proxy |
 | `API_URL` (web) | `http://localhost:4000` | Đích của proxy `/api` trong Next.js |
 

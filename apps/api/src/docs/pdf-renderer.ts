@@ -33,10 +33,25 @@ export class PdfRenderer implements OnApplicationShutdown {
   }
 
   /** Page size and margins come from the document's @page rule; header/footer from the page setup. */
+  /**
+   * Rendering is offline (§85 B): the HTML comes from collaborative data, so Chromium may not reach the network at
+   * all (no internal services, no metadata endpoints) — every picture is inlined as a data: URL before rendering —
+   * and JavaScript stays off unless the document needs the line-numbering script.
+   */
+  private async newPage(opts: { js: boolean; viewport?: { width: number; height: number }; scale?: number }) {
+    const browser = await this.getBrowser();
+    const page = await browser.newPage({ javaScriptEnabled: opts.js, ...(opts.viewport ? { viewport: opts.viewport, deviceScaleFactor: opts.scale } : {}) });
+    await page.route('**/*', (route) => {
+      const u = route.request().url();
+      if (u.startsWith('data:') || u.startsWith('about:') || u.startsWith('blob:')) return route.continue();
+      return route.abort('blockedbyclient');
+    });
+    return page;
+  }
+
   async render(html: string, opts: { pageSetup?: PageSetup; title?: string } = {}): Promise<Buffer> {
     const p = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
+    const page = await this.newPage({ js: !!p.lineNumbers });
     try {
       if (p.lineNumbers) {
         // Line numbers are measured in the page itself: lay it out as printed (print CSS, the text width of the
@@ -62,8 +77,7 @@ export class PdfRenderer implements OnApplicationShutdown {
 
   /** One PNG per `.page` element (slides), rendered at `scale` × the slide size (2× by default, for crisp text). */
   async screenshots(html: string, size: { w: number; h: number }, scale = 2): Promise<Buffer[]> {
-    const browser = await this.getBrowser();
-    const page = await browser.newPage({ viewport: { width: size.w, height: size.h }, deviceScaleFactor: scale });
+    const page = await this.newPage({ js: false, viewport: { width: size.w, height: size.h }, scale });
     try {
       await page.setContent(html, { waitUntil: 'load' });
       const out: Buffer[] = [];

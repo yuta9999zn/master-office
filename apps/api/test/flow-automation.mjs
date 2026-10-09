@@ -103,7 +103,11 @@ check('a looping diagram is stopped', run.status === 'failed' && /loops/.test(ru
 const hook = diagram([node('s', 'Start', trigger('manual'), 'terminal'), node('w', 'Webhook', action('webhook', { url: 'http://127.0.0.1:9/x' }))], [edge('s', 'w')]);
 await call('POST', `/flows/${flow.id}/import`, { user: claudia, body: hook });
 run = (await call('POST', `/flows/${flow.id}/run`, { user: claudia, body: {} })).data;
-check('webhooks to local addresses are refused', run.status === 'failed' && /local addresses/.test(run.error), run.error);
+check('webhooks to local addresses are refused', run.status === 'failed' && /local or private addresses/.test(run.error), run.error);
+const hook2 = diagram([node('s', 'Start', trigger('manual'), 'terminal'), node('w', 'Webhook', action('webhook', { url: 'http://s3:8333/workos' }))], [edge('s', 'w')]);
+await call('POST', `/flows/${flow.id}/import`, { user: claudia, body: hook2 });
+run = (await call('POST', `/flows/${flow.id}/run`, { user: claudia, body: {} })).data;
+check('… and so are internal service names (SSRF, §85 B)', run.status === 'failed' && /local or internal/.test(run.error), run.error);
 
 // ── Wait: the run parks, then continues or is cancelled ─────────────────────
 const wait = diagram([node('s', 'Start', trigger('manual'), 'terminal'), node('w', 'Wait', action('delay', { minutes: 30 }), 'delay'), node('nt', 'Then notify', action('notify', { title: 'After the wait: {{trigger.input.x}}' }))], [edge('s', 'w'), edge('w', 'nt')]);
@@ -196,6 +200,26 @@ for (const id of [flow.id, base.id]) {
   await call('DELETE', `/resources/${id}`, { user: claudia });
 }
 await call('POST', `/tasks/${taskId}/trash`, { user: claudia }).catch(() => undefined);
+
+// ── Triggers only see what the flow's owner may see (§85 B) ──────────────────
+{
+  const hr = (await call('GET', '/spaces', { user: claudia })).data.find((s) => s.name === 'HR');
+  const secret = (await call('POST', '/resources', { user: claudia, body: { name: `HR survey ${n}`, type: 'form', spaceId: hr.id } })).data;
+  const listen = (owner) => diagram([node('s', 'Any form', trigger('form.submitted', {}), 'terminal'), node('nt', 'Tell', action('notify', { title: 'Answer to {{trigger.formName}}', userIds: [owner] }))], [edge('s', 'nt')]);
+  const hanaFlow = (await call('POST', '/resources', { user: hana, body: { name: `Listener ${n}`, type: 'flow' } })).data;
+  await call('POST', `/flows/${hanaFlow.id}/import`, { user: hana, body: listen(hana) });
+  const ownFlow = (await call('POST', '/resources', { user: claudia, body: { name: `Owner listener ${n}`, type: 'flow' } })).data;
+  await call('POST', `/flows/${ownFlow.id}/import`, { user: claudia, body: listen(claudia) });
+  check('the HR form is invisible to Hana', (await call('GET', `/forms/${secret.id}/definition`, { user: hana })).status === 404);
+  const r = await call('POST', `/forms/${secret.id}/responses`, { user: claudia, body: { answers: {} } });
+  check('a response to the HR form is accepted', r.status < 300, r.data);
+  const ownRun = await waitFor(async () => ((await call('GET', `/flows/${ownFlow.id}/runs`, { user: claudia })).data ?? []).find((x) => x.triggerType === 'form.submitted'));
+  check("the owner's flow, who can read the form, ran", !!ownRun && ownRun.trigger.formId === secret.id, ownRun);
+  await sleep(1500);
+  const hanaRuns = (await call('GET', `/flows/${hanaFlow.id}/runs`, { user: hana })).data ?? [];
+  check("Hana's flow, who cannot read the form, got nothing", hanaRuns.length === 0, hanaRuns);
+  for (const id of [secret.id, hanaFlow.id, ownFlow.id]) await call('DELETE', `/resources/${id}`, { user: id === hanaFlow.id ? hana : claudia }).catch(() => undefined);
+}
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall flow automation checks passed');
 process.exit(failures ? 1 : 0);

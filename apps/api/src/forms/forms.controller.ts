@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { RateLimit } from '../common/ratelimit';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ export class FormsController {
     return this.forms.publicSummary(req.actor, id);
   }
 
+  @RateLimit(30, 60)
   @Post(':id/responses')
   submit(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() b: unknown) {
     const input = parse(submitBody, b);
@@ -47,6 +49,7 @@ export class FormsController {
     return this.forms.result(id, token.slice(0, 64));
   }
 
+  @RateLimit(20, 60)
   @Post(':id/uploads')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
   upload(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {

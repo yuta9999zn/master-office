@@ -13,7 +13,9 @@ export class PublishController {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // Short cache: edits show up within a minute; embeddable anywhere (it is meant to be public).
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+    // Sandboxed (§85 B): the page gets a unique origin, so even injected markup cannot use the viewer's session;
+    // allow-scripts keeps the slide navigation of published decks working. Embeddable anywhere (it is public).
+    res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-popups allow-forms; frame-ancestors *');
     res.send(html);
   }
 }

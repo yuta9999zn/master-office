@@ -30,7 +30,9 @@ import { BaseService } from '../base/base.service';
 import { ChatService } from '../chat/chat.service';
 import { CollabService } from '../collab/collab.service';
 import type { Actor } from '../common/current-user';
+import { assertPublicUrl } from '../common/ssrf';
 import { loadUsers } from '../common/users';
+import { MailboxService } from '../mail/mailbox.service';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { flowRuns, flowTriggers, resources, users } from '../db/schema';
@@ -142,8 +144,49 @@ export class FlowRunnerService implements OnModuleInit, OnModuleDestroy {
     const rows = await this.db.select().from(flowTriggers).where(and(eq(flowTriggers.workspaceId, ev.workspaceId), eq(flowTriggers.type, ev.type), eq(flowTriggers.enabled, true)));
     // A flow never restarts itself from its own actions (a record it stamps, a task it creates…); chains between flows are fine.
     const hits = rows.filter((t) => t.flowId !== ev.origin?.flowId && matches(t.type, t.config, ev.payload));
-    await Promise.all(hits.map((t) => this.start(t.flowId, t.nodeId, t.type, ev.payload, null).catch((e: Error) => this.log.warn(`flow ${t.flowId}: ${e.message}`))));
-    return hits.length;
+    // A trigger only sees what the flow's owner may see (§85 B): a flow set up by a member must not receive the
+    // CEO's mail, another team's form answers or a private table's records just because it listens.
+    const allowed = (await Promise.all(hits.map(async (t) => ((await this.authorized(t.flowId, ev).catch((e: Error) => (this.log.warn(`authorize ${t.flowId}: ${e.message}`), false))) ? t : null)))).filter((t): t is (typeof hits)[number] => !!t);
+    await Promise.all(allowed.map((t) => this.start(t.flowId, t.nodeId, t.type, ev.payload, null).catch((e: Error) => this.log.warn(`flow ${t.flowId}: ${e.message}`))));
+    return allowed.length;
+  }
+
+  private async authorized(flowId: string, ev: FlowHookEvent): Promise<boolean> {
+    const owner = (await this.ownerOf(flowId)).actor;
+    if (owner.workspaceId !== ev.workspaceId) return false;
+    const p = ev.payload;
+    const id = (k: string) => (typeof p[k] === 'string' && /^[0-9a-f-]{36}$/i.test(p[k] as string) ? (p[k] as string) : null);
+    switch (ev.type) {
+      case 'form.submitted': {
+        const formId = id('formId');
+        return !!formId && (await this.perms.require(owner, formId, 'viewer').then(() => true, () => false));
+      }
+      case 'base.recordCreated':
+      case 'base.recordUpdated': {
+        const tableId = id('tableId');
+        return !!tableId && this.moduleRef.get(BaseService, { strict: false }).canReadTable(owner, tableId);
+      }
+      case 'approval.finished': {
+        const requestId = id('requestId');
+        return !!requestId && this.moduleRef.get(ApprovalsService, { strict: false }).canSeeRequest(owner, requestId);
+      }
+      case 'task.statusChanged': {
+        const projectId = id('projectId');
+        return !!projectId && this.moduleRef.get(TasksService, { strict: false }).canReadProject(owner, projectId);
+      }
+      case 'mail.received': {
+        const mailboxId = id('mailboxId');
+        if (!mailboxId) return false;
+        try {
+          await this.moduleRef.get(MailboxService, { strict: false }).access(owner, mailboxId, 'read');
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      default:
+        return false;
+    }
   }
 
   async tick() {
@@ -389,12 +432,13 @@ export class FlowRunnerService implements OnModuleInit, OnModuleDestroy {
         return { __wait: new Date(Date.now() + minutes * 60_000).toISOString() };
       }
       case 'webhook': {
-        const url = str('url').trim();
-        if (!/^https?:\/\//i.test(url)) throw new Error('The URL must start with http:// or https://');
-        const host = new URL(url).hostname;
-        if (process.env.FLOW_WEBHOOK_ALLOW_LOCAL !== '1' && /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0|\[?::1)/i.test(host)) throw new Error('Webhooks to local addresses are off (FLOW_WEBHOOK_ALLOW_LOCAL=1 allows them)');
+        const url = await assertPublicUrl(str('url').trim());
+        const method = String(cfg.method ?? 'POST').toUpperCase();
+        if (!['POST', 'PUT', 'PATCH', 'GET', 'DELETE'].includes(method)) throw new Error(`Method ${method} is not allowed`);
         const body = cfg.body ? renderObject(cfg.body as Record<string, unknown>, ctx) : { trigger: (ctx as { trigger: unknown }).trigger, steps: (ctx as { steps: unknown }).steps };
-        const res = await fetch(url, { method: String(cfg.method ?? 'POST'), headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS) });
+        // No redirects: a public host could otherwise bounce the request to an internal address.
+        const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS), redirect: 'manual' });
+        if (res.status >= 300 && res.status < 400) throw new Error(`The server redirected (${res.status}); webhooks do not follow redirects`);
         const text = (await res.text().catch(() => '')).slice(0, 2000);
         if (!res.ok) throw new Error(`The server answered ${res.status}`);
         return { status: res.status, response: text };

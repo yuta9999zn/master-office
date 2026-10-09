@@ -200,20 +200,26 @@ export class FormsService {
     if (actor) {
       await this.events.emit(this.db, actor, 'form.response_submitted', { resourceId: id, spaceId: row.spaceId }, { name: row.name, type: 'form' });
     }
-    if (s.sheetId) {
+    // The linked sheet id lives in the form's own document, where any form editor can change it: rows are only
+    // written when the form's owner may edit that spreadsheet (§85 B), never into an arbitrary document.
+    const owner: Actor = { id: row.ownerId, name: 'Form response', workspaceId: row.workspaceId };
+    const linked = s.sheetId && /^[0-9a-f-]{36}$/i.test(s.sheetId) ? s.sheetId : null;
+    const ownerMayEdit = linked ? await this.perms.require(owner, linked, 'editor').then(() => true, () => false) : false;
+    if (linked && !ownerMayEdit) this.log.warn(`form ${id}: linked sheet ${linked} is not editable by the form's owner — response not copied`);
+    if (linked && ownerMayEdit) {
       const cols = responseColumns(form);
       // Written as the respondent (or the form's owner for anonymous answers); a failure must not lose the response.
       const line = cols.cells({ submittedAt: created.submittedAt, email, score, answers });
       const at = await this.sheets
-        .appendRows(s.sheetId, [line], actor ?? { id: row.ownerId, name: 'Form response' })
-        .catch((e) => (this.log.warn(`append to linked sheet ${s.sheetId} failed: ${(e as Error).message}`), null));
+        .appendRows(linked, [line], actor ?? owner)
+        .catch((e) => (this.log.warn(`append to linked sheet ${linked} failed: ${(e as Error).message}`), null));
       // "On form submit" triggers of the linked spreadsheet (§48) — after the response is safe, never blocking it.
       if (at) {
         const namedValues = Object.fromEntries(cols.header.map((h, i) => [String(h), [String(line[i] ?? '')]]));
         const range = { sheet: at.sheet, r: at.row, c: 0, nr: 1, nc: line.length };
         void this.moduleRef
           .get(MacroTriggersService, { strict: false })
-          .formSubmitted(s.sheetId, { range, values: line, namedValues })
+          .formSubmitted(linked, { range, values: line, namedValues })
           .catch((e: Error) => this.log.warn(`form submit triggers: ${e.message}`));
       }
     }

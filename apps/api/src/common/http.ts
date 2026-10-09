@@ -20,6 +20,30 @@ export function pipeStream(res: Response, stream: Readable, what: string) {
   stream.pipe(res);
 }
 
+/**
+ * Defaults for every API answer (§85 B): browsers never sniff a type, the API is never framed by another site, and
+ * referrers stay short. Pages the API serves (published documents, inline files) add a CSP sandbox on top.
+ */
+export function securityHeaders(_req: unknown, res: Response, next: () => void) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+}
+
+/** Types a browser may render inline on the app's own origin without running anything: pictures, PDF, media, plain text. */
+const INLINE_SAFE = /^(image\/(?!svg)|application\/pdf$|video\/|audio\/|text\/(plain|csv)$|application\/json$)/i;
+
+/** HTML, SVG, XML and anything unknown are downloaded, never shown inline: on the app origin they would run with the session. */
+export function inlineAllowed(mime: string | null | undefined) {
+  return !!mime && INLINE_SAFE.test(mime);
+}
+
+/** For content shown inline that came from users: even if it were a document, it gets a unique origin and no scripts. */
+export function sandboxInline(res: Response) {
+  res.setHeader('Content-Security-Policy', 'sandbox');
+}
+
 /** RFC 6266 / 5987 — keeps Vietnamese file names intact. */
 export function contentDisposition(name: string, disposition: 'attachment' | 'inline') {
   const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
