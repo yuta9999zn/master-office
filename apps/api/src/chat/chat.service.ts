@@ -6,7 +6,7 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { aclEntries, channelCategories, conversationMembers, conversations, spaceMembers, spaces, messageReactions, messageRefs, messages, resources, users, workspaceMembers } from '../db/schema';
+import { aclEntries, channelCategories, conversationMembers, conversations, spaceMembers, spaces, messageReactions, messageRefs, messages, resources, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -15,7 +15,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 type Conv = typeof conversations.$inferSelect;
 type MsgRow = typeof messages.$inferSelect;
 type MemberRow = typeof conversationMembers.$inferSelect;
-type ResourceRow = typeof resources.$inferSelect;
+type ResourceRow = Omit<typeof resources.$inferSelect, 'contentText'>;
 
 const MENTION = /<@([0-9a-f-]{36})>/gi;
 /** Discord caps group DMs at 10 people; bigger conversations belong in a space's channel. */
@@ -683,7 +683,7 @@ export class ChatService implements OnModuleInit {
    * can attach files, everyone else views. Public channel folders need nothing — the space's roles apply.
    */
   private async syncFolderAccess(conversationId: string) {
-    const [folder] = await this.db.select().from(resources).where(sql`${resources.metadata}->>'chatConversation' = ${conversationId}`).limit(1);
+    const [folder] = await this.db.select(resourceColumns).from(resources).where(sql`${resources.metadata}->>'chatConversation' = ${conversationId}`).limit(1);
     if (!folder || (folder.metadata as Record<string, unknown>).restricted !== true) return;
     const [conv] = await this.db.select().from(conversations).where(eq(conversations.id, conversationId));
     const members = await this.db.select().from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
@@ -799,7 +799,7 @@ export class ChatService implements OnModuleInit {
     const all = [...attach, ...links];
     if (!all.length) return [];
     if (all.length > 10) throw new BadRequestException('A message can carry at most 10 files');
-    const rows = await tx.select().from(resources).where(and(inArray(resources.id, all), eq(resources.workspaceId, actor.workspaceId)));
+    const rows = await tx.select(resourceColumns).from(resources).where(and(inArray(resources.id, all), eq(resources.workspaceId, actor.workspaceId)));
     const roles = await this.perms.rolesFor(actor, rows, tx);
     const byId = new Map(rows.map((r) => [r.id, r]));
     const out: { row: ResourceRow; source: 'attachment' | 'link' }[] = [];
@@ -999,7 +999,7 @@ export class ChatService implements OnModuleInit {
   private async cards(viewer: Actor, refs: { messageId: string; resourceId: string; source: 'attachment' | 'link' }[]) {
     const out = new Map<string, ChatAttachment>();
     if (!refs.length) return out;
-    const rows = await this.db.select().from(resources).where(inArray(resources.id, [...new Set(refs.map((r) => r.resourceId))]));
+    const rows = await this.db.select(resourceColumns).from(resources).where(inArray(resources.id, [...new Set(refs.map((r) => r.resourceId))]));
     const roles = await this.perms.rolesFor(viewer, rows);
     const owners = await loadUsers(this.db, rows.map((r) => r.ownerId));
     const byId = new Map(rows.map((r) => [r.id, r]));

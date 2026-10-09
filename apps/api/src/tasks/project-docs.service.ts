@@ -8,7 +8,7 @@ import { loadUsers } from '../common/users';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { DocsService } from '../docs/docs.service';
-import { projects, resources, taskDocs, tasks } from '../db/schema';
+import { projects, resources, taskDocs, tasks, resourceColumns } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
 import { WikiService } from '../wiki/wiki.service';
@@ -121,7 +121,7 @@ export class ProjectDocsService {
       .innerJoin(tasks, eq(tasks.id, taskDocs.taskId))
       .where(eq(tasks.projectId, projectId));
     const otherIds = [...new Set(links.map((l) => l.resourceId))].filter((id) => !pages.some((x) => x.id === id));
-    const others = otherIds.length ? await this.db.select().from(resources).where(and(inArray(resources.id, otherIds), isNull(resources.trashedAt))) : [];
+    const others = otherIds.length ? await this.db.select(resourceColumns).from(resources).where(and(inArray(resources.id, otherIds), isNull(resources.trashedAt))) : [];
     const roles = await this.perms.rolesFor(actor, others);
     const docs = [...pages.map((x) => ({ id: x.id, name: x.name, inProjectDocs: true })), ...others.filter((o) => can(roles.get(o.id), 'viewer')).map((o) => ({ id: o.id, name: o.name, inProjectDocs: false }))];
     return docs.map((doc) => ({

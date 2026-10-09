@@ -6,7 +6,7 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { resources, wikiPages, wikiSpaces } from '../db/schema';
+import { resources, wikiPages, wikiSpaces, resourceColumns } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
 
@@ -53,7 +53,7 @@ export class WikiService {
   async spaces(actor: Actor): Promise<WikiSpaceSummary[]> {
     const rows = await this.db.select().from(wikiSpaces).where(eq(wikiSpaces.workspaceId, actor.workspaceId)).orderBy(asc(wikiSpaces.name));
     if (!rows.length) return [];
-    const folders = await this.db.select().from(resources).where(inArray(resources.id, rows.map((r) => r.folderId)));
+    const folders = await this.db.select(resourceColumns).from(resources).where(inArray(resources.id, rows.map((r) => r.folderId)));
     const roles = await this.perms.rolesFor(actor, folders);
     const stats = await this.db.execute<{ space_id: string; n: string; updated: string | null }>(sql`
       SELECT p.space_id, count(*) AS n, max(r.updated_at) AS updated FROM wiki_pages p JOIN resources r ON r.id = p.resource_id

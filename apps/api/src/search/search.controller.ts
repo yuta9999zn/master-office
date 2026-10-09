@@ -4,7 +4,7 @@ import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { type Actor, CurrentUser } from '../common/current-user';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { resources, spaces, users, workspaceMembers } from '../db/schema';
+import { resources, spaces, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 
 /**
@@ -25,7 +25,7 @@ export class SearchController {
     const like = `%${term.replace(/[%_\\]/g, (c) => '\\' + c)}%`;
     const [res, people, sp, sRoles] = await Promise.all([
       this.db
-        .select()
+        .select(resourceColumns)
         .from(resources)
         .where(
           and(

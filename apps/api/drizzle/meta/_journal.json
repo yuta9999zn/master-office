@@ -246,6 +246,13 @@
       "when": 1791567157494,
       "tag": "0034_mail_retry",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791568804453,
+      "tag": "0035_perf_indexes",
+      "breakpoints": true
     }
   ]
 }

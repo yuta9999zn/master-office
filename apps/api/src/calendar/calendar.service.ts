@@ -20,7 +20,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { calendarEvents, calendars, eventAttendees, resources, spaces, users, workspaceMembers } from '../db/schema';
+import { calendarEvents, calendars, eventAttendees, resources, spaces, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { MailboxService } from '../mail/mailbox.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -240,7 +240,12 @@ export class CalendarService {
     const readable = cals.filter((c) => c.perms.read && (!q.calendarIds || q.calendarIds.includes(c.id))).map((c) => c.id);
     const people = (q.people ?? []).filter((p) => p !== actor.id);
     const theirCals = people.length ? await this.db.select({ id: calendars.id, userId: calendars.userId }).from(calendars).where(inArray(calendars.userId, people)) : [];
-    const invited = await this.db.select({ eventId: eventAttendees.eventId, userId: eventAttendees.userId }).from(eventAttendees).where(inArray(eventAttendees.userId, [actor.id, ...people]));
+    // Only invitations to events in the asked range (not every event the person was ever invited to) — §85 D.
+    const invited = await this.db
+      .select({ eventId: eventAttendees.eventId, userId: eventAttendees.userId })
+      .from(eventAttendees)
+      .innerJoin(calendarEvents, eq(calendarEvents.id, eventAttendees.eventId))
+      .where(and(inArray(eventAttendees.userId, [actor.id, ...people]), lt(calendarEvents.startAt, to.toISOString()), or(sql`${calendarEvents.recurrence} IS NOT NULL`, sql`${calendarEvents.endAt} > ${from.toISOString()}`)));
     const mineInvites = new Set(invited.filter((i) => i.userId === actor.id).map((i) => i.eventId));
     const ids = [...new Set(invited.map((i) => i.eventId))];
     const calIds = [...new Set([...readable, ...theirCals.map((c) => c.id)])];
@@ -261,8 +266,9 @@ export class CalendarService {
     const ok = rows.filter((r) => calById.get(r.calendarId)?.workspaceId === actor.workspaceId);
     const views = await this.views(actor, ok, calById, (e) => readable.includes(e.calendarId) || mineInvites.has(e.id));
     const out: CalendarEventView[] = [];
+    const byId = new Map(ok.map((r) => [r.id, r]));
     for (const v of views) {
-      const base = ok.find((r) => r.id === v.id)!;
+      const base = byId.get(v.id)!;
       const len = new Date(base.endAt).getTime() - new Date(base.startAt).getTime();
       const starts = base.recurrence ? occurrences(new Date(base.startAt), base.timezone, base.recurrence, from, to, base.exdates) : [new Date(base.startAt)];
       for (const s of starts) {
@@ -299,7 +305,7 @@ export class CalendarService {
     const people = await loadUsers(this.db, [...rows.map((r) => r.organizerId), ...atts.map((a) => a.userId)]);
     const roles = await this.perms.spaceRoles(actor);
     const files = [...new Set(rows.flatMap((r) => r.attachments))];
-    const res = files.length ? await this.db.select().from(resources).where(inArray(resources.id, files)) : [];
+    const res = files.length ? await this.db.select(resourceColumns).from(resources).where(inArray(resources.id, files)) : [];
     const resRoles = await this.perms.rolesFor(actor, res);
     return rows.map((r) => {
       const cal = cals.get(r.calendarId)!;
@@ -406,7 +412,7 @@ export class CalendarService {
 
   private async checkFiles(actor: Actor, ids: string[] | undefined, tx: Tx) {
     if (!ids?.length) return [];
-    const rows = await tx.select().from(resources).where(and(inArray(resources.id, ids), eq(resources.workspaceId, actor.workspaceId)));
+    const rows = await tx.select(resourceColumns).from(resources).where(and(inArray(resources.id, ids), eq(resources.workspaceId, actor.workspaceId)));
     const roles = await this.perms.rolesFor(actor, rows, tx);
     for (const id of ids) if (!can(roles.get(id), 'viewer')) throw new NotFoundException('File not found');
     return [...new Set(ids)];

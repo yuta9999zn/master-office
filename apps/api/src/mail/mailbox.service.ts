@@ -17,7 +17,7 @@ import { loadUsers } from '../common/users';
 import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { blobs, mailAttachments, mailboxes, mailItems, mailMessages, mailThreads, resources, spaceMembers, spaces, users, workspaces } from '../db/schema';
+import { blobs, mailAttachments, mailboxes, mailItems, mailMessages, mailThreads, resources, spaceMembers, spaces, users, workspaces, resourceColumns } from '../db/schema';
 import { resourcePath } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -209,21 +209,25 @@ export class MailboxService {
              array_agg(DISTINCT i.folder) AS folders,
              array_agg(coalesce(m.from_name, m.from_address) ORDER BY coalesce(m.sent_at, m.updated_at)) FILTER (WHERE m.status = 'sent') AS participants,
              (array_agg(left(m.text, 160) ORDER BY coalesce(m.sent_at, m.updated_at) DESC))[1] AS snippet
-      FROM mail_threads t
+      FROM (
+        -- The page of threads is chosen first (§85 D); only those are joined and aggregated.
+        SELECT t.id, t.subject, t.last_at, t.assignee_id FROM mail_threads t
+        WHERE t.mailbox_id = ${mailboxId}
+          ${o.only ? sql`AND t.id = ${o.only}` : sql`AND EXISTS (SELECT 1 FROM mail_items i WHERE i.thread_id = t.id AND (${o.inFolder}))`}
+          ${o.before ? sql`AND t.last_at < ${o.before}` : sql``}
+          ${
+            o.q
+              ? sql`AND EXISTS (SELECT 1 FROM mail_items qi JOIN mail_messages qm ON qm.id = qi.message_id WHERE qi.thread_id = t.id
+                  AND (qm.subject ILIKE ${o.q} OR qm.text ILIKE ${o.q} OR qm.from_address ILIKE ${o.q} OR coalesce(qm.from_name, '') ILIKE ${o.q} OR qm.to::text ILIKE ${o.q}))`
+              : sql``
+          }
+        ORDER BY t.last_at DESC
+        LIMIT ${o.limit}
+      ) t
       JOIN mail_items i ON i.thread_id = t.id
       JOIN mail_messages m ON m.id = i.message_id
-      WHERE t.mailbox_id = ${mailboxId}
-        ${o.only ? sql`AND t.id = ${o.only}` : sql`AND EXISTS (SELECT 1 FROM mail_items i WHERE i.thread_id = t.id AND (${o.inFolder}))`}
-        ${o.before ? sql`AND t.last_at < ${o.before}` : sql``}
-        ${
-          o.q
-            ? sql`AND EXISTS (SELECT 1 FROM mail_items qi JOIN mail_messages qm ON qm.id = qi.message_id WHERE qi.thread_id = t.id
-                AND (qm.subject ILIKE ${o.q} OR qm.text ILIKE ${o.q} OR qm.from_address ILIKE ${o.q} OR coalesce(qm.from_name, '') ILIKE ${o.q} OR qm.to::text ILIKE ${o.q}))`
-            : sql``
-        }
-      GROUP BY t.id
-      ORDER BY t.last_at DESC
-      LIMIT ${o.limit}`);
+      GROUP BY t.id, t.subject, t.last_at, t.assignee_id
+      ORDER BY t.last_at DESC`);
     const people = await loadUsers(this.db, res.rows.map((r) => r.assignee_id));
     return res.rows.map((r) => ({
       id: r.id,
@@ -375,7 +379,7 @@ export class MailboxService {
     const links: string[] = [];
     const copies: { blobId: string; name: string; mimeType: string | null; sizeBytes: number }[] = [];
     if (resourceIds.length) {
-      const rows = await tx.select().from(resources).where(and(inArray(resources.id, resourceIds), eq(resources.workspaceId, actor.workspaceId)));
+      const rows = await tx.select(resourceColumns).from(resources).where(and(inArray(resources.id, resourceIds), eq(resources.workspaceId, actor.workspaceId)));
       const roles = await this.perms.rolesFor(actor, rows, tx);
       for (const id of new Set(resourceIds)) {
         const r = rows.find((x) => x.id === id);

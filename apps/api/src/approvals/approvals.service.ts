@@ -26,7 +26,7 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { aclEntries, approvalEvents, approvalRequests, approvalTasks, approvalTemplates, resources, users, workspaceMembers } from '../db/schema';
+import { aclEntries, approvalEvents, approvalRequests, approvalTasks, approvalTemplates, resources, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -776,7 +776,7 @@ export class ApprovalsService {
       ...events.map((e) => (e.data as { to?: string }).to),
       ...this.personIds(req),
     ]);
-    const fileRows = fileIds.length ? await this.db.select().from(resources).where(inArray(resources.id, fileIds)) : [];
+    const fileRows = fileIds.length ? await this.db.select(resourceColumns).from(resources).where(inArray(resources.id, fileIds)) : [];
     const roles = await this.perms.rolesFor(actor, fileRows);
     const route = req.route as ApprovalRouteStep[];
     const steps: ApprovalStepView[] = route.map((r, index) => {

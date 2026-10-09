@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { getTableColumns } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -147,8 +148,19 @@ export const resources = pgTable(
     index('resources_space_idx').on(t.spaceId),
     index('resources_owner_idx').on(t.ownerId),
     index('resources_path_gin').using('gin', t.path),
+    // App index pages (every document of one type, newest first) — §85 D.
+    index('resources_ws_type_updated_idx').on(t.workspaceId, t.type, t.updatedAt),
   ],
 );
+
+/**
+ * Every column of `resources` except `content_text` (up to 200 KB per row, only search reads it): what permission
+ * checks and listings select, so a folder of 200 documents does not drag megabytes through Postgres (§85 D).
+ */
+export const resourceColumns = (() => {
+  const { contentText: _contentText, ...rest } = getTableColumns(resources);
+  return rest;
+})();
 
 export const resourceVersions = pgTable('resource_versions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -196,7 +208,8 @@ export const resourceAccess = pgTable(
     resourceId: uuid('resource_id').notNull().references(() => resources.id, { onDelete: 'cascade' }),
     accessedAt: ts('accessed_at').notNull().default(sql`now()`),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.resourceId] })],
+  // "Recent" on Home and Drive: a person's files by last access (§85 D).
+  (t) => [primaryKey({ columns: [t.userId, t.resourceId] }), index('resource_access_recent_idx').on(t.userId, t.accessedAt)],
 );
 
 export const auditEvents = pgTable(
@@ -211,7 +224,7 @@ export const auditEvents = pgTable(
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: ts('created_at').notNull().default(sql`now()`),
   },
-  (t) => [index('audit_resource_idx').on(t.resourceId), index('audit_space_idx').on(t.spaceId)],
+  (t) => [index('audit_resource_idx').on(t.resourceId), index('audit_space_idx').on(t.spaceId), index('audit_ws_time_idx').on(t.workspaceId, t.createdAt)],
 );
 
 /** Transactional outbox — docs/ARCHITECTURE.md §13. Publisher to Redis Streams lands in Phase 6. */
@@ -904,7 +917,7 @@ export const tasks = pgTable(
     createdAt: ts('created_at').notNull().default(sql`now()`),
     updatedAt: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [index('tasks_project_idx').on(t.projectId, t.status), index('tasks_assignee_idx').on(t.assigneeId), index('tasks_parent_idx').on(t.parentId)],
+  (t) => [index('tasks_project_idx').on(t.projectId, t.status), index('tasks_assignee_idx').on(t.assigneeId), index('tasks_parent_idx').on(t.parentId), index('tasks_sprint_idx').on(t.sprintId), index('tasks_creator_idx').on(t.createdBy)],
 );
 
 /** Comments and the activity trail of a task (kind 'comment' or 'change'). */

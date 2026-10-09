@@ -50,12 +50,19 @@ export function useCollab(resourceId: string, me: { id: string; name: string; co
         return;
       }
       if (disposed) return;
+      let firstToken: string | null = first.token;
       provider = new HocuspocusProvider({
         url: first.url,
         name: first.document,
         document: doc,
         // Re-issued on every (re)connect: tokens are short-lived and carry the current role.
         token: async () => {
+          // The first connect uses the token already fetched; reconnects get a fresh one (role may have changed).
+          if (firstToken) {
+            const t = firstToken;
+            firstToken = null;
+            return t;
+          }
           try {
             return (await api<CollabTokenResponse>(`/resources/${resourceId}/collab-token`)).token;
           } catch (e) {

@@ -23,6 +23,7 @@ import type {
   WorkspaceStats,
   SpaceKind,
 } from '@workos/shared';
+import { useEffect, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api, uploadFile } from './api';
@@ -64,13 +65,25 @@ export const useResourceActivity = (id?: string | null) =>
 export const useResourceVersions = (id?: string | null) =>
   useQuery({ queryKey: ['resources', 'versions', id], queryFn: () => api<ResourceVersion[]>(`/resources/${id}/versions`), enabled: !!id });
 
-export const useSearch = (q: string) =>
-  useQuery({
+/** The value a short moment after the person stopped typing (search boxes: one request per pause, not per keystroke). */
+export function useDebounced<T>(value: T, ms = 200): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+export const useSearch = (raw: string) => {
+  const q = useDebounced(raw.trim(), 200);
+  return useQuery({
     queryKey: ['search', q],
     queryFn: () => api<SearchHit[]>(`/search${qs({ q })}`),
-    enabled: q.trim().length > 0,
+    enabled: q.length > 0,
     placeholderData: keepPreviousData,
   });
+};
 
 // ── Mutations ────────────────────────────────────────────────────────────────
 

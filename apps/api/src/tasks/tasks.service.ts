@@ -34,7 +34,7 @@ import { config } from '../config';
 import type { Db, Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { flowHooks } from '../flow/flow-hooks';
-import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, taskWorklogs, workspaceMembers } from '../db/schema';
+import { messages, projects, resources, sprints, taskDocs, taskEvents, taskLinks, tasks, taskWatchers, taskWorklogs, workspaceMembers, resourceColumns } from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -532,7 +532,7 @@ export class TasksService {
   /** Documents an issue traces to; ones the viewer cannot open show locked. */
   async docsOf(actor: Actor, taskId: string) {
     const rows = await this.db
-      .select({ r: resources })
+      .select({ r: resourceColumns })
       .from(taskDocs)
       .innerJoin(resources, eq(resources.id, taskDocs.resourceId))
       .where(and(eq(taskDocs.taskId, taskId), isNull(resources.trashedAt)))

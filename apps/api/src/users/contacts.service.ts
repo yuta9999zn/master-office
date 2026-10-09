@@ -5,7 +5,7 @@ import type { Actor } from '../common/current-user';
 import { userColumns } from '../common/users';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { resources, spaceMembers, spaces, users, workspaceMembers } from '../db/schema';
+import { resources, spaceMembers, spaces, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ResourcesService } from '../resources/resources.service';
 import { visibleActivity } from './activity';
@@ -123,7 +123,7 @@ export class ContactsService {
     const reports = everyone.filter((r) => r.managerId === id).map(summary);
 
     const owned = await this.db
-      .select()
+      .select(resourceColumns)
       .from(resources)
       .where(and(eq(resources.workspaceId, actor.workspaceId), eq(resources.ownerId, id), isNull(resources.trashedAt), ne(resources.type, 'folder')))
       .orderBy(desc(resources.updatedAt))

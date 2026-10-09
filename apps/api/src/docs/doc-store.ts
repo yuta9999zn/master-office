@@ -1,5 +1,6 @@
 import { TiptapTransformer } from '@hocuspocus/transformer';
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { COLLAB_FIELD, combineTabs, docExtensions, linksOf, SETTINGS_MAP, tabField, tabsOf, toPlainText, type DocTab, type JSONContent } from '@workos/doc-model';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { hasWorkbook, workbookSummary } from '@workos/sheet-model';
@@ -68,6 +69,9 @@ export class DocStore {
   private lastEditActivity = new Map<string, number>();
   private lastSnapshot = new Map<string, number>();
   private savedListeners: ((resourceId: string, doc: Y.Doc) => unknown)[] = [];
+  /** sha1 of the last state written per document: Hocuspocus may call store with an unchanged state (§85 D). */
+  private lastStateHash = new Map<string, string>();
+  private lastLinks = new Map<string, string>();
 
   /** Runs after every save — the flow runner keeps its trigger index this way (§77 batch 2). */
   onSaved(fn: (resourceId: string, doc: Y.Doc) => unknown) {
@@ -80,6 +84,12 @@ export class DocStore {
     private readonly events: EventsService,
   ) {}
 
+  /** Whether a stored state exists, without reading it (a workbook state can be tens of MB). */
+  async exists(resourceId: string): Promise<boolean> {
+    const [row] = await this.db.select({ id: ydocStates.resourceId }).from(ydocStates).where(eq(ydocStates.resourceId, resourceId)).limit(1);
+    return !!row;
+  }
+
   async load(resourceId: string): Promise<Uint8Array | null> {
     const [row] = await this.db.select({ state: ydocStates.state }).from(ydocStates).where(eq(ydocStates.resourceId, resourceId));
     return row ? new Uint8Array(row.state) : null;
@@ -88,6 +98,9 @@ export class DocStore {
   /** Called by the collab server after edits (debounced) and after direct writes (import, restore). */
   async save(resourceId: string, state: Uint8Array, doc: Y.Doc, editor: { id: string; name: string } | null) {
     const buf = Buffer.from(state);
+    const hash = createHash('sha1').update(buf).digest('hex');
+    if (this.lastStateHash.get(resourceId) === hash) return; // nothing new since the last write
+    this.lastStateHash.set(resourceId, hash);
     let text: string;
     let stats: Record<string, number>;
     if (hasWorkbook(doc)) {
@@ -111,8 +124,13 @@ export class DocStore {
       const json = documentJSON(doc);
       text = toPlainText(json);
       stats = { wordCount: text.split(/\s+/).filter(Boolean).length };
-      // Backlinks are a side effect: a failure there must not stop the content from being stored.
-      await this.syncLinks(resourceId, json).catch((e: Error) => this.log.warn(`links of ${resourceId}: ${e.message}`));
+      // Backlinks are a side effect: a failure there must not stop the content from being stored, and unchanged
+      // links are not rewritten on every save.
+      const links = linksOf(json).filter((l) => l.id !== resourceId);
+      const key = links.map((l) => `${l.kind}:${l.id}`).sort().join(',');
+      if (this.lastLinks.get(resourceId) !== key) {
+        await this.syncLinks(resourceId, json).then(() => this.lastLinks.set(resourceId, key), (e: Error) => this.log.warn(`links of ${resourceId}: ${e.message}`));
+      }
     }
     await this.db
       .insert(ydocStates)

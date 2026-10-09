@@ -64,7 +64,7 @@ export class CommentsService {
     return { id: row.id };
   }
 
-  private async notifyComment(actor: Actor, res: typeof resources.$inferSelect, input: { body: string; threadId?: string | null }) {
+  private async notifyComment(actor: Actor, res: Omit<typeof resources.$inferSelect, 'contentText'>, input: { body: string; threadId?: string | null }) {
     let to: string[];
     if (input.threadId) {
       const thread = await this.db.select({ authorId: comments.authorId }).from(comments).where(sql`${comments.id} = ${input.threadId} OR ${comments.threadId} = ${input.threadId}`);

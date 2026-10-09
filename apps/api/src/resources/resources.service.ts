@@ -22,7 +22,7 @@ import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import { runAll, type Db, type Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { aclEntries, auditEvents, blobs, resourceAccess, resources, resourceVersions, spaceMembers, spaces, stars } from '../db/schema';
+import { aclEntries, auditEvents, blobs, resourceAccess, resources, resourceVersions, spaceMembers, spaces, stars, resourceColumns } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationsService, resourcePath } from '../notifications/notifications.service';
@@ -34,7 +34,7 @@ import { SheetsService } from '../sheets/sheets.service';
 import { SlidesService } from '../slides/slides.service';
 import { FormsService } from '../forms/forms.service';
 
-type Row = typeof resources.$inferSelect;
+type Row = Omit<typeof resources.$inferSelect, 'contentText'>;
 
 const alive = sql`${resources.trashedAt} IS NULL AND NOT EXISTS (
   SELECT 1 FROM resources a WHERE a.id = ANY(${resources.path}) AND a.trashed_at IS NOT NULL)`;
@@ -113,24 +113,24 @@ export class ResourcesService {
 
     if (q.parentId) {
       await this.perms.require(actor, q.parentId, 'viewer');
-      rows = await this.db.select().from(resources).where(and(ws, eq(resources.parentId, q.parentId), alive, typeFilter));
+      rows = await this.db.select(resourceColumns).from(resources).where(and(ws, eq(resources.parentId, q.parentId), alive, typeFilter));
     } else if (q.spaceId) {
       await this.perms.requireSpace(actor, q.spaceId, 'viewer');
       rows = await this.db
-        .select()
+        .select(resourceColumns)
         .from(resources)
         .where(and(ws, eq(resources.spaceId, q.spaceId), q.deep ? undefined : sql`${resources.parentId} IS NULL`, alive, typeFilter));
     } else {
       switch (q.view) {
         case 'my':
           rows = await this.db
-            .select()
+            .select(resourceColumns)
             .from(resources)
             .where(and(ws, eq(resources.ownerId, actor.id), sql`${resources.spaceId} IS NULL AND ${resources.parentId} IS NULL`, alive, typeFilter));
           break;
         case 'shared':
           rows = await this.db
-            .select()
+            .select(resourceColumns)
             .from(resources)
             .where(
               and(
@@ -146,7 +146,7 @@ export class ResourcesService {
         case 'home':
         case 'recent': {
           const r = await this.db
-            .select({ r: resources })
+            .select({ r: resourceColumns })
             .from(resourceAccess)
             .innerJoin(resources, eq(resources.id, resourceAccess.resourceId))
             .where(and(eq(resourceAccess.userId, actor.id), ws, alive, sql`${resources.type} <> 'folder'`, typeFilter))
@@ -156,7 +156,7 @@ export class ResourcesService {
         }
         case 'starred': {
           const r = await this.db
-            .select({ r: resources })
+            .select({ r: resourceColumns })
             .from(stars)
             .innerJoin(resources, eq(resources.id, stars.resourceId))
             .where(and(eq(stars.userId, actor.id), ws, alive, typeFilter));
@@ -165,7 +165,7 @@ export class ResourcesService {
         }
         case 'trash':
           rows = await this.db
-            .select()
+            .select(resourceColumns)
             .from(resources)
             .where(
               and(
@@ -181,7 +181,7 @@ export class ResourcesService {
         default:
           if (!q.type) throw new BadRequestException('Specify view, parentId, spaceId or type');
           // App index pages (Docs, Sheets, Slides…): every accessible resource of one type.
-          rows = await this.db.select().from(resources).where(and(ws, alive, typeFilter)).orderBy(desc(resources.updatedAt)).limit(300);
+          rows = await this.db.select(resourceColumns).from(resources).where(and(ws, alive, typeFilter)).orderBy(desc(resources.updatedAt)).limit(300);
       }
     }
     return this.sort(await this.toDtos(actor, rows), q);
@@ -215,7 +215,7 @@ export class ResourcesService {
       breadcrumb.push({ id: row.ownerId === actor.id ? 'my' : 'shared', name: row.ownerId === actor.id ? 'My Files' : 'Shared with me', kind: 'root' });
     }
     if (row.path.length) {
-      const anc = await this.db.select().from(resources).where(inArray(resources.id, row.path));
+      const anc = await this.db.select(resourceColumns).from(resources).where(inArray(resources.id, row.path));
       const visible = new Map((await this.toDtos(actor, anc)).map((a) => [a.id, a]));
       for (const pid of row.path) {
         const a = visible.get(pid);
@@ -228,7 +228,7 @@ export class ResourcesService {
   /** DTOs for known ids, in the given order, dropping anything the actor cannot view. */
   async byIds(actor: Actor, ids: string[]): Promise<Resource[]> {
     if (!ids.length) return [];
-    const rows = await this.db.select().from(resources).where(and(inArray(resources.id, ids), eq(resources.workspaceId, actor.workspaceId)));
+    const rows = await this.db.select(resourceColumns).from(resources).where(and(inArray(resources.id, ids), eq(resources.workspaceId, actor.workspaceId)));
     const dtos = new Map((await this.toDtos(actor, rows)).map((d) => [d.id, d]));
     return ids.map((id) => dtos.get(id)).filter((d): d is Resource => !!d);
   }
@@ -354,7 +354,7 @@ export class ResourcesService {
         sameLocation ? row.spaceId : target.parentId ? undefined : target.spaceId,
         tx,
       );
-      const subtree = row.type === 'folder' ? await tx.select().from(resources).where(and(sql`${id} = ANY(${resources.path})`, alive)) : [];
+      const subtree = row.type === 'folder' ? await tx.select(resourceColumns).from(resources).where(and(sql`${id} = ANY(${resources.path})`, alive)) : [];
       // A copy shares the content blobs, yet counts in full for whoever receives it (logical usage, §79 C).
       const bytes = [row, ...subtree].reduce((n, r) => n + (r.type === 'folder' || r.linkTargetId ? 0 : r.sizeBytes), 0);
       await this.quota.assertRoom(actor.workspaceId, { spaceId: t.spaceId, ownerId: actor.id }, bytes, tx);
@@ -408,7 +408,7 @@ export class ResourcesService {
 
   async restore(actor: Actor, id: string) {
     await this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), eq(resources.workspaceId, actor.workspaceId)));
+      const [row] = await tx.select(resourceColumns).from(resources).where(and(eq(resources.id, id), eq(resources.workspaceId, actor.workspaceId)));
       if (!row?.trashedAt) throw new NotFoundException('Not in trash');
       if (row.ownerId !== actor.id && row.trashedBy !== actor.id) await this.perms.require(actor, id, 'editor', tx);
       await tx.update(resources).set({ trashedAt: null, trashedBy: null }).where(eq(resources.id, id));
@@ -477,7 +477,7 @@ export class ResourcesService {
     if (COLLAB_TYPES.includes(created.type)) {
       // Word → internal model right away; the report (or failure) is kept in metadata.import.
       await this.docs.importOriginal(actor, created.id, file.buffer).catch(swallow(this.log, `import of ${created.id} (${file.originalname})`));
-      const [fresh] = await this.db.select().from(resources).where(eq(resources.id, created.id));
+      const [fresh] = await this.db.select(resourceColumns).from(resources).where(eq(resources.id, created.id));
       return (await this.toDtos(actor, [fresh]))[0];
     }
     return (await this.toDtos(actor, [created]))[0];

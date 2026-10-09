@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto';
 import type { Actor } from '../common/current-user';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { auditEvents, blobs, comments, resourceAssets, resourceLinks, resources, resourceViews, users } from '../db/schema';
+import { auditEvents, blobs, comments, resourceAssets, resourceLinks, resources, resourceViews, users, resourceColumns } from '../db/schema';
 import { EventsService } from '../events/events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { StorageService } from '../storage/storage.service';
@@ -100,7 +100,7 @@ export class DocsService {
     const { role, row } = await this.requireDoc(actor, id, 'viewer');
     // Opening the editor counts as a view (Activity dashboard). Never blocks opening.
     await this.recordView(actor, id).catch((e) => this.log.warn(`view not recorded: ${(e as Error).message}`));
-    if (row.type === 'presentation' && !row.blobId && !(await this.store.load(id))) await this.slides.init(id, row.name);
+    if (row.type === 'presentation' && !row.blobId && !(await this.store.exists(id))) await this.slides.init(id, row.name);
     if (row.type === 'flow') await this.flow.ensure(id);
     const [u] = await this.db.select({ color: users.avatarColor }).from(users).where(eq(users.id, actor.id));
     return {
@@ -483,10 +483,10 @@ export class DocsService {
   async links(actor: Actor, id: string) {
     await this.perms.require(actor, id, 'viewer');
     const [outRows, inRows] = await Promise.all([
-      this.db.select({ r: resources }).from(resourceLinks).innerJoin(resources, eq(resources.id, resourceLinks.targetId)).where(eq(resourceLinks.sourceId, id)),
-      this.db.select({ r: resources }).from(resourceLinks).innerJoin(resources, eq(resources.id, resourceLinks.sourceId)).where(eq(resourceLinks.targetId, id)),
+      this.db.select({ r: resourceColumns }).from(resourceLinks).innerJoin(resources, eq(resources.id, resourceLinks.targetId)).where(eq(resourceLinks.sourceId, id)),
+      this.db.select({ r: resourceColumns }).from(resourceLinks).innerJoin(resources, eq(resources.id, resourceLinks.sourceId)).where(eq(resourceLinks.targetId, id)),
     ]);
-    const visible = async (rows: { r: typeof resources.$inferSelect }[]) => {
+    const visible = async (rows: { r: Omit<typeof resources.$inferSelect, 'contentText'> }[]) => {
       const alive = rows.map((x) => x.r).filter((r) => !r.trashedAt);
       const roles = await this.perms.rolesFor(actor, alive);
       return alive.filter((r) => roles.get(r.id)).map((r) => r.id);

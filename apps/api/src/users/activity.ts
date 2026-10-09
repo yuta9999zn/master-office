@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Actor } from '../common/current-user';
 import { loadUsers } from '../common/users';
 import type { Db } from '../db/client';
-import { auditEvents, resources } from '../db/schema';
+import { auditEvents, resources, resourceColumns } from '../db/schema';
 import type { PermissionsService } from '../permissions/permissions.service';
 
 /**
@@ -24,7 +24,7 @@ export async function visibleActivity(db: Db, perms: PermissionsService, viewer:
     .orderBy(desc(auditEvents.createdAt))
     .limit(opts.limit * 4);
   const resIds = [...new Set(rows.map((r) => r.resourceId).filter((x): x is string => !!x))];
-  const res = resIds.length ? await db.select().from(resources).where(inArray(resources.id, resIds)) : [];
+  const res = resIds.length ? await db.select(resourceColumns).from(resources).where(inArray(resources.id, resIds)) : [];
   const [roles, sRoles] = await Promise.all([perms.rolesFor(viewer, res), perms.spaceRoles(viewer)]);
   const visible = rows
     .filter((r) => (r.resourceId ? can(roles.get(r.resourceId), 'viewer') : r.spaceId ? can(sRoles.get(r.spaceId), 'viewer') : false))

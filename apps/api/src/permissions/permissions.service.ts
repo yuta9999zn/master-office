@@ -4,9 +4,10 @@ import { and, eq, inArray, or } from 'drizzle-orm';
 import type { Actor } from '../common/current-user';
 import { runAll, type Db, type Tx } from '../db/client';
 import { InjectDb } from '../db/db.module';
-import { aclEntries, resources, spaceMembers, spaces, workspaceMembers } from '../db/schema';
+import { aclEntries, resources, spaceMembers, spaces, workspaceMembers, resourceColumns } from '../db/schema';
+import { memoPerRequest } from '../common/request-context';
 
-type ResourceRow = typeof resources.$inferSelect;
+type ResourceRow = Omit<typeof resources.$inferSelect, 'contentText'>;
 type Pick_ = Pick<ResourceRow, 'id' | 'ownerId' | 'spaceId' | 'path' | 'generalAccess' | 'generalRole'>;
 
 /**
@@ -19,7 +20,13 @@ type Pick_ = Pick<ResourceRow, 'id' | 'ownerId' | 'spaceId' | 'path' | 'generalA
 export class PermissionsService {
   constructor(@InjectDb() private readonly db: Db) {}
 
-  async spaceRoles(actor: Actor, tx: Tx = this.db): Promise<Map<string, Role | null>> {
+  /** Computed once per request (§85 D): opening a file asks for it three or four times. Transactions see live data. */
+  spaceRoles(actor: Actor, tx: Tx = this.db): Promise<Map<string, Role | null>> {
+    if (tx !== this.db) return this.loadSpaceRoles(actor, tx);
+    return memoPerRequest(`spaceRoles:${actor.workspaceId}:${actor.id}`, () => this.loadSpaceRoles(actor, tx));
+  }
+
+  private async loadSpaceRoles(actor: Actor, tx: Tx): Promise<Map<string, Role | null>> {
     const [all, mine, [wsm]] = await runAll(tx !== this.db, [
       () => tx.select({ id: spaces.id, visibility: spaces.visibility }).from(spaces).where(eq(spaces.workspaceId, actor.workspaceId)),
       () => tx.select({ spaceId: spaceMembers.spaceId, role: spaceMembers.role }).from(spaceMembers).where(eq(spaceMembers.userId, actor.id)),
@@ -104,7 +111,7 @@ export class PermissionsService {
 
   /** Loads a resource and asserts the actor holds at least `needed`. 404 when not even viewable. */
   async require(actor: Actor, id: string, needed: Role, tx: Tx = this.db): Promise<{ row: ResourceRow; role: Role }> {
-    const [row] = await tx.select().from(resources).where(eq(resources.id, id)).limit(1);
+    const [row] = await tx.select(resourceColumns).from(resources).where(eq(resources.id, id)).limit(1);
     if (!row || row.workspaceId !== actor.workspaceId) throw new NotFoundException('Resource not found');
     const role = await this.roleFor(actor, row, tx);
     if (!can(role, 'viewer')) throw new NotFoundException('Resource not found');

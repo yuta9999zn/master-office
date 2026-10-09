@@ -28,7 +28,7 @@ import { CollabService } from '../collab/collab.service';
 import type { Db } from '../db/client';
 import { InjectDb } from '../db/db.module';
 import { config } from '../config';
-import { blobs, formResponses, formSubscriptions, resourceAssets, resources, users, workspaceMembers } from '../db/schema';
+import { blobs, formResponses, formSubscriptions, resourceAssets, resources, users, workspaceMembers, resourceColumns } from '../db/schema';
 import { DocStore } from '../docs/doc-store';
 import { EventsService } from '../events/events.service';
 import { MailService, mailHtml } from '../mail/mail.service';
@@ -88,7 +88,7 @@ export class FormsService {
   }
 
   private async load(id: string) {
-    const [row] = await this.db.select().from(resources).where(eq(resources.id, id));
+    const [row] = await this.db.select(resourceColumns).from(resources).where(eq(resources.id, id));
     if (!row || row.type !== 'form' || row.trashedAt) throw new NotFoundException('Form not found');
     const state = await this.collab.currentState(id);
     if (!state?.length) {
@@ -99,7 +99,7 @@ export class FormsService {
   }
 
   /** Who may respond: anyone with the link (public forms) or people in the form's workspace. */
-  private async canRespond(actor: Actor | undefined, row: typeof resources.$inferSelect, s: FormSettings) {
+  private async canRespond(actor: Actor | undefined, row: Omit<typeof resources.$inferSelect, 'contentText'>, s: FormSettings) {
     if (s.access === 'public') return true;
     if (!actor) return false;
     const [m] = await this.db
@@ -256,7 +256,7 @@ export class FormsService {
   }
 
   /** "Get email notifications for new responses": one mail per subscribed person who can still edit the form. */
-  private async notifySubscribers(row: typeof resources.$inferSelect, form: PlainForm, r: { respondent: string | null; email: string | null; answers: Answers; score: { points: number; max: number } | null }) {
+  private async notifySubscribers(row: Omit<typeof resources.$inferSelect, 'contentText'>, form: PlainForm, r: { respondent: string | null; email: string | null; answers: Answers; score: { points: number; max: number } | null }) {
     try {
       const subs = await this.db
         .select({ id: users.id, name: users.name, email: users.email })

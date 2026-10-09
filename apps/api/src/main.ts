@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import { HttpErrorFilter, installProcessHandlers, requestLog } from './common/errors';
 import { assertProductionConfig, config } from './config';
 import { securityHeaders } from './common/http';
+import { requestContext } from './common/request-context';
 
 async function bootstrap() {
   installProcessHandlers();
@@ -20,6 +21,7 @@ async function bootstrap() {
   // Any localhost port may call the API in development (the web dev server picks a port); production is the site only.
   app.enableCors({ origin: config.production ? [config.webOrigin] : [config.webOrigin, /^http:\/\/localhost:\d+$/], exposedHeaders: ['Content-Disposition'], credentials: true });
   app.enableShutdownHooks();
+  app.use(requestContext);
   app.use(securityHeaders);
   app.use(requestLog);
   app.useGlobalFilters(new HttpErrorFilter());
