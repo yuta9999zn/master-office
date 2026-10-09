@@ -7,7 +7,7 @@ Hai cách: **Docker** (một lệnh, cho máy chủ hoặc máy trong văn phòn
 Cần: Docker 24+ với Docker Compose, máy 4 CPU / 8 GB RAM (16 GB nếu bật AI local), 20 GB đĩa.
 
 ```bash
-git clone https://github.com/<bạn>/master-office.git && cd master-office
+git clone https://github.com/yuta9999zn/master-office.git && cd master-office
 cp .env.production.example .env.production
 # Mở .env.production: đặt PUBLIC_URL / PUBLIC_WS_URL / PUBLIC_HOST và các mật khẩu (openssl rand -base64 32)
 docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build

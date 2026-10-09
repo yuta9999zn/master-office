@@ -11,7 +11,7 @@
 ## Chạy thử nhanh
 
 ```bash
-git clone <repo> master-office && cd master-office
+git clone https://github.com/yuta9999zn/master-office.git && cd master-office
 cp .env.production.example .env.production      # đặt địa chỉ và mật khẩu
 docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build
 ```
