@@ -344,7 +344,7 @@ function ItemBlock({ it, value, error, color, seed, onChange, onUpload }: { it: 
     return (
       <Card>
         {it.title && <div className="mb-3 text-[15px] text-slate-900">{it.title}</div>}
-        {it.image?.src && <img src={it.image.src} alt={it.image.alt ?? ''} className="max-w-full rounded" />}
+        {it.image?.src && <img src={it.image.src} alt={it.image.alt ?? ''} loading="lazy" className="max-w-full rounded" />}
       </Card>
     );
   }

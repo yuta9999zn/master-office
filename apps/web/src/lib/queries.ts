@@ -89,9 +89,15 @@ export const useSearch = (raw: string) => {
 
 function useInvalidate() {
   const qc = useQueryClient();
+  // Lists, the changed file itself, sharing and activity reload; version history, links and version contents are
+  // immutable or have their own invalidation, so an open editor's panels do not refetch on every Drive action (§85 E).
   return () =>
     Promise.all([
-      qc.invalidateQueries({ queryKey: ['resources'] }),
+      qc.invalidateQueries({ queryKey: ['resources'], exact: true }),
+      qc.invalidateQueries({ queryKey: ['resources', 'list'] }),
+      qc.invalidateQueries({ queryKey: ['resources', 'one'] }),
+      qc.invalidateQueries({ queryKey: ['resources', 'members'] }),
+      qc.invalidateQueries({ queryKey: ['resources', 'activity'] }),
       qc.invalidateQueries({ queryKey: ['activity'] }),
       qc.invalidateQueries({ queryKey: ['stats'] }),
       qc.invalidateQueries({ queryKey: ['search'] }),

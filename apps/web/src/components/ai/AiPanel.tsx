@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { markdownToHtml } from '@workos/doc-model';
+import { markdownToHtml } from '@workos/doc-model/columns-md';
 import { APP_LABEL, useAiActions, useAiJob, useAiJobs, useAiPrompts, useAiStatus, useAiUi, type AiContext, type AiJob, type AiPrompt } from '@/lib/ai';
 import { Button, cn } from '../ui/primitives';
 import { SlotsDialog } from '../slides/SlotsDialog';

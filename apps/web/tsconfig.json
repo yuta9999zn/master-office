@@ -29,6 +29,9 @@
       "@workos/shared": [
         "../../packages/shared/src/index.ts"
       ],
+      "@workos/doc-model/*": [
+        "../../packages/doc-model/src/*"
+      ],
       "@workos/doc-model": [
         "../../packages/doc-model/src/index.ts"
       ],

@@ -24,7 +24,7 @@ type ClientHandler = (actor: Actor, msg: ClientMessage) => void | Promise<void>;
 @Injectable()
 export class RealtimeService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly log = new Logger('Realtime');
-  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, perMessageDeflate: { threshold: 1024 } });
   private readonly sockets = new Map<string, Set<WebSocket>>();
   private readonly workspaceOf = new Map<string, string>();
   private readonly handlers: ClientHandler[] = [];

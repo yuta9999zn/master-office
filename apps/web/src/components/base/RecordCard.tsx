@@ -63,7 +63,7 @@ export function RecordCard({
         <div className="grid h-32 place-items-center bg-canvas">
           {pic ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={attachmentUrl(baseId, pic)} alt="" className="h-full w-full object-cover" />
+            <img src={attachmentUrl(baseId, pic)} alt="" loading="lazy" className="h-full w-full object-cover" />
           ) : (
             <span className="text-[12px] text-subtle">No picture</span>
           )}

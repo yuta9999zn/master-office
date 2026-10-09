@@ -97,7 +97,7 @@ export function CellView({ field, value, ctx, baseId, wrap, onToggle, onRate }: 
           {(value as Attachment[]).map((a) =>
             a.mime.startsWith('image/') ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={a.id} src={attachmentUrl(baseId, a)} alt={a.name} title={a.name} className={cn('shrink-0 rounded object-cover ring-1 ring-line', wrap ? 'size-16' : 'size-6')} />
+              <img key={a.id} src={attachmentUrl(baseId, a)} alt={a.name} title={a.name} loading="lazy" className={cn('shrink-0 rounded object-cover ring-1 ring-line', wrap ? 'size-16' : 'size-6')} />
             ) : (
               <span key={a.id} className="flex shrink-0 items-center gap-1 rounded bg-hover px-1.5 text-[12px]" title={a.name}>
                 <FileText size={12} /> <span className="max-w-[120px] truncate">{a.name}</span>

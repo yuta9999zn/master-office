@@ -255,7 +255,7 @@ export function QuestionCard({
         <div className="mt-4">
           {item.type === 'image' &&
             (item.image?.src ? (
-              <img src={item.image.src} alt={item.image.alt ?? ''} className="max-h-80 max-w-full rounded" />
+              <img src={item.image.src} alt={item.image.alt ?? ''} loading="lazy" className="max-h-80 max-w-full rounded" />
             ) : (
               editable && (
                 <label className="flex h-28 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 text-[13px] text-slate-500 hover:bg-slate-50">

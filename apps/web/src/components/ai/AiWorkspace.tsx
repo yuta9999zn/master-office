@@ -4,7 +4,7 @@ import { CheckCircle2, CircleAlert, Clock, ExternalLink, Image as ImageIcon, Lay
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { markdownToHtml } from '@workos/doc-model';
+import { markdownToHtml } from '@workos/doc-model/columns-md';
 import type { ResourceType } from '@workos/shared';
 import { APP_LABEL, OUTPUT_LABEL, useAiActions, useAiJob, useAiJobs, useAiPrompts, useAiStatus, type AiJob, type AiPrompt, type PromptApp } from '@/lib/ai';
 import { formatDateTime } from '@/lib/format';

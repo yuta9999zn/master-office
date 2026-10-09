@@ -300,7 +300,7 @@ export function AttachmentEditor({ baseId, value, onCommit, onClose }: { baseId:
           <li key={a.id} className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-hover">
             {a.mime.startsWith('image/') ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={attachmentUrl(baseId, a)} alt="" className="size-8 rounded object-cover ring-1 ring-line" />
+              <img src={attachmentUrl(baseId, a)} alt="" loading="lazy" className="size-8 rounded object-cover ring-1 ring-line" />
             ) : (
               <span className="grid size-8 place-items-center rounded bg-hover">
                 <FileText size={15} />
