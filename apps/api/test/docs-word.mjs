@@ -45,7 +45,7 @@ ydoc.transact(() => {
   const f = ydoc.getXmlFragment('default');
   f.push([
     el('paragraph', { docStyle: 'title' }, [text([['Quarterly Review']])]),
-    el('paragraph', { docStyle: 'subtitle' }, [text([['Natural Beauty — Q3 2026']])]),
+    el('paragraph', { docStyle: 'subtitle' }, [text([['Sakura Beauty — Q3 2026']])]),
     el('tableOfContents', { maxLevel: 3 }),
     el('heading', { level: 1 }, [text([['Summary']])]),
     el('paragraph', { lineHeight: '1.5', spaceAfter: 12 }, [

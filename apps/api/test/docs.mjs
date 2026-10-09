@@ -22,7 +22,7 @@ async function call(method, path, { user, body, raw, form } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, mika, sora, hana] = ['claudia', 'mika', 'sora', 'hana'].map(uid);
 const docId = (await call('GET', '/search?q=' + encodeURIComponent('Branch Operation Plan - October'))).data.find((h) => h.kind === 'resource').id;
 

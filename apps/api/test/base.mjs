@@ -21,7 +21,7 @@ async function call(method, path, { user, body, raw } = {}) {
   return { status: res.status, data, headers: res.headers };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [hana, mika, ken] = ['hana', 'mika', 'ken'].map(uid);
 const n = Date.now() % 100000;
 
@@ -66,7 +66,7 @@ const created = await call('POST', `/base/tables/${t1.id}/records`, {
   user: mika,
   body: {
     records: [
-      { values: { [t1.fields[0].id]: 'Acme renewal', [F.Company.id]: 'Acme', [F.Value.id]: '¥1,200,000', [F.Seats.id]: '40', [F['Close date'].id]: '2026/11/30', [F.Owner.id]: 'hana@kaori.jp', [F.Hot.id]: 'yes', [F.Tags.id]: 'Enterprise, Strategic', [statusF.id]: 'in progress', [F.Score.id]: 9 } },
+      { values: { [t1.fields[0].id]: 'Acme renewal', [F.Company.id]: 'Acme', [F.Value.id]: '¥1,200,000', [F.Seats.id]: '40', [F['Close date'].id]: '2026/11/30', [F.Owner.id]: 'hana@hanami.example', [F.Hot.id]: 'yes', [F.Tags.id]: 'Enterprise, Strategic', [statusF.id]: 'in progress', [F.Score.id]: 9 } },
       { values: { Name: 'Blue Co pilot', Company: 'Blue Co', Value: 300000, Seats: 10, Status: 'Todo' } },
       { values: { Name: 'Cobalt', Value: 50000 } },
     ],
@@ -149,12 +149,12 @@ check('… the count shows on the record', (await call('GET', `/base/tables/${t1
 check('only the writer (or an admin) removes a comment', (await call('DELETE', `/base/comments/${c1.data[0].id}`, { user: mika })).status === 403 && (await call('DELETE', `/base/comments/${c1.data[0].id}`, { user: hana })).status === 204);
 
 // ── CSV import ──────────────────────────────────────────────────────────────
-const imp = await call('POST', `/base/${base.id}/import`, { user: mika, body: { name: 'vendors.csv', csv: 'Vendor,Contact,Spend,Since,Active,Tier\n"Kaori Print, Ltd.",kaori@print.jp,"1,200",2024-04-01,yes,Gold\nNishi Foods,info@nishi.jp,800,2025-01-15,no,Silver\nUme Tech,hello@ume.tech,450,2023-09-30,yes,Gold\nSora Cleaning,ops@sora.jp,120,2026-02-01,yes,Bronze\n' } });
+const imp = await call('POST', `/base/${base.id}/import`, { user: mika, body: { name: 'vendors.csv', csv: 'Vendor,Contact,Spend,Since,Active,Tier\n"Hanami Print, Ltd.",hanami@print.jp,"1,200",2024-04-01,yes,Gold\nNishi Foods,info@nishi.jp,800,2025-01-15,no,Silver\nUme Tech,hello@ume.tech,450,2023-09-30,yes,Gold\nSora Cleaning,ops@sora.jp,120,2026-02-01,yes,Bronze\n' } });
 const s5 = (await call('GET', `/base/${base.id}`, { user: hana })).data;
 const vt = s5.tables.find((t) => t.id === imp.data.tableId);
 check('importing CSV makes a table with guessed field types', imp.status === 201 && imp.data.records === 4 && vt.name === 'vendors' && vt.fields.map((f) => f.type).join() === 'text,email,number,date,checkbox,singleSelect', vt?.fields.map((f) => f.type));
 const vrecs = (await call('GET', `/base/tables/${vt.id}/records`, { user: hana })).data;
-check('… with the values parsed', vrecs[0].values[vt.fields[0].id] === 'Kaori Print, Ltd.' && vrecs[0].values[vt.fields[2].id] === 1200 && vrecs[1].values[vt.fields[4].id] !== true && vrecs.length === 4, vrecs[0].values);
+check('… with the values parsed', vrecs[0].values[vt.fields[0].id] === 'Hanami Print, Ltd.' && vrecs[0].values[vt.fields[2].id] === 1200 && vrecs[1].values[vt.fields[4].id] !== true && vrecs.length === 4, vrecs[0].values);
 const app = await call('POST', `/base/tables/${vt.id}/csv`, { user: mika, body: { csv: 'vendor,Spend,Unknown\nYama Supply,99,x\n' } });
 check('appending CSV matches columns by name', app.data.added === 1 && app.data.skipped.join() === 'Unknown', app.data);
 

@@ -29,11 +29,11 @@ const step = async (name, page, fn) => {
   }
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 const req = fujita.context().request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `QF${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Quality flow ${key}`, key, methodology: 'kanban' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Quality flow ${key}`, key, methodology: 'kanban' } })).json();
 await req.patch(`${BASE}/api/tasks/projects/${proj.id}`, { data: { strictWorkflow: false, enforceDod: true } });
 await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, title: 'Reset password', type: 'story', estimateMinutes: 240 } });
 await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, title: 'Reset link expires', type: 'bug', priority: 'high' } });

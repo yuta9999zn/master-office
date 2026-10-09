@@ -30,11 +30,11 @@ const step = async (name, page, fn) => {
   }
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 const req = fujita.context().request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `PD${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Loyalty app ${key}`, key, methodology: 'scrum' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Loyalty app ${key}`, key, methodology: 'scrum' } })).json();
 const page = (code) => fujita.locator('[data-testid="docs-page"]').filter({ hasText: `${key} · ${code} —` });
 
 await step('setting up the documentation space from the recommended set', fujita, async () => {

@@ -31,7 +31,7 @@ const step = async (name, page, fn) => {
 const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 200 });
 const names = (page) => page.getByTestId('directory').getByTestId('contact').evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 
 await step('the directory lists everyone and searches skills', claudia, async () => {
   await claudia.goto(`${BASE}/contacts`);
@@ -46,9 +46,9 @@ await step('the directory lists everyone and searches skills', claudia, async ()
 
 await step('grouping by department and by project', claudia, async () => {
   await claudia.getByRole('tab', { name: 'department' }).click();
-  await claudia.locator('[data-testid="contact-group"][data-title="ITM Japan"] [data-name="Fujita Sota"]').waitFor();
+  await claudia.locator('[data-testid="contact-group"][data-title="Mirai Systems"] [data-name="Fujita Sota"]').waitFor();
   await claudia.getByRole('tab', { name: 'project' }).click();
-  const itm = claudia.locator('[data-testid="contact-group"][data-title="ITM Japan"]');
+  const itm = claudia.locator('[data-testid="contact-group"][data-title="Mirai Systems"]');
   await itm.locator('[data-name="Nguyễn Minh"]').waitFor();
   await claudia.getByRole('tab', { name: 'All' }).click();
 });
@@ -60,7 +60,7 @@ await step('a profile shows contact details, skills, projects and manager', clau
   const field = (label) => claudia.locator(`[data-testid="profile-field"][data-label="${label}"]`);
   await field('Phone').getByText('+81 90-1234-5678').waitFor();
   await field('Skills').getByText('Japanese').waitFor();
-  await field('Projects').getByText('ITM Japan').waitFor();
+  await field('Projects').getByText('Mirai Systems').waitFor();
   await field('Manager').getByText('Claudia Chen').waitFor();
   await field('Joined').getByText('Jan 15, 2024').waitFor();
 });
@@ -90,7 +90,7 @@ await step('a DM links to the profile', claudia, async () => {
 });
 
 await step('people edit their own profile from the user menu', claudia, async () => {
-  const ken = await session('ken@kaori.jp');
+  const ken = await session('ken@hanami.example');
   await ken.goto(`${BASE}/home`);
   await ken.getByText('Ken Watanabe').first().click();
   await ken.getByRole('menuitem', { name: 'Profile' }).click();

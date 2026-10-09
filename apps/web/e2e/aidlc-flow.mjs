@@ -29,7 +29,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 const key = `AD${Date.now() % 100000}`;
 const name = `Concierge bot ${key}`;
 

@@ -512,7 +512,7 @@ function EventPanel({ e, cal, onClose, onEdit }: { e: CalendarEventView; cal?: C
         </div>
         {e.meetingUrl && (
           <div className="mt-4">
-            <a href={e.meetingProvider === 'kaori' && meetingCodeFromUrl(e.meetingUrl) ? meetingPath(meetingCodeFromUrl(e.meetingUrl)!) : e.meetingUrl} {...(e.meetingProvider === 'kaori' ? {} : { target: '_blank', rel: 'noreferrer' })} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-600 text-[14px] font-medium text-white hover:bg-brand-700" data-testid="join-meeting">
+            <a href={e.meetingProvider === 'office' && meetingCodeFromUrl(e.meetingUrl) ? meetingPath(meetingCodeFromUrl(e.meetingUrl)!) : e.meetingUrl} {...(e.meetingProvider === 'office' ? {} : { target: '_blank', rel: 'noreferrer' })} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-600 text-[14px] font-medium text-white hover:bg-brand-700" data-testid="join-meeting">
               <Video size={17} /> Join meeting
             </a>
             <div className="mt-2 flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[12px] text-ink-2">

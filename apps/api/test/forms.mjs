@@ -22,7 +22,7 @@ async function call(method, path, { user, body, raw, form } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, mika, sora, ken] = ['claudia', 'mika', 'sora', 'ken'].map(uid);
 const find = async (q, user = claudia) => (await call('GET', '/search?q=' + encodeURIComponent(q), { user })).data.find((h) => h.kind === 'resource');
 
@@ -153,7 +153,7 @@ check('the edit link loads the earlier answers', edit.existing?.answers?.[q1.id]
 r = await call('POST', `/forms/${created.id}/responses`, { user: ken, body: { answers: { [q1.id]: 'Rose', q2: 'x' }, editToken: token } });
 check('editing a response re-scores it', r.status === 201 && r.data.score?.points === 0);
 const own = (await call('GET', `/forms/${created.id}/responses`, { user: claudia })).data;
-check('only one response exists after editing', own.length === 1 && own[0].answers[q1.id] === 'Rose' && own[0].email === 'ken@kaori.jp', own);
+check('only one response exists after editing', own.length === 1 && own[0].answers[q1.id] === 'Rose' && own[0].email === 'ken@hanami.example', own);
 const fileAsset = await call('GET', `/resources/${created.id}/assets/${up.data.blobId}`, { user: claudia, raw: true });
 check('form editors can download uploaded files', fileAsset.status === 200);
 
@@ -189,7 +189,7 @@ check('"view score" before release says it is not released (no answers leak)', p
 check('an unknown result token is refused', (await call('GET', `/forms/${created.id}/public/result?token=nope`)).status === 404);
 await sleep(800);
 let box = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
-check('a new response e-mails the subscribed editor', box.some((m) => m.kind === 'form.response' && m.to === 'claudia@kaori.jp' && m.subject.includes('Product quiz')), box);
+check('a new response e-mails the subscribed editor', box.some((m) => m.kind === 'form.response' && m.to === 'claudia@hanami.example' && m.subject.includes('Product quiz')), box);
 check('the respondent who asked for it gets a copy of their answers', box.some((m) => m.kind === 'form.copy' && m.to === 'student@example.com'), box);
 check('the outbox is only for editors', (await call('GET', `/forms/${created.id}/outbox`, { user: sora })).status >= 403);
 
@@ -223,10 +223,10 @@ check('editing a graded response keeps grades of unchanged answers', r.status ==
 
 await call('PUT', `/forms/${created.id}/notifications`, { user: claudia, body: { on: false } });
 const before = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data.filter((m) => m.kind === 'form.response').length;
-await call('POST', `/forms/${created.id}/responses`, { user: sora, body: { answers: { [q1.id]: 'Pure' }, email: 'sora@kaori.jp' } });
+await call('POST', `/forms/${created.id}/responses`, { user: sora, body: { answers: { [q1.id]: 'Pure' }, email: 'sora@hanami.example' } });
 await sleep(800);
 const after = (await call('GET', `/forms/${created.id}/outbox`, { user: claudia })).data;
-check('after turning notifications off no more response e-mails are sent', after.filter((m) => m.kind === 'form.response').length === before && !after.some((m) => m.kind === 'form.copy' && m.to === 'sora@kaori.jp'), after);
+check('after turning notifications off no more response e-mails are sent', after.filter((m) => m.kind === 'form.response').length === before && !after.some((m) => m.kind === 'form.copy' && m.to === 'sora@hanami.example'), after);
 
 // ── Delete, copy, versions ──────────────────────────────────────────────────
 const del = await call('POST', `/forms/${created.id}/responses/delete`, { user: claudia, body: { ids: 'all' } });

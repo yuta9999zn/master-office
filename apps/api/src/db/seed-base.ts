@@ -89,7 +89,7 @@ export async function seedBase(db: Db, u: Record<string, User>, ref: (name: stri
   await view(leads.id, 'Lead capture', 'form', 5, u.hana, {
     form: {
       title: 'Tell us about a lead',
-      description: 'Met someone interested in Natural Beauty products? Add them here — Marketing follows up within two working days.',
+      description: 'Met someone interested in Sakura Beauty products? Add them here — Marketing follows up within two working days.',
       fields: [L.name, L.company, L.email, L.source, L.tags, L.value, L.notes],
       required: [L.name, L.company],
       open: true,
@@ -130,7 +130,7 @@ export async function seedBase(db: Db, u: Record<string, User>, ref: (name: stri
     { key: 'renew', name: 'Renew in (days)', type: 'formula', options: { expression: "DATETIME_DIFF({Contract ends}, TODAY(), 'days')" } },
   ]);
   await records(vendors.id, V, u.mika, [
-    { name: 'Kaori Print', category: c('Packaging'), contact: 'Sato Kenji', email: 'sato@kaori-print.jp', phone: '06-6123-4567', spend: 4_800_000, end: '2027-03-31', rating: 5, preferred: true, site: 'https://kaori-print.example' },
+    { name: 'Hanami Print', category: c('Packaging'), contact: 'Sato Kenji', email: 'sato@hanami-print.jp', phone: '06-6123-4567', spend: 4_800_000, end: '2027-03-31', rating: 5, preferred: true, site: 'https://hanami-print.example' },
     { name: 'Nishi Botanicals', category: c('Ingredients'), contact: 'Nishi Aya', email: 'aya@nishi-bot.jp', phone: '075-222-1100', spend: 12_500_000, end: '2026-12-31', rating: 4, preferred: true, site: 'https://nishi-botanicals.example' },
     { name: 'Swift Logistics', category: c('Logistics'), contact: 'Ito Daisuke', email: 'ito@swiftlog.jp', phone: '06-6987-0001', spend: 3_200_000, end: '2026-11-15', rating: 3, site: 'https://swiftlog.example' },
     { name: 'Sora Cleaning', category: c('Cleaning'), contact: 'Mori Yui', email: 'ops@sora-clean.jp', phone: '06-6555-7788', spend: 960_000, end: '2027-06-30', rating: 4, preferred: true },

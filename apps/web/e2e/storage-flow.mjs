@@ -38,10 +38,10 @@ async function api(method, path, user, body) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 
-const claudia = await session('claudia@kaori.jp');
-const kenId = users.find((u) => u.email === 'ken@kaori.jp').id;
-const kenName = users.find((u) => u.email === 'ken@kaori.jp').name;
-const claudiaId = users.find((u) => u.email === 'claudia@kaori.jp').id;
+const claudia = await session('claudia@hanami.example');
+const kenId = users.find((u) => u.email === 'ken@hanami.example').id;
+const kenName = users.find((u) => u.email === 'ken@hanami.example').name;
+const claudiaId = users.find((u) => u.email === 'claudia@hanami.example').id;
 const marketing = (await api('GET', '/spaces', claudiaId)).data.find((s) => s.name === 'Marketing');
 
 // Ken holds 1.5 MB so that a 1 MB limit is already exceeded. A clean slate first.
@@ -55,7 +55,7 @@ await step('Admin → Storage: summary, people and teams with their meters', cla
   await claudia.goto(`${BASE}/admin?tab=storage`);
   await claudia.getByTestId('storage-admin').waitFor({ timeout: 90000 });
   await claudia.getByTestId('storage-org-used').waitFor();
-  const ken = claudia.locator('[data-testid="storage-person"][data-email="ken@kaori.jp"]');
+  const ken = claudia.locator('[data-testid="storage-person"][data-email="ken@hanami.example"]');
   await ken.waitFor();
   if (!/MB|GB/.test(await ken.innerText())) throw new Error('Ken’s usage is not shown');
   await claudia.locator('[data-testid="storage-team"][data-name="Marketing"]').waitFor();
@@ -63,17 +63,17 @@ await step('Admin → Storage: summary, people and teams with their meters', cla
 });
 
 await step('a custom 1 MB limit for one person', claudia, async () => {
-  const ken = claudia.locator('[data-testid="storage-person"][data-email="ken@kaori.jp"]');
+  const ken = claudia.locator('[data-testid="storage-person"][data-email="ken@hanami.example"]');
   await ken.getByLabel(`Limit for ${kenName}`, { exact: true }).selectOption('custom');
   await ken.getByLabel(`Custom limit for ${kenName}`, { exact: true }).fill('1');
   await ken.getByLabel(`Custom limit unit for ${kenName}`, { exact: true }).selectOption('MB');
   await ken.getByLabel(`Apply limit for ${kenName}`).click();
-  await claudia.locator('[data-testid="storage-person"][data-email="ken@kaori.jp"][data-percent="100"]').waitFor({ timeout: 30000 });
+  await claudia.locator('[data-testid="storage-person"][data-email="ken@hanami.example"][data-percent="100"]').waitFor({ timeout: 30000 });
   const chosen = await ken.getByLabel(`Limit for ${kenName}`, { exact: true }).inputValue();
   if (chosen !== 'custom') throw new Error(`select shows ${chosen}`);
 });
 
-const ken = await session('ken@kaori.jp');
+const ken = await session('ken@hanami.example');
 await step('the Drive meter is red and says storage is full', ken, async () => {
   await ken.goto(`${BASE}/drive/my`);
   await ken.locator('[data-testid="storage-mine"][data-full="1"]').waitFor({ timeout: 90000 });
@@ -93,9 +93,9 @@ await step('browsing a team shows the team’s meter too', ken, async () => {
 });
 
 await step('back to the default limit', claudia, async () => {
-  const row = claudia.locator('[data-testid="storage-person"][data-email="ken@kaori.jp"]');
+  const row = claudia.locator('[data-testid="storage-person"][data-email="ken@hanami.example"]');
   await row.getByLabel(`Limit for ${kenName}`, { exact: true }).selectOption('default');
-  await claudia.locator('[data-testid="storage-person"][data-email="ken@kaori.jp"]:not([data-percent="100"])').waitFor({ timeout: 30000 });
+  await claudia.locator('[data-testid="storage-person"][data-email="ken@hanami.example"]:not([data-percent="100"])').waitFor({ timeout: 30000 });
   await ken.goto(`${BASE}/drive/my`);
   await ken.locator('[data-testid="storage-mine"][data-full="0"]').waitFor({ timeout: 60000 });
 });

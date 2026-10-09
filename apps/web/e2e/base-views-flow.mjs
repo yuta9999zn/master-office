@@ -32,7 +32,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const now = new Date(Date.now() + 9 * 3600_000);
 const day = (d) => `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(d)}`;
 
-const hana = await session('hana@kaori.jp');
+const hana = await session('hana@hanami.example');
 const req = hana.context().request;
 const n = Date.now() % 100000;
 const base = await (await req.post(`${BASE}/api/resources`, { data: { name: `Content ${n}`, type: 'base' } })).json();
@@ -114,7 +114,7 @@ await step('form: build the questions and open it to the workspace', hana, async
 });
 
 await step('form: someone without access answers it and the record appears', hana, async () => {
-  const rina = await session('rina@kaori.jp');
+  const rina = await session('rina@hanami.example');
   await rina.goto(formUrl.v.replace(/^https?:\/\/[^/]+/, BASE));
   await rina.getByTestId('base-form').getByText('Content request').waitFor({ timeout: 60000 });
   await rina.getByTestId('form-submit').click();

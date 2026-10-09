@@ -13,7 +13,7 @@ let fails = 0;
 
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const step = async (name, fn) => {
@@ -137,7 +137,7 @@ await step('Tools → Citations: sources, in-text citation with a page, bibliogr
   await panel.getByLabel('Author 1 first name').fill('Aya');
   await panel.getByLabel('Author 1 last name').fill('Tanaka');
   await panel.getByLabel('Title').fill('Salon Operations');
-  await panel.getByLabel('Publisher').fill('Kaori Press');
+  await panel.getByLabel('Publisher').fill('Hanami Press');
   await panel.getByLabel('Year').fill('2024');
   await panel.getByTestId('source-save').click();
   await panel.getByTestId('source-add').click();

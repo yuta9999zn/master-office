@@ -17,20 +17,20 @@ async function call(method, path, { user, body } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, ken, rina, fujita, yuki] = ['claudia', 'hana', 'mika', 'ken', 'rina', 'fujita', 'yuki'].map(uid);
 const search = async (q, user = claudia) => (await call('GET', `/contacts?q=${encodeURIComponent(q)}`, { user })).data.map((c) => c.email.split('@')[0]).sort();
 const profile = (id, user = claudia) => call('GET', `/contacts/${id}`, { user });
 
 const all = (await call('GET', '/contacts', { user: hana })).data;
 const f = all.find((c) => c.id === fujita);
-check('everyone in the workspace is in the directory', all.filter((c) => c.email.endsWith('@kaori.jp')).length === 10 && all.every((c, i) => i === 0 || all[i - 1].name.localeCompare(c.name) <= 0), all.map((c) => c.name));
+check('everyone in the workspace is in the directory', all.filter((c) => c.email.endsWith('@hanami.example')).length === 10 && all.every((c, i) => i === 0 || all[i - 1].name.localeCompare(c.name) <= 0), all.map((c) => c.name));
 const fForOwner = (await call('GET', '/contacts', { user: claudia })).data.find((c) => c.id === fujita);
 check('cards carry skills; phone and location only for admins and leads (§79)', f.phone === null && f.phoneHidden && fForOwner.location === 'Tokyo, Japan' && fForOwner.phone === '+81 90-1234-5678' && f.skills.includes('Japanese') && f.status === 'よろしくお願いします。' && f.joinedAt.startsWith('2024-01-15'), f);
 check('search by skill', (await search('japanese')).join() === 'fujita');
 const fin = await search('finance');
 check('search by department (and by the Finance space its members belong to)', fin.includes('huong') && fin.includes('hana') && !fin.includes('ken'), fin);
-check('search by project (space)', (await search('ITM Japan')).join() === ['claudia', 'fujita', 'mika', 'minh'].join(), await search('ITM Japan'));
+check('search by project (space)', (await search('Mirai Systems')).join() === ['claudia', 'fujita', 'mika', 'minh'].join(), await search('Mirai Systems'));
 check('search by location', (await search('hanoi')).join() === 'huong');
 
 const rinaForHana = all.find((c) => c.id === rina);

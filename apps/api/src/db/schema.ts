@@ -55,7 +55,7 @@ export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
-  /** Domain of the workspace's mail addresses (§69), e.g. kaori.jp. */
+  /** Domain of the workspace's mail addresses (§69), e.g. hanami.example. */
   mailDomain: text('mail_domain'),
   createdAt: ts('created_at').notNull().default(sql`now()`),
 });
@@ -770,7 +770,7 @@ export const calendarEvents = pgTable(
     /** Occurrences removed from a series (their original start instants). */
     exdates: text('exdates').array().notNull().default(sql`'{}'::text[]`),
     meetingUrl: text('meeting_url'),
-    meetingProvider: text('meeting_provider').$type<'kaori' | 'google' | 'zoom' | 'teams' | 'custom'>(),
+    meetingProvider: text('meeting_provider').$type<'office' | 'google' | 'zoom' | 'teams' | 'custom'>(),
     color: text('color'),
     visibility: text('visibility').$type<'default' | 'private'>().notNull().default('default'),
     organizerId: uuid('organizer_id').references(() => users.id, { onDelete: 'set null' }),
@@ -925,7 +925,7 @@ export const taskEvents = pgTable(
 
 /**
  * A video room (WebRTC mesh). Opened on its own (instant / for later), from a conversation (call button) or from a
- * calendar event's Kaori Meet link. Who is in the room right now lives in memory (MeetingsService); this row keeps
+ * calendar event's Office Meet link. Who is in the room right now lives in memory (MeetingsService); this row keeps
  * the room's settings and history.
  */
 export const meetings = pgTable(

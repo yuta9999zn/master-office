@@ -21,9 +21,9 @@ import { seedBase } from './seed-base';
 import { config } from '../config';
 
 /**
- * Demo data mirroring the UI reference screens: the KAORI organisation with the
- * Natural Beauty space tree (Marketing, Operations, HR, Finance, Branch 575/625/S2),
- * ITM Japan and KAORI Brand. Idempotent: wipes app tables first.
+ * Demo data mirroring the UI reference screens: the HANAMI organisation with the
+ * Sakura Beauty space tree (Marketing, Operations, HR, Finance, Branch 575/625/S2),
+ * Mirai Systems and HANAMI Brand. Idempotent: wipes app tables first.
  */
 async function main() {
   const { db, pool } = createDb();
@@ -41,24 +41,24 @@ async function main() {
     ['yuki', 'Yuki Sato', '#14b8a6', 'Branch Manager 575', 'Branch 575'],
     ['sora', 'Sora Ito', '#f59e0b', 'Branch Manager 625', 'Branch 625'],
     ['rina', 'Rina Kato', '#ef4444', 'HR Partner', 'HR'],
-    ['fujita', 'Fujita Sota', '#0ea5e9', 'Project Manager', 'ITM Japan'],
+    ['fujita', 'Fujita Sota', '#0ea5e9', 'Project Manager', 'Mirai Systems'],
     ['ken', 'Ken Watanabe', '#10b981', 'Store Support', 'Operations'],
     ['huong', 'Nguyễn Thu Hương', '#6366f1', 'Finance Controller', 'Finance'],
-    ['minh', 'Nguyễn Minh', '#f97316', 'Designer', 'KAORI Brand'],
+    ['minh', 'Nguyễn Minh', '#f97316', 'Designer', 'HANAMI Brand'],
   ] as const;
   type Who = (typeof people)[number][0];
   const inserted = await db
     .insert(s.users)
-    .values(people.map(([key, name, avatarColor, title, department]) => ({ name, email: `${key}@kaori.jp`, avatarColor, title, department })))
+    .values(people.map(([key, name, avatarColor, title, department]) => ({ name, email: `${key}@hanami.example`, avatarColor, title, department })))
     .returning();
   const u = Object.fromEntries(inserted.map((x) => [x.email.split('@')[0], x])) as Record<Who, (typeof inserted)[number]>;
 
-  const [ws] = await db.insert(s.workspaces).values({ name: 'KAORI', slug: 'kaori' }).returning();
+  const [ws] = await db.insert(s.workspaces).values({ name: 'HANAMI', slug: 'hanami' }).returning();
   await db
     .insert(s.workspaceMembers)
     .values(inserted.map((x) => ({ workspaceId: ws.id, userId: x.id, role: (x.id === u.claudia.id ? 'owner' : 'editor') as Role })));
 
-  // Profiles for Contacts (§67), mirroring the "Hồ sơ người dùng" reference (Fujita, ITM Japan).
+  // Profiles for Contacts (§67), mirroring the "Hồ sơ người dùng" reference (Fujita, Mirai Systems).
   const profiles: Record<Who, { phone: string; location: string; skills: string[]; manager?: Who; status?: string; joined: string }> = {
     claudia: { phone: '+81 90-1111-0001', location: 'Tokyo, Japan', skills: ['Leadership', 'Operations', 'Strategy'], status: 'Focus time until 11:00', joined: '2022-04-01' },
     hana: { phone: '+84 90-555-0102', location: 'Ho Chi Minh City, Vietnam', skills: ['Marketing', 'Design', 'SNS'], manager: 'claudia', joined: '2023-02-13' },
@@ -109,36 +109,36 @@ async function main() {
     await db.insert(s.spaceMembers).values([...members].map(([who, role]) => ({ spaceId: row.id, userId: u[who].id, role })));
   }
   const everyone = people.map((p) => p[0]);
-  await space('Natural Beauty', 'Shared knowledge, files, announcements, and team resources. Work together to build a better, more beautiful tomorrow.', '#f43f5e', 'flower', 'claudia', {
+  await space('Sakura Beauty', 'Shared knowledge, files, announcements, and team resources. Work together to build a better, more beautiful tomorrow.', '#f43f5e', 'flower', 'claudia', {
     members: everyone.map((w) => [w, ['hana', 'mika', 'ken'].includes(w) ? 'editor' : 'viewer'] as [Who, Role]),
   });
   await space('Marketing', 'Campaign materials, brand assets, and marketing plans', '#2563eb', 'megaphone', 'hana', {
-    parent: 'Natural Beauty',
+    parent: 'Sakura Beauty',
     members: [['mika', 'editor'], ['yuki', 'commenter'], ['sora', 'commenter'], ['minh', 'editor']],
   });
   await space('Operations', 'Store operations, SOPs and checklists', '#f59e0b', 'settings', 'mika', {
-    parent: 'Natural Beauty',
+    parent: 'Sakura Beauty',
     members: [['yuki', 'editor'], ['sora', 'editor'], ['ken', 'editor']],
   });
-  await space('HR', 'Recruitment, onboarding and HR policies', '#ec4899', 'users', 'rina', { parent: 'Natural Beauty', visibility: 'private' });
+  await space('HR', 'Recruitment, onboarding and HR policies', '#ec4899', 'users', 'rina', { parent: 'Sakura Beauty', visibility: 'private' });
   await space('Finance', 'Budgets and financial reports', '#8b5cf6', 'landmark', 'huong', {
-    parent: 'Natural Beauty',
+    parent: 'Sakura Beauty',
     visibility: 'private',
     members: [['hana', 'viewer']],
   });
-  await space('Branch 575', 'Main branch', '#10b981', 'store', 'yuki', { parent: 'Natural Beauty', members: [['mika', 'editor']] });
-  await space('Branch 625', 'Station branch', '#ef4444', 'store', 'sora', { parent: 'Natural Beauty', members: [['mika', 'editor'], ['rina', 'commenter']] });
-  await space('Branch S2', 'New branch', '#0ea5e9', 'store', 'mika', { parent: 'Natural Beauty' });
-  await space('ITM Japan', 'ITM Japan project workspace — booking system and website', '#7c3aed', 'building', 'fujita', {
+  await space('Branch 575', 'Main branch', '#10b981', 'store', 'yuki', { parent: 'Sakura Beauty', members: [['mika', 'editor']] });
+  await space('Branch 625', 'Station branch', '#ef4444', 'store', 'sora', { parent: 'Sakura Beauty', members: [['mika', 'editor'], ['rina', 'commenter']] });
+  await space('Branch S2', 'New branch', '#0ea5e9', 'store', 'mika', { parent: 'Sakura Beauty' });
+  await space('Mirai Systems', 'Mirai Systems project workspace — booking system and website', '#7c3aed', 'building', 'fujita', {
     members: [['claudia', 'editor'], ['minh', 'editor'], ['mika', 'editor']],
   });
-  await space('KAORI Brand', 'Brand identity, design system and assets', '#0f172a', 'sparkles', 'minh', { members: [['hana', 'editor']] });
+  await space('HANAMI Brand', 'Brand identity, design system and assets', '#0f172a', 'sparkles', 'minh', { members: [['hana', 'editor']] });
 
   // The organisation chart (§79): what each space is, and people's positions — one person, several teams and positions.
-  const kinds: Record<string, string> = { 'Natural Beauty': 'general', Marketing: 'department', Operations: 'department', HR: 'department', Finance: 'department', 'Branch 575': 'team', 'Branch 625': 'team', 'Branch S2': 'team', 'ITM Japan': 'project', 'KAORI Brand': 'team' };
+  const kinds: Record<string, string> = { 'Sakura Beauty': 'general', Marketing: 'department', Operations: 'department', HR: 'department', Finance: 'department', 'Branch 575': 'team', 'Branch 625': 'team', 'Branch S2': 'team', 'Mirai Systems': 'project', 'HANAMI Brand': 'team' };
   for (const [name, kind] of Object.entries(kinds)) await db.update(s.spaces).set({ kind }).where(sql`id = ${sp[name].id}`);
   const positions: [string, Who, string][] = [
-    ['Natural Beauty', 'claudia', 'CEO'],
+    ['Sakura Beauty', 'claudia', 'CEO'],
     ['Marketing', 'hana', 'Head of Marketing'],
     ['Marketing', 'minh', 'Designer'],
     ['Marketing', 'mika', 'Campaign support'],
@@ -151,12 +151,12 @@ async function main() {
     ['Branch 575', 'mika', 'Area Manager'],
     ['Branch 625', 'sora', 'Branch Manager'],
     ['Branch 625', 'mika', 'Area Manager'],
-    ['ITM Japan', 'fujita', 'Project Manager'],
-    ['ITM Japan', 'minh', 'UI Designer'],
-    ['ITM Japan', 'mika', 'Business Analyst'],
-    ['ITM Japan', 'claudia', 'Sponsor'],
-    ['KAORI Brand', 'minh', 'Brand Lead'],
-    ['KAORI Brand', 'hana', 'Marketing liaison'],
+    ['Mirai Systems', 'fujita', 'Project Manager'],
+    ['Mirai Systems', 'minh', 'UI Designer'],
+    ['Mirai Systems', 'mika', 'Business Analyst'],
+    ['Mirai Systems', 'claudia', 'Sponsor'],
+    ['HANAMI Brand', 'minh', 'Brand Lead'],
+    ['HANAMI Brand', 'hana', 'Marketing liaison'],
   ];
   for (const [name, who, title] of positions) await db.update(s.spaceMembers).set({ title }).where(sql`space_id = ${sp[name].id} AND user_id = ${u[who].id}`);
 
@@ -234,20 +234,20 @@ async function main() {
     return `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n`;
   };
 
-  // Natural Beauty (root space)
-  const manual = await add('Operations Manual', 'folder', 'mika', 'Natural Beauty', { description: 'Store opening/closing and daily operations' });
+  // Sakura Beauty (root space)
+  const manual = await add('Operations Manual', 'folder', 'mika', 'Sakura Beauty', { description: 'Store opening/closing and daily operations' });
   await add('Store Opening Checklist', 'document', 'mika', manual);
   await add('Daily Closing Procedure', 'document', 'mika', manual);
-  const templates = await add('Store Templates', 'folder', 'ken', 'Natural Beauty');
+  const templates = await add('Store Templates', 'folder', 'ken', 'Sakura Beauty');
   await add('Weekly Report Template', 'document', 'ken', templates);
   await add('Inventory Template', 'spreadsheet', 'ken', templates);
-  await add('Branch Operation Plan - October 2026', 'document', 'claudia', 'Natural Beauty', {
+  await add('Branch Operation Plan - October 2026', 'document', 'claudia', 'Sakura Beauty', {
     description: 'Key operation plan, targets and action items for all branches',
     tags: ['Operations', 'Q4'],
   });
-  await add('Store Performance Tracker', 'spreadsheet', 'mika', 'Natural Beauty', { tags: ['KPI'] });
-  await add('Q4 Campaign Plan', 'document', 'claudia', 'Natural Beauty', { tags: ['Campaign'] });
-  await add('Brand Guidelines.pptx', 'presentation', 'ken', 'Natural Beauty');
+  await add('Store Performance Tracker', 'spreadsheet', 'mika', 'Sakura Beauty', { tags: ['KPI'] });
+  await add('Q4 Campaign Plan', 'document', 'claudia', 'Sakura Beauty', { tags: ['Campaign'] });
+  await add('Brand Guidelines.pptx', 'presentation', 'ken', 'Sakura Beauty');
   for (const [name, desc] of [
     ['Branch Operation Guide', 'Store opening/closing, daily operations, and more'],
     ['FAQ for Store Operations', 'Common questions and answers'],
@@ -256,7 +256,7 @@ async function main() {
     ['Company Introduction', 'Our mission, culture, and key information'],
     ['System User Guide', 'How to use internal systems and tools'],
   ] as const) {
-    await add(name, 'wiki', 'claudia', 'Natural Beauty', { description: desc });
+    await add(name, 'wiki', 'claudia', 'Sakura Beauty', { description: desc });
   }
 
   // Marketing
@@ -271,11 +271,11 @@ async function main() {
   await add('Campaign Plan', 'document', 'hana', c2026);
   await add('Social Media Calendar', 'spreadsheet', 'rina', c2026);
   await add('Video Script', 'document', 'hana', c2026);
-  await add('Marketing Plan - Q4 2026', 'document', 'hana', 'Marketing', { tags: ['Marketing', 'Q4'], description: 'Q4 marketing plan for Natural Beauty' });
+  await add('Marketing Plan - Q4 2026', 'document', 'hana', 'Marketing', { tags: ['Marketing', 'Q4'], description: 'Q4 marketing plan for Sakura Beauty' });
   await add('Sales Report - September 2026', 'spreadsheet', 'mika', 'Marketing', { tags: ['Sales'] });
   await add('Campaign Proposal', 'presentation', 'yuki', 'Marketing', { tags: ['Campaign'] });
   await add('Q4 Marketing Strategy - October 2026', 'presentation', 'hana', 'Marketing', { tags: ['Marketing', 'Strategy'] });
-  await addBlob('Brand Guideline.pdf', 'sora', 'Marketing', pdf('Natural Beauty - Brand Guideline'), 'application/pdf', { tags: ['Brand'] });
+  await addBlob('Brand Guideline.pdf', 'sora', 'Marketing', pdf('Sakura Beauty - Brand Guideline'), 'application/pdf', { tags: ['Brand'] });
   await add('SNS Content Calendar', 'spreadsheet', 'rina', 'Marketing');
   const images = await add('Product Images', 'folder', 'hana', 'Marketing');
   await addBlob('Serum Bottle.svg', 'hana', images, art('#fda4af', '#f472b6', 'Serum Bottle'), 'image/svg+xml');
@@ -283,9 +283,9 @@ async function main() {
   await addBlob('Autumn Banner.svg', 'minh', images, art('#60a5fa', '#8b5cf6', 'Autumn Sale 2026'), 'image/svg+xml');
   await add('Lead Tracker', 'base', 'hana', 'Marketing');
   await add('Event Registration', 'form', 'hana', 'Marketing');
-  await add('Customer Booking Approval Workflow', 'flow', 'claudia', 'Natural Beauty', { tags: ['Booking'] });
+  await add('Customer Booking Approval Workflow', 'flow', 'claudia', 'Sakura Beauty', { tags: ['Booking'] });
   await add('Lead Handling Flow', 'flow', 'hana', 'Marketing');
-  await add('Customer Satisfaction Survey', 'form', 'mika', 'Natural Beauty', { tags: ['Customers'] });
+  await add('Customer Satisfaction Survey', 'form', 'mika', 'Sakura Beauty', { tags: ['Customers'] });
 
   // Operations / Branches
   const sop = await add('SOP', 'folder', 'mika', 'Operations');
@@ -315,13 +315,13 @@ async function main() {
   );
   await add('Budget 2027', 'spreadsheet', 'huong', 'Finance');
 
-  // ITM Japan / KAORI Brand
-  await add('Project Plan Sep.pptx', 'presentation', 'fujita', 'ITM Japan');
-  await add('Booking System Requirements', 'document', 'fujita', 'ITM Japan');
-  await add('Website Revamp Timeline', 'spreadsheet', 'fujita', 'ITM Japan');
-  await add('Product Roadmap', 'document', 'fujita', 'ITM Japan');
-  await add('Brand Kit', 'presentation', 'minh', 'KAORI Brand');
-  await addBlob('Logo Concepts.svg', 'minh', 'KAORI Brand', art('#2563eb', '#8b5cf6', 'Master Office'), 'image/svg+xml');
+  // Mirai Systems / HANAMI Brand
+  await add('Project Plan Sep.pptx', 'presentation', 'fujita', 'Mirai Systems');
+  await add('Booking System Requirements', 'document', 'fujita', 'Mirai Systems');
+  await add('Website Revamp Timeline', 'spreadsheet', 'fujita', 'Mirai Systems');
+  await add('Product Roadmap', 'document', 'fujita', 'Mirai Systems');
+  await add('Brand Kit', 'presentation', 'minh', 'HANAMI Brand');
+  await addBlob('Logo Concepts.svg', 'minh', 'HANAMI Brand', art('#2563eb', '#8b5cf6', 'Master Office'), 'image/svg+xml');
 
   // Claudia's My Files + direct shares
   const drafts = await add('Drafts', 'folder', 'claudia', null);
@@ -418,7 +418,7 @@ async function main() {
     return { id: r.id, name: r.name, type: r.type };
   };
   const addNote = async (name: string, owner: Who, notebook: string, tags: string[], json: ReturnType<typeof simpleNote>, stickies: Parameters<typeof seedNoteState>[2] = []) => {
-    const node = await add(name, 'note', owner, 'Natural Beauty', { tags, metadata: { notebook } });
+    const node = await add(name, 'note', owner, 'Sakura Beauty', { tags, metadata: { notebook } });
     const { state, text, links } = seedNoteState(name, json, stickies);
     await db.insert(s.ydocStates).values({ resourceId: node.id, state });
     await db.update(s.resources).set({ sizeBytes: state.length, contentText: text }).where(sql`id = ${node.id}`);

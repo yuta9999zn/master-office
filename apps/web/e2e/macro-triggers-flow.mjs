@@ -69,11 +69,11 @@ const newScript = async (page, code) => {
   await page.getByRole('button', { name: 'Back to macros' }).click();
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
 const book = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Trigger test ${Date.now()}`, type: 'spreadsheet' } })).json();
 const other = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Import target ${Date.now()}`, type: 'spreadsheet' } })).json();
-await claudia.request.post(`${BASE}/api/resources/${book.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+await claudia.request.post(`${BASE}/api/resources/${book.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
 
 await step('scripts with onEdit / onOpen show up as triggers', claudia, async () => {
   await claudia.goto(`${BASE}/sheets/${book.id}`);
@@ -102,21 +102,21 @@ await step('scripts with onEdit / onOpen show up as triggers', claudia, async ()
 
 await step('onEdit runs on a typed edit with e.value, e.oldValue and e.user — and never on its own writes', claudia, async () => {
   await typeInto(claudia, 'A3', 'apple');
-  await cellIs(claudia, 'B3', 'claudia@kaori.jp was empty');
+  await cellIs(claudia, 'B3', 'claudia@hanami.example was empty');
   await typeInto(claudia, 'A3', 'pear');
-  await cellIs(claudia, 'B3', 'claudia@kaori.jp was apple');
+  await cellIs(claudia, 'B3', 'claudia@hanami.example was apple');
   await claudia.waitForTimeout(1200);
   if ((await cell(claudia, 'E1')) !== 2) throw new Error(`onEdit ran ${await cell(claudia, 'E1')} times for 2 edits`);
   await claudia.getByTestId('macro-executions').getByText('onEdit').first().waitFor();
 });
 
 await step("another editor's edit runs the trigger once, in their browser, as them", claudia, async () => {
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/sheets/${book.id}`);
   await ready(mika, book.id);
   await typeInto(mika, 'A5', 'plum');
-  await cellIs(mika, 'B5', 'mika@kaori.jp was empty');
-  await cellIs(claudia, 'B5', 'mika@kaori.jp was empty');
+  await cellIs(mika, 'B5', 'mika@hanami.example was empty');
+  await cellIs(claudia, 'B5', 'mika@hanami.example was empty');
   await claudia.waitForTimeout(1500);
   if ((await cell(claudia, 'E1')) !== 3) throw new Error(`E1 = ${await cell(claudia, 'E1')} (expected 3: Claudia must not also run it)`);
   await mika.context().close();

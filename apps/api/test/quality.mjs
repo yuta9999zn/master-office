@@ -16,11 +16,11 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [fujita, mika, hana] = ['fujita', 'mika', 'hana'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
 const n = Date.now() % 100000;
-const proj = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'ITM Japan').id, name: `Quality ${n}`, key: `QA${n}`, methodology: 'scrum' } })).data;
+const proj = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'Mirai Systems').id, name: `Quality ${n}`, key: `QA${n}`, methodology: 'scrum' } })).data;
 check('new projects start with the usual Definition of Done (not enforced)', proj.dod.length === 6 && proj.dod.includes('Code reviewed') && proj.enforceDod === false, proj.dod);
 await call('PATCH', `/tasks/projects/${proj.id}`, { user: fujita, body: { strictWorkflow: false, enforceDod: true, dod: ['Code reviewed', 'Tests pass', 'Code reviewed', ' '] } });
 const p2 = (await call('GET', '/tasks/projects', { user: fujita })).data.find((p) => p.id === proj.id);

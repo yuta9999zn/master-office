@@ -16,11 +16,11 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [fujita, mika] = ['fujita', 'mika'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
 const n = Date.now() % 100000;
-const created = await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'ITM Japan').id, name: `AI booking ${n}`, key: `AI${n}`, methodology: 'ai-dlc' } });
+const created = await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'Mirai Systems').id, name: `AI booking ${n}`, key: `AI${n}`, methodology: 'ai-dlc' } });
 const proj = created.data;
 check('an AI-DLC project', created.status === 201 && proj.methodology === 'ai-dlc', created.data);
 check('… plans in bolts of 2 days', proj.sprintDays === 2);

@@ -11,7 +11,7 @@ const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 }, timezoneId: 'Asia/Tokyo' });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const step = async (name, fn) => {
@@ -28,13 +28,13 @@ const step = async (name, fn) => {
 const req = ctx.request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `BL${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Lanes ${key}`, key, methodology: 'scrum' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Lanes ${key}`, key, methodology: 'scrum' } })).json();
 await req.patch(`${BASE}/api/tasks/projects/${proj.id}`, { data: { strictWorkflow: false } });
 const mk = async (data) => (await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, ...data } })).json();
 const checkout = await mk({ title: 'Checkout', type: 'epic' });
 const search = await mk({ title: 'Search', type: 'epic' });
 const sprint = await (await req.post(`${BASE}/api/tasks/projects/${proj.id}/sprints`, { data: {} })).json();
-const pay = await mk({ title: 'Pay by card', type: 'story', parentId: checkout.id, sprintId: sprint.id, assigneeId: users.find((u) => u.email === 'mika@kaori.jp').id });
+const pay = await mk({ title: 'Pay by card', type: 'story', parentId: checkout.id, sprintId: sprint.id, assigneeId: users.find((u) => u.email === 'mika@hanami.example').id });
 await mk({ title: 'Coupon codes', type: 'story', parentId: checkout.id, sprintId: sprint.id });
 await mk({ title: 'Search by brand', type: 'story', parentId: search.id });
 await mk({ title: 'Fix footer', type: 'bug' });

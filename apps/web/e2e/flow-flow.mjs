@@ -29,7 +29,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const node = (p, text) => p.locator(`[data-testid="flow-node"][data-text="${text}"]`);
 const nodes = (p) => p.getByTestId('flow-node');
 const edges = (p) => p.getByTestId('flow-edge');
@@ -120,8 +120,8 @@ await step('workflow info: status, trigger, tags', claudia, async () => {
 await step('another editor sees the changes and the pointer live', claudia, async () => {
   const id = flowUrl.split('/').pop();
   const users = await (await claudia.context().request.get(`${BASE}/api/users`)).json();
-  await claudia.context().request.post(`${BASE}/api/resources/${id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
-  const mika = await session('mika@kaori.jp');
+  await claudia.context().request.post(`${BASE}/api/resources/${id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
+  const mika = await session('mika@hanami.example');
   await mika.goto(flowUrl);
   await node(mika, 'Approved?').waitFor({ timeout: 90000 });
   await mika.getByTestId('workflow-info').getByLabel('Status').waitFor();

@@ -11,7 +11,7 @@ const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1700, height: 940 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 let answer = '';
@@ -29,7 +29,7 @@ const step = async (name, fn) => {
 const req = ctx.request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `SE${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Statuses ${key}`, key, methodology: 'kanban', workflow: 'basic' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Statuses ${key}`, key, methodology: 'kanban', workflow: 'basic' } })).json();
 const t = await (await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, title: 'Check the signage' } })).json();
 const col = (name) => page.locator('[data-testid="board-column"]').filter({ has: page.getByText(name, { exact: true }) });
 const statuses = async () => (await (await req.get(`${BASE}/api/tasks/projects`)).json()).find((p) => p.id === proj.id).statuses;

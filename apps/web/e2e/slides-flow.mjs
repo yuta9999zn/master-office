@@ -32,8 +32,8 @@ const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn,
 const counter = (page) => page.getByTestId('slide-counter').innerText();
 const canvasText = (page) => page.getByTestId('slide-canvas').innerText();
 
-const claudia = await session('claudia@kaori.jp');
-const mika = await session('mika@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const mika = await session('mika@hanami.example');
 const find = async (page, q) => (await (await page.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource');
 const deck = await find(claudia, 'Q4 Marketing Strategy - October 2026');
 
@@ -116,7 +116,7 @@ await step('theme change restyles the deck for everyone', claudia, async () => {
   await claudia.getByTestId('slides-panel').getByRole('button', { name: 'Theme', exact: true }).click();
   await claudia.getByTestId('theme-midnight').click();
   await until(mika, () => document.querySelector('[data-testid="slide-canvas"] .mo-slide')?.getAttribute('style')?.includes('#0F172A'));
-  await claudia.getByTestId('theme-natural-beauty').click();
+  await claudia.getByTestId('theme-sakura-beauty').click();
 });
 
 await step('insert a chart and edit its data in the Format panel', claudia, async () => {
@@ -153,7 +153,7 @@ await step('download as PowerPoint from the File menu', claudia, async () => {
 });
 
 await step('a viewer gets a read-only deck', claudia, async () => {
-  const sora = await session('sora@kaori.jp');
+  const sora = await session('sora@hanami.example');
   await sora.goto(`${BASE}/slides/${deck.id}`);
   await until(sora, () => document.querySelectorAll('[data-testid="slide-thumb"]').length === 7, null, 60000);
   await sora.getByText('View only').waitFor();

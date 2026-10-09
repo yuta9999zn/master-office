@@ -154,7 +154,7 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     category: 'Work',
     build: () =>
       doc(
-        p(t('Natural Beauty Co., Ltd.', 'bold')),
+        p(t('Sakura Beauty Co., Ltd.', 'bold')),
         p('1-2-3 Shibuya, Shibuya-ku, Tokyo 150-0002'),
         p('+81 3-1234-5678 · hello@example.com'),
         hr,

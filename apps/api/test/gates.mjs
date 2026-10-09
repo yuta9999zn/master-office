@@ -16,10 +16,10 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [fujita, mika, hana] = ['fujita', 'mika', 'hana'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
-const spaceId = spaces.find((s) => s.name === 'ITM Japan').id;
+const spaceId = spaces.find((s) => s.name === 'Mirai Systems').id;
 const n = Date.now() % 100000;
 const proj = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId, name: `Gates ${n}`, key: `GT${n}`, methodology: 'waterfall' } })).data;
 await call('PATCH', `/tasks/projects/${proj.id}`, { user: fujita, body: { strictWorkflow: false } });

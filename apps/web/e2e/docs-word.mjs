@@ -28,7 +28,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 // A fresh document in the Marketing space so Mika (editor there) can review it.
 const spaces = await (await claudia.request.get(`${BASE}/api/spaces`)).json();
 const marketing = spaces.find((s) => s.name === 'Marketing');
@@ -82,7 +82,7 @@ await step('insert table of contents from Insert menu', claudia, async () => {
   await toc.getByRole('button', { name: 'Details' }).waitFor();
 });
 
-const mika = await session('mika@kaori.jp');
+const mika = await session('mika@hanami.example');
 await mika.goto(url);
 await ed(mika).waitFor();
 

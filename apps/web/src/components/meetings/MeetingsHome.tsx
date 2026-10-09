@@ -103,7 +103,7 @@ export function MeetingsHome() {
               <div className="rounded-xl bg-surface ring-1 ring-line" data-testid="upcoming-meetings">
                 {upcoming.length ? (
                   upcoming.map((e) => {
-                    const room = e.meetingProvider === 'kaori' ? meetingCodeFromUrl(e.meetingUrl) : null;
+                    const room = e.meetingProvider === 'office' ? meetingCodeFromUrl(e.meetingUrl) : null;
                     const now = new Date(e.start) <= new Date();
                     return (
                       <div key={`${e.id}:${e.occurrence}`} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-0">

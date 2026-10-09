@@ -38,7 +38,7 @@ async function socket(user) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, ken, minh, fujita] = ['claudia', 'hana', 'mika', 'ken', 'minh', 'fujita'].map(uid);
 const inbox = async (user, unread) => (await call('GET', `/notifications${unread ? '?unread=1' : ''}`, { user })).data;
 const count = async (user) => (await call('GET', '/notifications/unread-count', { user })).data.unread;
@@ -56,7 +56,7 @@ check('the mention text uses names, not tokens', pushed?.notification.body === '
 check('the unread count goes up', (await count(hana)) === before + 1);
 check('mentioning yourself does not notify you', !(await inbox(claudia)).some((n) => n.kind === 'chat.mention' && n.title.includes('Claudia Chen mentioned')));
 check('people who can read the channel are notified, opened or not', (await inbox(ken)).some((n) => n.kind === 'chat.mention' && n.conversationId === marketing.id));
-const itm = (await list(claudia)).find((c) => c.title === 'ITM Japan - Project');
+const itm = (await list(claudia)).find((c) => c.title === 'Mirai Systems - Project');
 await call('POST', `/chat/conversations/${itm.id}/messages`, { user: claudia, body: { body: `<@${ken}> private?` } });
 await sleep(300);
 check('people outside a private channel are not notified', !(await inbox(ken)).some((n) => n.conversationId === itm.id));

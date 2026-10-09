@@ -45,10 +45,10 @@ const menu = async (page, top, item) => {
   await page.getByRole('menuitem', { name: item }).click();
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
 const book = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Format test ${Date.now()}`, type: 'spreadsheet' } })).json();
-await claudia.request.post(`${BASE}/api/resources/${book.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+await claudia.request.post(`${BASE}/api/resources/${book.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
 
 await step('Format → Alternating colors bands the data region with a header', claudia, async () => {
   await claudia.goto(`${BASE}/sheets/${book.id}`);
@@ -72,7 +72,7 @@ await step('footer and another style rewrite the rules, and the other editor see
   await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getConditionalFormattingRules().length === 4);
   const got = (await rules(claudia)).join(' ');
   for (const want of ['A1:C1=#63D297', 'A6:C6=#AFE9CA', 'A2:C5=#E7F9EF']) if (!got.includes(want)) throw new Error(`missing ${want} in ${got}`);
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/sheets/${book.id}`);
   await ready(mika, book.id);
   await until(mika, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getConditionalFormattingRules().length === 4, null, 30000);
@@ -120,7 +120,7 @@ await step('View → Show formulas shows formulas for this person only; values s
     return ws.getSheet().getCell(2, 5)?.v === '=SUM(F1:F2)';
   });
   if ((await shown(claudia, 'F1')) !== 2) throw new Error('plain values changed');
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/sheets/${book.id}`);
   await ready(mika, book.id);
   await until(mika, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getCell(2, 5)?.v === 5, null, 30000);
@@ -147,7 +147,7 @@ await step('View → Group rows draws a toggle; collapsing hides the rows for ev
   await claudia.getByRole('button', { name: 'Collapse rows 3–5' }).click();
   await until(claudia, () => !window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowVisible(2));
   if ((await hiddenRows(claudia)) !== '3,4,5') throw new Error(`hidden ${await hiddenRows(claudia)}`);
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/sheets/${book.id}`);
   await ready(mika, book.id);
   await mika.evaluate(() => { const wb = window.__moSheet.api.getActiveWorkbook(); wb.setActiveSheet(wb.getSheetByName('Outline')); });
@@ -200,7 +200,7 @@ await step('Data → Create filter view filters by values on this screen only', 
   await panel.getByTestId('filter-values').getByRole('checkbox', { name: '625' }).uncheck();
   await until(claudia, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getSheet().getRowFiltered(2));
   if ((await filtered(claudia)) !== '3,5') throw new Error(`filtered ${await filtered(claudia)}`);
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/sheets/${book.id}`);
   await ready(mika, book.id);
   await mika.evaluate(() => { const wb = window.__moSheet.api.getActiveWorkbook(); wb.setActiveSheet(wb.getSheetByName('Views')); });

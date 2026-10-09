@@ -33,10 +33,10 @@ const card = (page, title) => page.locator(`[data-testid="task-card"][data-title
 // Issues outside the active sprint wait in the backlog (Scrum project).
 const inBacklog = (page, title) => page.locator('[data-testid="backlog-section"][data-name="Not Started"]').locator(`[data-testid="backlog-row"][data-title="${title}"]`);
 
-const fujita = await session('fujita@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const fujita = await session('fujita@hanami.example');
+const hana = await session('hana@hanami.example');
 const users = await (await fujita.context().request.get(`${BASE}/api/users`)).json();
-const id = (k) => users.find((u) => u.email === `${k}@kaori.jp`).id;
+const id = (k) => users.find((u) => u.email === `${k}@hanami.example`).id;
 const projects = await (await fujita.context().request.get(`${BASE}/api/tasks/projects`)).json();
 const web = projects.find((p) => p.key === 'WEB');
 const sys = projects.find((p) => p.key === 'B625');

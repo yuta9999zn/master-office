@@ -18,7 +18,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, yuki, sora, rina, ken, huong] = ['claudia', 'hana', 'mika', 'yuki', 'sora', 'rina', 'ken', 'huong'].map(uid);
 const inbox = async (user) => (await call('GET', '/notifications?unread=1', { user })).data;
 const box = async (user, b, extra = '') => (await call('GET', `/approvals/requests?box=${b}${extra}`, { user })).data;

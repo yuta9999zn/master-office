@@ -16,10 +16,10 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [mika, fujita, ken] = ['mika', 'fujita', 'ken'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
-const itm = spaces.find((s) => s.name === 'ITM Japan').id;
+const itm = spaces.find((s) => s.name === 'Mirai Systems').id;
 const n = Date.now() % 100000;
 const move = (id, status, user = fujita) => call('PATCH', `/tasks/${id}`, { user, body: { status } });
 

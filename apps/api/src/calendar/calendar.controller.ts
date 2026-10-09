@@ -24,7 +24,7 @@ const eventBody = z.object({
   allDay: z.boolean().optional(),
   timezone: z.string().max(64).optional(),
   recurrence,
-  meeting: z.object({ provider: z.enum(['kaori', 'google', 'zoom', 'teams', 'custom']), url: z.string().max(2000).nullish() }).nullish(),
+  meeting: z.object({ provider: z.enum(['office', 'google', 'zoom', 'teams', 'custom']), url: z.string().max(2000).nullish() }).nullish(),
   color: z.string().max(20).nullish(),
   guests: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).nullish(), optional: z.boolean().optional() })).max(200).optional(),
   attachments: z.array(z.string().uuid()).max(20).optional(),

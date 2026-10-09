@@ -6,7 +6,7 @@ const [id] = process.argv.slice(2);
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 const errors = [];
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text().slice(0, 160)));

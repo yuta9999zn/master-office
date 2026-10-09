@@ -29,13 +29,13 @@ const step = async (name, page, fn) => {
   }
 };
 
-const hana = await session('hana@kaori.jp');
+const hana = await session('hana@hanami.example');
 const req = hana.context().request;
 // A fresh base for the run, shared with Mika (editor) to watch live updates.
 const n = Date.now() % 100000;
 const base = await (await req.post(`${BASE}/api/resources`, { data: { name: `Pipeline ${n}`, type: 'base' } })).json();
 const users = await (await req.get(`${BASE}/api/users`)).json();
-await req.post(`${BASE}/api/resources/${base.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+await req.post(`${BASE}/api/resources/${base.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
 const schema = await (await req.get(`${BASE}/api/base/${base.id}`)).json();
 const t = schema.tables[0];
 const fid = (name) => t.fields.find((f) => f.name === name).id;
@@ -187,7 +187,7 @@ await step('the record drawer edits fields and takes comments', hana, async () =
 });
 
 await step('another editor sees changes live', hana, async () => {
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/base/${base.id}`);
   await mika.getByTestId('grid-row').first().waitFor({ timeout: 120000 });
   await mika.waitForTimeout(2500);
@@ -210,7 +210,7 @@ await step('selecting records and deleting them', hana, async () => {
 });
 
 await step('importing a CSV makes a new table', hana, async () => {
-  await hana.getByTestId('import-input').setInputFiles({ name: 'suppliers.csv', mimeType: 'text/csv', buffer: Buffer.from('Supplier,Spend,Since\nKaori Print,1200,2024-04-01\nNishi Foods,800,2025-01-15\n') });
+  await hana.getByTestId('import-input').setInputFiles({ name: 'suppliers.csv', mimeType: 'text/csv', buffer: Buffer.from('Supplier,Spend,Since\nHanami Print,1200,2024-04-01\nNishi Foods,800,2025-01-15\n') });
   await hana.getByTestId('base-table').filter({ hasText: 'suppliers' }).waitFor();
   await hana.locator('[data-testid="grid-header"][data-field="Spend"]').waitFor();
   await hana.getByTestId('record-count').getByText('2 records').waitFor();

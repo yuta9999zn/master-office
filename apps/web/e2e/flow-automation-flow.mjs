@@ -37,8 +37,8 @@ async function api(method, path, user, body) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 
-const claudia = await session('claudia@kaori.jp');
-const claudiaId = users.find((u) => u.email === 'claudia@kaori.jp').id;
+const claudia = await session('claudia@hanami.example');
+const claudiaId = users.find((u) => u.email === 'claudia@hanami.example').id;
 const n = Date.now() % 100000;
 
 // A flow with a manual trigger → Wait → a step to configure.

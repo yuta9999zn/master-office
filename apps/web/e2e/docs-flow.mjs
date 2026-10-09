@@ -28,7 +28,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const hits = await (await claudia.request.get(`${BASE}/api/search?q=${encodeURIComponent('Branch Operation Plan - October')}`)).json();
 const docUrl = `${BASE}/docs/${hits.find((h) => h.kind === 'resource').id}`;
 const editorOf = (p) => p.getByTestId('doc-editor');
@@ -36,7 +36,7 @@ const marker = `Live line ${Date.now() % 100000}`;
 
 await claudia.goto(docUrl);
 await editorOf(claudia).waitFor();
-const mika = await session('mika@kaori.jp');
+const mika = await session('mika@hanami.example');
 await mika.goto(docUrl);
 await editorOf(mika).waitFor();
 
@@ -112,7 +112,7 @@ await step('download as Word (.docx)', claudia, async () => {
 });
 
 await step('viewer opens read-only and cannot type', claudia, async () => {
-  const sora = await session('sora@kaori.jp');
+  const sora = await session('sora@hanami.example');
   await sora.goto(docUrl);
   await editorOf(sora).waitFor();
   await sora.getByText('View only').waitFor();

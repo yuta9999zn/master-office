@@ -293,7 +293,7 @@ export function cardSlides(raw: Partial<CardCopy>, size: DeckSize, request: stri
   const pal = pickPalette(raw.palette, request);
   const f = FONTS[raw.font && FONTS[raw.font] ? raw.font : 'elegant'];
   const facts = factsOf(request);
-  // Words a model tacked onto a contact ("naturalbeauty.vn · Sáng tạo · Tinh tế") are a tagline.
+  // Words a model tacked onto a contact ("sakurabeauty.example · Sáng tạo · Tinh tế") are a tagline.
   const spill = [raw.website, raw.email, raw.phone].map((v) => String(v ?? '').split('·').slice(1).map((x) => x.trim()).filter(Boolean)).find((x) => x.length >= 2);
   const c = {
     name: grounded(clean(raw.name, 40), facts.person) || 'Your Name',
@@ -390,7 +390,7 @@ export function factsOf(request: string) {
   const noMail = request.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, ' ');
   const phone = (noMail.match(/(?:\+\d{1,3}[\s.-]?)?\(?0?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/g) ?? []).map((p) => p.trim()).find((p) => p.replace(/\D/g, '').length >= 9) ?? '';
   const website = (noMail.match(/\b(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:vn|com|net|org|jp|io|co|asia|shop|store|biz|info|me|app)(?:\/[^\s,;]*)?/gi) ?? [])[0] ?? '';
-  // "… cho Natural Beauty Spa", "for Lotus Clinic": a run of capitalised words.
+  // "… cho Sakura Beauty Spa", "for Lotus Clinic": a run of capitalised words.
   const runs = (request.match(/\b(?:[A-Z][\p{L}&'’-]+)(?:\s+[A-Z][\p{L}&'’-]+){1,4}/gu) ?? []).filter((b) => !/^(Banner|Card|Phong|Website|Email|Hotline|Quản|Giám|Trưởng)\b/.test(b));
   // A run with a business word is the company; a person's name is not.
   const brand = runs.find((b) => /\b(Spa|Salon|Clinic|Beauty|Studio|Shop|Store|Café|Cafe|Coffee|Hotel|Restaurant|Company|Ltd|Group|Center|Centre|Academy|Nail|Dental|Food|Bakery|Boutique)\b/i.test(b)) ?? runs.find((b) => !/^(Nguyễn|Trần|Lê|Phạm|Hoàng|Huỳnh|Phan|Vũ|Võ|Đặng|Bùi|Đỗ|Hồ|Ngô|Dương|Lý)\b/.test(b)) ?? '';

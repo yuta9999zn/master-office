@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 // ("giao diện slice pptx.png"); its product illustration is drawn with native shapes so it stays editable
 // and exports to PowerPoint as real shapes.
 
-const NB = THEMES.find((t) => t.id === 'natural-beauty')!;
+const NB = THEMES.find((t) => t.id === 'sakura-beauty')!;
 const PINK = '#F28B9B';
 const PINK_SOFT = '#FDECEF';
 const BLUE_SOFT = '#EEF4FF';
@@ -42,12 +42,12 @@ function products(x: number, y: number): PlainElement[] {
     shape('roundRect', x + 120, y + 70, 130, 250, { fill: '#FFFDF9', stroke: '#EADFD6', strokeWidth: 1.5, radius: 26, shadow: true }),
     shape('roundRect', x + 150, y + 22, 70, 58, { fill: '#C9A27C', radius: 10 }),
     ...lotus(x + 162, y + 150, 0.9),
-    text('NATURAL\nBEAUTY', x + 120, y + 205, 130, 50, { fontSize: 8, color: '#9A8478', align: 'center', lineHeight: 1.3 }),
+    text('SAKURA\nBEAUTY', x + 120, y + 205, 130, 50, { fontSize: 8, color: '#9A8478', align: 'center', lineHeight: 1.3 }),
     // jar
     shape('roundRect', x + 255, y + 210, 150, 115, { fill: '#FFFDF9', stroke: '#EADFD6', strokeWidth: 1.5, radius: 22, shadow: true }),
     shape('roundRect', x + 250, y + 178, 160, 44, { fill: '#C9A27C', radius: 10 }),
     ...lotus(x + 312, y + 236, 0.7),
-    text('NATURAL\nBEAUTY', x + 255, y + 276, 150, 40, { fontSize: 7, color: '#9A8478', align: 'center' }),
+    text('SAKURA\nBEAUTY', x + 255, y + 276, 150, 40, { fontSize: 7, color: '#9A8478', align: 'center' }),
     // flower
     shape('ellipse', x + 70, y + 250, 34, 34, { fill: '#FFFFFF', stroke: '#F1E9E2', strokeWidth: 1 }),
     shape('ellipse', x + 80, y + 260, 14, 14, { fill: '#F6D365' }),
@@ -73,7 +73,7 @@ function q4Deck(): PlainDeck {
       ...products(800, 90),
       // brand + title block
       ...lotus(40, 40, 0.9),
-      text('N A T U R A L   B E A U T Y', 100, 48, 400, 34, { fontSize: 13, color: '#4B5563', vAlign: 'middle' }),
+      text('S A K U R A   B E A U T Y', 100, 48, 400, 34, { fontSize: 13, color: '#4B5563', vAlign: 'middle' }),
       { ...text('Q4 Campaign\nStrategy', 34, 110, 700, 190, { fontSize: 60, bold: true, color: INK, lineHeight: 1.05, vAlign: 'top' }), ph: 'title' },
       { ...text('Driving brand growth through meaningful\nbeauty experiences', 36, 300, 620, 80, { fontSize: 20, color: GREY, lineHeight: 1.35 }), ph: 'subtitle' },
       shape('line', 42, 398, 70, 0, { stroke: PINK, strokeWidth: 3 }),
@@ -124,7 +124,7 @@ function q4Deck(): PlainDeck {
         y: 150,
         w: 700,
         h: 470,
-        chart: { kind: 'column', title: 'Market size (¥ billion)', categories: ['2022', '2023', '2024', '2025', '2026'], series: [{ name: 'Market', values: [410, 446, 488, 531, 579], color: '#93C5FD' }, { name: 'Natural Beauty', values: [12, 14, 16.5, 19, 22], color: PINK }], legend: true },
+        chart: { kind: 'column', title: 'Market size (¥ billion)', categories: ['2022', '2023', '2024', '2025', '2026'], series: [{ name: 'Market', values: [410, 446, 488, 531, 579], color: '#93C5FD' }, { name: 'Sakura Beauty', values: [12, 14, 16.5, 19, 22], color: PINK }], legend: true },
       }),
       { ...el({ type: 'text', x: 800, y: 160, w: 420, h: 300, style: { fontSize: 18, color: '#334155', lineHeight: 1.4 }, text: textDoc(['Clean beauty is the fastest-growing segment (+14%)', 'Gen Z discovers brands on TikTok and Instagram', 'Repeat purchase drives 62% of revenue', 'Competitors are cutting prices — we compete on experience'], { bullets: true }) }), ph: 'body' },
       ...products(860, 450).map((e) => ({ ...e, x: (e.x - 860) * 0.55 + 920, y: (e.y - 450) * 0.55 + 470, w: e.w * 0.55, h: e.h * 0.55, style: { ...e.style, ...(e.style?.fontSize ? { fontSize: Math.max(5, Math.round(e.style.fontSize * 0.55)) } : {}) } })),

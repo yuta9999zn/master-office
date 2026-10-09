@@ -25,7 +25,7 @@ async function call(method, path, { user, body, raw, form } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, mika, sora] = ['claudia', 'mika', 'sora'].map(uid);
 const find = async (q) => (await call('GET', '/search?q=' + encodeURIComponent(q), { user: claudia })).data.find((h) => h.kind === 'resource');
 const salesId = (await find('Sales Report - September 2026')).id;

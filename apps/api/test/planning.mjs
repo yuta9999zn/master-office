@@ -16,10 +16,10 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const fujita = users.find((u) => u.email === 'fujita@kaori.jp').id;
+const fujita = users.find((u) => u.email === 'fujita@hanami.example').id;
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
 const n = Date.now() % 100000;
-const proj = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'ITM Japan').id, name: `Branch rollout ${n}`, key: `PL${n}`, methodology: 'waterfall' } })).data;
+const proj = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'Mirai Systems').id, name: `Branch rollout ${n}`, key: `PL${n}`, methodology: 'waterfall' } })).data;
 await call('PATCH', `/tasks/projects/${proj.id}`, { user: fujita, body: { strictWorkflow: false } });
 check('the workflow: Not Started, Created, In Progress, In Review, Approved, On Hold, Recheck, Completed, Cancelled', proj.statuses.map((s) => s.name).join() === 'Not Started,Created,In Progress,In Review,Approved,On Hold,Recheck,Completed,Cancelled', proj.statuses.map((s) => s.name));
 
@@ -32,7 +32,7 @@ const s2 = (await call('POST', `/tasks/projects/${proj.id}/sprints`, { user: fuj
 check('the epic’s next sprint starts the day after its last one', s2.name === 'POS system · Sprint 2' && s2.startDate === '2026-11-12', s2);
 const t1 = (await call('POST', `/tasks/projects/${proj.id}/sprints`, { user: fujita, body: { epicId: training.id, startDate: '2026-11-02', days: 14 } })).data;
 check('another epic numbers its own sprints', t1.name === 'Staff training · Sprint 1', t1);
-const other = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'ITM Japan').id, name: `Other ${n}`, key: `PO${n}`, methodology: 'waterfall' } })).data;
+const other = (await call('POST', '/tasks/projects', { user: fujita, body: { spaceId: spaces.find((s) => s.name === 'Mirai Systems').id, name: `Other ${n}`, key: `PO${n}`, methodology: 'waterfall' } })).data;
 const foreign = (await call('POST', '/tasks', { user: fujita, body: { projectId: other.id, title: 'Elsewhere', type: 'epic' } })).data;
 check('a sprint takes only an epic of its project', (await call('POST', `/tasks/projects/${proj.id}/sprints`, { user: fujita, body: { epicId: foreign.id } })).status === 400);
 

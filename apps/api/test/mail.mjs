@@ -45,18 +45,18 @@ async function socket(user) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, ken, yuki, rina] = ['claudia', 'hana', 'mika', 'ken', 'yuki', 'rina'].map(uid);
 const boxes = async (user) => (await call('GET', '/mail/mailboxes', { user })).data;
 const personal = async (user) => (await boxes(user)).find((b) => b.kind === 'user');
 const threads = async (user, box, folder = 'inbox', q) => (await call('GET', `/mail/mailboxes/${box}/threads?folder=${folder}${q ? `&q=${encodeURIComponent(q)}` : ''}`, { user })).data;
-const me = (key) => ({ address: `${key}@kaori.jp`, name: null });
+const me = (key) => ({ address: `${key}@hanami.example`, name: null });
 
 // ── Mailboxes ───────────────────────────────────────────────────────────────
 const cBoxes = await boxes(claudia);
 const cBox = cBoxes.find((b) => b.kind === 'user');
-const mkt = cBoxes.find((b) => b.address === 'marketing@kaori.jp');
-check('everyone has a mailbox on the workspace domain', cBox.address === 'claudia@kaori.jp' && cBox.perms.write && cBox.unread === 3, cBox);
+const mkt = cBoxes.find((b) => b.address === 'marketing@hanami.example');
+check('everyone has a mailbox on the workspace domain', cBox.address === 'claudia@hanami.example' && cBox.perms.write && cBox.unread === 3, cBox);
 check('shared space mailboxes are listed for people in the space', !!mkt && mkt.kind === 'space' && mkt.perms.manage, mkt);
 const inbox = await threads(claudia, cBox.id);
 const meeting = inbox.find((t) => t.subject.startsWith('Booking system'));
@@ -90,7 +90,7 @@ const kThread = (await threads(ken, kBox.id)).find((t) => t.subject === 'Budget 
 check('blind copies are delivered', !!kThread);
 const forHana = (await call('GET', `/mail/threads/${(await threads(hana, hBox.id)).find((t) => t.subject === 'Budget memo').id}`, { user: hana })).data.messages[0];
 const forClaudia = (await call('GET', `/mail/threads/${bccd.data.threadId}`, { user: claudia })).data.messages[0];
-check('… but only the sender sees the Bcc line', forHana.bcc.length === 0 && forHana.cc[0].address === 'mika@kaori.jp' && forClaudia.bcc[0].address === 'ken@kaori.jp', [forHana.bcc, forClaudia.bcc]);
+check('… but only the sender sees the Bcc line', forHana.bcc.length === 0 && forHana.cc[0].address === 'mika@hanami.example' && forClaudia.bcc[0].address === 'ken@hanami.example', [forHana.bcc, forClaudia.bcc]);
 check('sending to yourself files it once in Sent and once in the inbox', (await call('POST', '/mail/send', { user: ken, body: { mailboxId: kBox.id, to: [me('ken')], subject: 'Note to self', text: 'Buy milk' } })).status === 201 && (await threads(ken, kBox.id)).some((t) => t.subject === 'Note to self') && (await threads(ken, kBox.id, 'sent')).some((t) => t.subject === 'Note to self'));
 
 // ── Outside addresses and validation ────────────────────────────────────────
@@ -159,25 +159,25 @@ const cView = (await call('GET', `/mail/threads/${collab.id}`, { user: hana })).
 const answer = await call('POST', '/mail/send', { user: hana, body: { mailboxId: mkt.id, to: [cView.messages[0].from], subject: '', text: 'Thank you Aiko — how about Thursday?', replyTo: cView.messages[0].id } });
 check('editors answer from the shared address (outside mail goes out)', answer.status === 201 && answer.data.external === 1, answer.data);
 const aView = (await call('GET', `/mail/threads/${collab.id}`, { user: mika })).data;
-check('the answer sits in the shared conversation, from the shared address, written by its author', aView.messages[1].from.address === 'marketing@kaori.jp' && aView.messages[1].author?.id === hana, aView.messages[1]);
+check('the answer sits in the shared conversation, from the shared address, written by its author', aView.messages[1].from.address === 'marketing@hanami.example' && aView.messages[1].author?.id === hana, aView.messages[1]);
 check('conversations can be assigned to someone who can answer', (await call('PATCH', `/mail/threads/${collab.id}`, { user: hana, body: { assigneeId: mika } })).status === 204 && (await threads(hana, mkt.id)).find((t) => t.id === collab.id).assignee?.id === mika);
 check('… not to someone who only reads', (await call('PATCH', `/mail/threads/${collab.id}`, { user: hana, body: { assigneeId: yuki } })).status === 400);
 check('personal mailboxes have no assignment', (await call('PATCH', `/mail/threads/${hThread.id}`, { user: hana, body: { assigneeId: mika } })).status === 400);
-await call('POST', '/mail/send', { user: ken, body: { mailboxId: kBox.id, to: [{ address: 'marketing@kaori.jp', name: 'Marketing' }], subject: 'Store poster request', text: 'Can we get A1 posters for Branch 625?' } });
+await call('POST', '/mail/send', { user: ken, body: { mailboxId: kBox.id, to: [{ address: 'marketing@hanami.example', name: 'Marketing' }], subject: 'Store poster request', text: 'Can we get A1 posters for Branch 625?' } });
 check('mail to the shared address from inside lands in its inbox', (await threads(hana, mkt.id)).some((t) => t.subject === 'Store poster request'));
 
 const spaces = (await call('GET', '/spaces', { user: claudia })).data;
 const hr = spaces.find((s) => s.name === 'HR');
 check('only space admins add a space mailbox', (await call('POST', `/mail/spaces/${hr.id}/mailbox`, { user: ken, body: { localPart: 'hr' } })).status === 404);
 const hrBox = await call('POST', `/mail/spaces/${hr.id}/mailbox`, { user: rina, body: { localPart: 'hr', name: 'HR Team' } });
-check('a space admin adds hr@kaori.jp', hrBox.status === 201 && hrBox.data.address === 'hr@kaori.jp', hrBox.data);
+check('a space admin adds hr@hanami.example', hrBox.status === 201 && hrBox.data.address === 'hr@hanami.example', hrBox.data);
 check('one address, one mailbox', (await call('POST', `/mail/spaces/${spaces.find((s) => s.name === 'Finance').id}/mailbox`, { user: claudia, body: { localPart: 'hr' } })).status === 400);
 check('people outside a private space never see its mailbox', !(await boxes(ken)).some((b) => b.id === hrBox.data.id) && (await call('GET', `/mail/mailboxes/${hrBox.data.id}/threads`, { user: ken })).status === 404);
 
 // ── Search, address book ────────────────────────────────────────────────────
 check('search finds conversations by words, sender or subject', (await threads(claudia, cBox.id, 'all', 'station')).some((t) => t.subject === 'Lunch on Friday?') && (await threads(claudia, cBox.id, 'all', 'legal@itmjapan')).length === 1);
 const book = (await call('GET', '/mail/addresses?q=mar', { user: claudia })).data;
-check('the address book suggests shared mailboxes and people', book.some((a) => a.address === 'marketing@kaori.jp' && a.kind === 'space'), book);
+check('the address book suggests shared mailboxes and people', book.some((a) => a.address === 'marketing@hanami.example' && a.kind === 'space'), book);
 check('… and outside people you wrote to', (await call('GET', '/mail/addresses?q=partner', { user: claudia })).data.some((a) => a.address === 'partner@example.com' && a.kind === 'external'));
 
 sh.ws.close();

@@ -11,7 +11,7 @@ export async function seedMeetings(db: Db, workspaceId: string, u: Record<string
   const past = [
     { title: 'Weekly Ops Standup', host: 'mika', ago: 1, hour: 0, minutes: 32, people: ['mika', 'claudia', 'yuki', 'sora', 'ken'], chat: [['yuki', 'Inventory sheet is updated for 575.'], ['mika', 'Thanks! Sora, can you check 625 by Friday?'], ['sora', 'Will do 👍']] },
     { title: 'Marketing Sync', host: 'hana', ago: 2, hour: 1, minutes: 45, people: ['hana', 'claudia', 'mika'], chat: [['hana', 'Slides for the autumn campaign are in Drive.']] },
-    { title: 'ITM Japan — Project kickoff', host: 'fujita', ago: 5, hour: 4, minutes: 58, people: ['fujita', 'claudia', 'minh', 'hana'], chat: [] },
+    { title: 'Mirai Systems — Project kickoff', host: 'fujita', ago: 5, hour: 4, minutes: 58, people: ['fujita', 'claudia', 'minh', 'hana'], chat: [] },
   ];
   for (const m of past) {
     const start = new Date(Date.now() - m.ago * day);

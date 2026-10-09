@@ -259,7 +259,7 @@ function Upcoming() {
                     {t(e.start)} – {t(e.end)}
                   </span>
                 </Link>
-                {e.meetingUrl && e.meetingProvider === 'kaori' && meetingCodeFromUrl(e.meetingUrl) ? (
+                {e.meetingUrl && e.meetingProvider === 'office' && meetingCodeFromUrl(e.meetingUrl) ? (
                   <Link href={meetingPath(meetingCodeFromUrl(e.meetingUrl)!)} className={cn('rounded-lg px-3 py-1 text-[12.5px] font-medium', live ? 'bg-brand-600 text-white' : 'text-brand-600 ring-1 ring-brand-200')}>
                     Join
                   </Link>

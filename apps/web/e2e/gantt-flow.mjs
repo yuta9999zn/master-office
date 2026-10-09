@@ -33,11 +33,11 @@ const day = (n) => {
   return d.toISOString().slice(0, 10);
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 const req = fujita.context().request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `GF${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Gantt flow ${key}`, key, methodology: 'waterfall' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Gantt flow ${key}`, key, methodology: 'waterfall' } })).json();
 await req.patch(`${BASE}/api/tasks/projects/${proj.id}`, { data: { strictWorkflow: false } });
 const phase = await (await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, title: 'Build', type: 'phase', startDate: day(1), dueDate: day(12), criteria: [{ text: 'Code complete', done: true }] } })).json();
 const a = await (await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, parentId: phase.id, title: 'Database schema', startDate: day(2), dueDate: day(6) } })).json();

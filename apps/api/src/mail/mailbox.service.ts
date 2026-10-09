@@ -153,7 +153,7 @@ export class MailboxService {
     await this.touched([id]);
   }
 
-  /** A shared mailbox for a space, e.g. marketing@kaori.jp (space admins). */
+  /** A shared mailbox for a space, e.g. marketing@hanami.example (space admins). */
   async enableSpaceMailbox(actor: Actor, spaceId: string, input: { localPart: string; name?: string }) {
     const role = await this.perms.requireSpace(actor, spaceId, 'viewer');
     if (!can(role, 'admin')) throw new ForbiddenException('Only space admins set up a space mailbox');

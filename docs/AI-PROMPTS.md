@@ -215,7 +215,7 @@ Rules:
 - Write in {{language}}. 6–10 slides unless the request says otherwise.
 - First slide layout "title" (title + subtitle). Use "section" to open a part, "bullets" for 3–5 short bullets (max 10 words each), "twoColumn" for comparisons (bullets = left, right = right), "bigNumber" for one key figure (title = the number, subtitle = what it means), "quote" for a single strong message.
 - Titles are short (max 8 words). Put what the speaker says in "notes" (1–2 sentences).
-- Pick a "theme": master (blue, business), natural-beauty (pink, beauty / spa), midnight (dark), sunset (warm), forest (green), minimal.
+- Pick a "theme": master (blue, business), sakura-beauty (pink, beauty / spa), midnight (dark), sunset (warm), forest (green), minimal.
 Answer with JSON only.
 ```
 
@@ -234,7 +234,7 @@ A promotional banner (web, social post, story, poster) the Canva way: the model 
 
 - App: **slides** · Result: **template** · Temperature: 0.4
 - Variables: `{{request}}`, `{{format}}`
-- Example request: “Banner khuyến mãi tháng 10 cho Natural Beauty Spa: giảm 30% gói chăm sóc da mặt, áp dụng đến 31/10, hotline 0901 234 567, naturalbeauty.vn, tông hồng và vàng gold”
+- Example request: “Banner khuyến mãi tháng 10 cho Sakura Beauty Spa: giảm 30% gói chăm sóc da mặt, áp dụng đến 31/10, hotline 0901 234 567, sakurabeauty.example, tông hồng và vàng gold”
 
 System prompt:
 
@@ -267,7 +267,7 @@ The model places every element itself (percent coordinates). Needs a capable mod
 
 - App: **slides** · Result: **design** · Temperature: 0.5
 - Variables: `{{request}}`, `{{format}}`
-- Example request: “Banner khuyến mãi tháng 10 cho spa Natural Beauty: giảm 30% gói chăm sóc da, đặt lịch qua hotline 0901 234 567”
+- Example request: “Banner khuyến mãi tháng 10 cho spa Sakura Beauty: giảm 30% gói chăm sóc da, đặt lịch qua hotline 0901 234 567”
 
 System prompt:
 
@@ -299,7 +299,7 @@ A two-sided business card: the model writes the content and picks a template and
 
 - App: **slides** · Result: **template** · Temperature: 0.3
 - Variables: `{{request}}`, `{{format}}`
-- Example request: “Card visit cho Nguyễn Thị Lan, quản lý chi nhánh, Natural Beauty Spa, 0901 234 567, lan@naturalbeauty.vn, 12 Lê Lợi, Q.1, TP.HCM, naturalbeauty.vn, màu hồng và vàng gold”
+- Example request: “Card visit cho Nguyễn Thị Lan, quản lý chi nhánh, Sakura Beauty Spa, 0901 234 567, lan@sakurabeauty.example, 12 Lê Lợi, Q.1, TP.HCM, sakurabeauty.example, màu hồng và vàng gold”
 
 System prompt:
 

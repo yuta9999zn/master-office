@@ -33,12 +33,12 @@ const step = async (name, page, fn) => {
 const ymd = (d) => new Date(Date.now() + d * 86400_000).toISOString().slice(0, 10);
 const row = (page, text) => page.getByTestId('request-row').filter({ hasText: text }).first();
 
-const mika = await session('mika@kaori.jp');
-const yuki = await session('yuki@kaori.jp');
-const rina = await session('rina@kaori.jp');
-const claudia = await session('claudia@kaori.jp');
+const mika = await session('mika@hanami.example');
+const yuki = await session('yuki@hanami.example');
+const rina = await session('rina@hanami.example');
+const claudia = await session('claudia@hanami.example');
 const users = await (await mika.context().request.get(`${BASE}/api/users`)).json();
-const id = (k) => users.find((u) => u.email === `${k}@kaori.jp`).id;
+const id = (k) => users.find((u) => u.email === `${k}@hanami.example`).id;
 const tpls = await (await yuki.context().request.get(`${BASE}/api/approvals/templates`)).json();
 const T = (name) => tpls.find((t) => t.name === name);
 let leaveId = '';

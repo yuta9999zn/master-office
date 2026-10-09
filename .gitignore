@@ -11,3 +11,8 @@ playwright-report
 
 # Full-size screenshots for posts (docs/screenshots holds the README copies)
 /screenshots
+
+# AI-agent flight logs and UI reference screenshots stay local
+.kiai
+/*.png
+!/logo.png

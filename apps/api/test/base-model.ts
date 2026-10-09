@@ -38,7 +38,7 @@ const fields = [
   f('days', 'Days left', 'formula', { expression: "DATETIME_DIFF({Due}, TODAY(), 'days')" }, 10),
   f('no', 'No', 'autoNumber', {}, 11),
 ];
-const ctx: CellContext = { fields, people: new Map([['u1', { name: 'Hana Sato', email: 'hana@kaori.jp' }], ['u2', { name: 'Ken Ito' }]]), now: new Date('2026-10-07T03:00:00Z'), timeZone: 'Asia/Tokyo' };
+const ctx: CellContext = { fields, people: new Map([['u1', { name: 'Hana Sato', email: 'hana@hanami.example' }], ['u2', { name: 'Ken Ito' }]]), now: new Date('2026-10-07T03:00:00Z'), timeZone: 'Asia/Tokyo' };
 let n = 0;
 const rec = (values: Record<string, unknown>): BaseRecord => ({ id: `r${++n}`, tableId: 't', values, position: `a${n}`, autoNumber: n, createdBy: 'u1', createdAt: '2026-10-01T00:00:00Z', updatedBy: null, updatedAt: '2026-10-01T00:00:00Z', commentCount: 0 });
 const rows = [
@@ -64,7 +64,7 @@ check('functions: ROUND, SUM over lists, CONCAT, DATEADD', cellValue(f('z', 'Z',
 check('currency text', cellText(by('price'), 1200, ctx) === '¥1,200');
 check('select / multi-select / person text', cellText(by('status'), 'b', ctx) === 'Won' && cellText(by('tags'), ['x', 'y'], ctx) === 'VIP, Repeat' && cellText(by('owner'), ['u1'], ctx) === 'Hana Sato');
 check('coercing typed text: numbers, percent, checkbox, dates', coerceValue(by('qty'), '1,250', ctx) === 1250 && coerceValue(f('p', 'P', 'percent'), '15%', ctx) === 0.15 && coerceValue(by('done'), 'yes', ctx) === true && coerceValue(by('due'), '10/07/2026', ctx) === '2026-10-07');
-check('coercing names to choices and people', coerceValue(by('status'), 'won', ctx) === 'b' && JSON.stringify(coerceValue(by('owner'), 'hana@kaori.jp', ctx)) === '["u1"]');
+check('coercing names to choices and people', coerceValue(by('status'), 'won', ctx) === 'b' && JSON.stringify(coerceValue(by('owner'), 'hana@hanami.example', ctx)) === '["u1"]');
 const added: string[] = [];
 const v = coerceValue(by('tags'), 'VIP, Gold', ctx, { addChoice: (_fl, name) => (added.push(name), { id: 'g', name, color: '#fff' }) });
 check('unknown choices can be added on import', JSON.stringify(v) === '["x","g"]' && added.join() === 'Gold', v);

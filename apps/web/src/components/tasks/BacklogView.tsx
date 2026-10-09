@@ -427,7 +427,7 @@ export function StartDialog({ project, sprint, items, onClose }: { project: Proj
         <p className="text-[12px] text-muted">Ends {f(end)}</p>
         <label className="flex items-center gap-2 font-medium text-ink-2">
           <input type="checkbox" checked={schedule} onChange={(e) => setSchedule(e.target.checked)} className="accent-brand-600" data-testid="schedule-ceremonies" />
-          <CalendarClock size={15} /> {bolt ? 'Put the bolt rituals in Calendar (with Kaori Meet rooms)' : 'Put the Scrum ceremonies in Calendar (with Kaori Meet rooms)'}
+          <CalendarClock size={15} /> {bolt ? 'Put the bolt rituals in Calendar (with Office Meet rooms)' : 'Put the Scrum ceremonies in Calendar (with Office Meet rooms)'}
         </label>
         {schedule && (
           <div className="rounded-lg bg-canvas p-3 ring-1 ring-line" data-testid="ceremony-plan">

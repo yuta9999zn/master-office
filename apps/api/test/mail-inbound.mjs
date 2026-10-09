@@ -21,7 +21,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana] = [uid('claudia'), uid('hana')];
 const boxes = async (user) => (await call('GET', '/mail/mailboxes', { user })).data;
 const threads = async (user, box, folder = 'inbox') => (await call('GET', `/mail/mailboxes/${box}/threads?folder=${folder}`, { user })).data;
@@ -32,13 +32,13 @@ const cBox = (await boxes(claudia)).find((b) => b.kind === 'user');
 const subject = `Partnership idea ${stamp}`;
 const info = await smtp.sendMail({
   from: '"Ken Partner" <ken@partner.example>',
-  to: 'claudia@kaori.jp',
+  to: 'claudia@hanami.example',
   subject,
   text: 'Hello Claudia, here is our proposal.',
   html: '<p>Hello <b>Claudia</b>, here is our proposal.</p><script>alert(1)</script><img src="x" onerror="alert(2)">',
   attachments: [{ filename: 'proposal.txt', content: 'Proposal v1' }],
 });
-check('the SMTP listener accepts mail for our addresses', info.accepted?.includes('claudia@kaori.jp'), info);
+check('the SMTP listener accepts mail for our addresses', info.accepted?.includes('claudia@hanami.example'), info);
 await sleep(500);
 const t = (await threads(claudia, cBox.id)).find((x) => x.subject === subject);
 check('it lands in the inbox, unread, with the file', t?.unread === true && t.hasAttachments, t);
@@ -51,29 +51,29 @@ check('the attachment downloads', v.attachments[0].name === 'proposal.txt' && (a
 // Our reply goes out; their answer comes back into the same conversation.
 const r = await call('POST', '/mail/send', { user: claudia, body: { mailboxId: cBox.id, to: [v.from], subject: '', text: 'Thanks Ken, let us talk on Monday.', replyTo: v.id } });
 const ours = (await call('GET', `/mail/threads/${r.data.threadId}`, { user: claudia })).data.messages.at(-1);
-await smtp.sendMail({ from: 'ken@partner.example', to: 'claudia@kaori.jp', subject: `Re: ${subject}`, text: 'Monday is perfect.', inReplyTo: `<${ours.messageId}>`, references: [`<${v.messageId}>`, `<${ours.messageId}>`] });
+await smtp.sendMail({ from: 'ken@partner.example', to: 'claudia@hanami.example', subject: `Re: ${subject}`, text: 'Monday is perfect.', inReplyTo: `<${ours.messageId}>`, references: [`<${v.messageId}>`, `<${ours.messageId}>`] });
 await sleep(500);
 const again = (await call('GET', `/mail/threads/${t.id}`, { user: claudia })).data;
 check('their answer joins the conversation (threaded by headers)', r.data.external === 1 && again.messages.length === 3 && again.messages[2].text.includes('Monday is perfect'), again.messages.map((m) => m.text));
 
 let refused = null;
 try {
-  await smtp.sendMail({ from: 'x@spam.example', to: 'nobody@kaori.jp', subject: 'hi', text: 'hi' });
+  await smtp.sendMail({ from: 'x@spam.example', to: 'nobody@hanami.example', subject: 'hi', text: 'hi' });
 } catch (e) {
   refused = e;
 }
 check('addresses without a mailbox are refused (550)', refused?.responseCode === 550, refused?.message);
 
-await smtp.sendMail({ from: 'Aiko <aiko@studio-mori.example>', to: 'marketing@kaori.jp', cc: 'claudia@kaori.jp', subject: `Shared ${stamp}`, text: 'For the team' });
+await smtp.sendMail({ from: 'Aiko <aiko@studio-mori.example>', to: 'marketing@hanami.example', cc: 'claudia@hanami.example', subject: `Shared ${stamp}`, text: 'For the team' });
 await sleep(500);
-const mkt = (await boxes(hana)).find((b) => b.address === 'marketing@kaori.jp');
+const mkt = (await boxes(hana)).find((b) => b.address === 'marketing@hanami.example');
 check('mail to a shared mailbox reaches the space', (await threads(hana, mkt.id)).some((x) => x.subject === `Shared ${stamp}`));
 check('… and the copy to a person reaches them too', (await threads(claudia, cBox.id)).some((x) => x.subject === `Shared ${stamp}`));
 
 // The webhook for mail providers.
 const mime = [
   'From: Press <press@news.example>',
-  'To: claudia@kaori.jp',
+  'To: claudia@hanami.example',
   `Subject: Webhook ${stamp}`,
   `Message-ID: <hook-${stamp}@news.example>`,
   'Content-Type: text/plain; charset=utf-8',

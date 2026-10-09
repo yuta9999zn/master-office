@@ -660,7 +660,7 @@ export interface CalendarEventView {
   timezone: string;
   recurrence: Recurrence | null;
   meetingUrl: string | null;
-  meetingProvider: 'kaori' | 'google' | 'zoom' | 'teams' | 'custom' | null;
+  meetingProvider: 'office' | 'google' | 'zoom' | 'teams' | 'custom' | null;
   color: string | null;
   organizer: UserSummary | null;
   attendees: EventAttendee[];
@@ -683,7 +683,7 @@ export interface EventInput {
   allDay?: boolean;
   timezone?: string;
   recurrence?: Recurrence | null;
-  meeting?: { provider: 'kaori' | 'google' | 'zoom' | 'teams' | 'custom'; url?: string | null } | null;
+  meeting?: { provider: 'office' | 'google' | 'zoom' | 'teams' | 'custom'; url?: string | null } | null;
   color?: string | null;
   guests?: { email: string; name?: string | null; optional?: boolean }[];
   attachments?: string[];
@@ -1188,7 +1188,7 @@ export function meetingCode(bytes: ArrayLike<number>): string {
   return `${c.slice(0, 3)}-${c.slice(3, 7)}-${c.slice(7)}`;
 }
 
-/** The room code in a Kaori Meet link (…/meetings?room=abc-defg-hij), or null. */
+/** The room code in a Office Meet link (…/meetings?room=abc-defg-hij), or null. */
 export function meetingCodeFromUrl(url: string | null | undefined): string | null {
   const m = url?.match(/\/meetings\?(?:[^#\s]*&)?room=([a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3})\b/);
   return m ? m[1] : null;

@@ -19,10 +19,10 @@ async function call(method, path, { user, body, cookie } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null, cookie: session?.split(';')[0] ?? null, setCookie: session ?? null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, fujita, hana] = ['claudia', 'fujita', 'hana'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: claudia })).data;
-const itm = spaces.find((s) => s.name === 'ITM Japan');
+const itm = spaces.find((s) => s.name === 'Mirai Systems');
 const n = Date.now() % 1000000;
 const email = `new.hire.${n}@example.com`;
 
@@ -46,7 +46,7 @@ check('… members already in are skipped', inv.data.results.find((r) => r.email
 check('the pending list', (await call('GET', '/admin/invitations', { user: claudia })).data.some((i) => i.email === email && !i.expired));
 const token = sent.link.split('/invite/')[1];
 const info = await call('GET', `/invitations/${token}`);
-check('the invitation page: organisation, who invited, teams and position', info.data.email === email && info.data.workspace === 'KAORI' && info.data.teams[0]?.name === 'ITM Japan' && info.data.teams[0]?.title === 'Junior developer', info.data);
+check('the invitation page: organisation, who invited, teams and position', info.data.email === email && info.data.workspace === 'HANAMI' && info.data.teams[0]?.name === 'Mirai Systems' && info.data.teams[0]?.title === 'Junior developer', info.data);
 check('a bad link', (await call('GET', '/invitations/nope-nope-nope')).status === 404);
 check('passwords need 10 characters', (await call('POST', `/invitations/${token}/accept`, { body: { name: 'New Hire', password: 'short' } })).status === 400);
 const acc = await call('POST', `/invitations/${token}/accept`, { body: { name: 'New Hire', password: 'correct horse battery' } });
@@ -90,11 +90,11 @@ check('a bad reset link', (await call('GET', '/auth/reset/not-a-token')).status 
 
 // ── System e-mail ───────────────────────────────────────────────────────────
 check('a password is required', (await call('PUT', '/admin/settings/smtp', { user: claudia, body: { provider: 'gmail', user: 'office.test@gmail.com' } })).status === 400);
-const saved = await call('PUT', '/admin/settings/smtp', { user: claudia, body: { provider: 'gmail', user: 'office.test@gmail.com', password: 'abcd efgh ijkl mnop', fromName: 'KAORI Office' } });
+const saved = await call('PUT', '/admin/settings/smtp', { user: claudia, body: { provider: 'gmail', user: 'office.test@gmail.com', password: 'abcd efgh ijkl mnop', fromName: 'HANAMI Office' } });
 check('saving Gmail: preset host / port, the password is never returned', saved.status === 200 && saved.data.smtp.host === 'smtp.gmail.com' && saved.data.smtp.port === 465 && saved.data.smtp.hasPassword && !JSON.stringify(saved.data).includes('abcd'), saved.data);
 const custom = await call('PUT', '/admin/settings/smtp', { user: claudia, body: { provider: 'custom', user: 'mailer', host: '127.0.0.1', port: 1, secure: false } });
 check('switching to custom SMTP keeps the stored password', custom.data.smtp.host === '127.0.0.1' && custom.data.smtp.hasPassword, custom.data);
-const test = await call('POST', '/admin/settings/smtp/test', { user: claudia, body: { to: 'claudia@kaori.jp' } });
+const test = await call('POST', '/admin/settings/smtp/test', { user: claudia, body: { to: 'claudia@hanami.example' } });
 check('a failing test reports the server error', test.status === 400 && /could not be sent/.test(test.data.message), test.data);
 check('removing the system e-mail', (await call('DELETE', '/admin/settings/smtp', { user: claudia })).status === 204 && (await call('GET', '/admin/settings/smtp', { user: claudia })).data.smtp === null);
 check('the system address for links', (await call('PATCH', '/admin/settings/general', { user: claudia, body: { appUrl: 'ftp://bad' } })).status === 400 && (await call('PATCH', '/admin/settings/general', { user: claudia, body: { appUrl: 'http://localhost:3010/' } })).data.appUrl === 'http://localhost:3010');

@@ -32,7 +32,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const owner = await session('claudia@kaori.jp');
+const owner = await session('claudia@hanami.example');
 const n = Date.now() % 1000000;
 const email = `designer.${n}@example.com`;
 let link = '';
@@ -41,14 +41,14 @@ await step('the owner opens the admin console from the top bar', owner, async ()
   await owner.goto(`${BASE}/home`);
   await owner.getByTestId('admin-button').click({ timeout: 90000 });
   await owner.getByTestId('members-table').waitFor({ timeout: 60000 });
-  await owner.locator('[data-testid="member-row"][data-email="claudia@kaori.jp"]').getByText('Owner').waitFor();
+  await owner.locator('[data-testid="member-row"][data-email="claudia@hanami.example"]').getByText('Owner').waitFor();
 });
 
 await step('inviting someone into a team with a position (no system e-mail → the link is shown)', owner, async () => {
   await owner.getByTestId('invite-people').click();
   const dlg = owner.getByRole('dialog');
   await dlg.getByLabel('Invite e-mails').fill(email);
-  await dlg.getByTestId('invite-team').selectOption({ label: 'ITM Japan' });
+  await dlg.getByTestId('invite-team').selectOption({ label: 'Mirai Systems' });
   await dlg.getByLabel('Position').fill('UI designer');
   await dlg.getByLabel('Message').fill('Welcome to the team!');
   await owner.getByTestId('invite-send').click();
@@ -62,7 +62,7 @@ const guest = await session(null);
 await step('the invitation link: organisation, team and position, then the account', guest, async () => {
   await guest.goto(link.replace(/^https?:\/\/[^/]+/, BASE));
   const info = guest.getByTestId('invite-info');
-  await info.getByText('ITM Japan · UI designer').waitFor({ timeout: 60000 });
+  await info.getByText('Mirai Systems · UI designer').waitFor({ timeout: 60000 });
   await info.getByText('Welcome to the team!').waitFor();
   await guest.getByLabel('Your name').fill('Dana Designer');
   await guest.getByLabel('New password').fill('short');
@@ -141,7 +141,7 @@ await step('system e-mail: save, the password is hidden, a failing test shows th
   await owner.getByTestId('smtp-save').click();
   await owner.getByTestId('smtp-state').getByText('not tested yet').waitFor({ timeout: 30000 });
   if ((await owner.getByLabel('App password').inputValue()) !== '') throw new Error('password still in the field');
-  await owner.getByLabel('Test recipient').fill('claudia@kaori.jp');
+  await owner.getByLabel('Test recipient').fill('claudia@hanami.example');
   await owner.getByTestId('smtp-test').click();
   await owner.getByTestId('smtp-error').getByText('could not be sent').waitFor({ timeout: 30000 });
   await owner.getByTestId('smtp-state').getByRole('button', { name: 'Remove' }).click();

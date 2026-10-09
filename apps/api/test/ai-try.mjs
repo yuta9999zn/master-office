@@ -4,7 +4,7 @@
 const API = process.env.API_URL ?? 'http://localhost:4000';
 const [key, request, model, format] = process.argv.slice(2);
 const users = await (await fetch(`${API}/users`)).json();
-const me = users.find((u) => u.email === 'claudia@kaori.jp').id;
+const me = users.find((u) => u.email === 'claudia@hanami.example').id;
 const call = async (method, path, body) => {
   const res = await fetch(API + path, { method, headers: { 'x-user-id': me, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text();

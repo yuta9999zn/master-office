@@ -335,8 +335,8 @@ export const THEMES: Theme[] = [
     fonts: { heading: 'Inter', body: 'Inter' },
   },
   {
-    id: 'natural-beauty',
-    name: 'Natural Beauty',
+    id: 'sakura-beauty',
+    name: 'Sakura Beauty',
     colors: { bg: '#FFFFFF', text: '#475569', title: '#111827', muted: '#9CA3AF', accents: ['#F28B9B', '#F9C5CF', '#3B82F6', '#22C55E', '#A7F3D0', '#E11D48'] },
     fonts: { heading: 'Inter', body: 'Inter' },
   },

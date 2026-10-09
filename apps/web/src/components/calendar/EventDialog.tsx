@@ -11,7 +11,7 @@ import { ResourcePickerDialog } from '../chat/attachments';
 const ZONES = ['Asia/Tokyo', 'Asia/Ho_Chi_Minh', 'Asia/Bangkok', 'Asia/Singapore', 'Asia/Seoul', 'Asia/Shanghai', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Los_Angeles', 'UTC'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PROVIDERS = [
-  { id: 'kaori', label: 'Kaori Meet (default)' },
+  { id: 'office', label: 'Office Meet (default)' },
   { id: 'google', label: 'Google Meet' },
   { id: 'zoom', label: 'Zoom' },
   { id: 'teams', label: 'Microsoft Teams' },
@@ -75,8 +75,8 @@ function Form({ onClose, draft, edit }: { onClose: () => void; draft: EventDraft
   const [repeat, setRepeat] = useState<RepeatChoice>(choiceOf(edit?.recurrence ?? null));
   const [location, setLocation] = useState(edit?.location ?? '');
   const [video, setVideo] = useState(!!edit?.meetingUrl || (!edit && kind === 'event'));
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]['id']>(edit?.meetingProvider ?? 'kaori');
-  const [link, setLink] = useState(edit?.meetingProvider && edit.meetingProvider !== 'kaori' ? edit.meetingUrl ?? '' : '');
+  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]['id']>(edit?.meetingProvider ?? 'office');
+  const [link, setLink] = useState(edit?.meetingProvider && edit.meetingProvider !== 'office' ? edit.meetingUrl ?? '' : '');
   const [calendarId, setCalendarId] = useState(edit?.calendarId ?? draft?.calendarId ?? writable[0]?.id ?? '');
   const [guests, setGuests] = useState<{ email: string; name: string | null }[]>(
     (edit?.attendees ?? []).filter((a) => a.user?.id !== edit?.organizer?.id).map((a) => ({ email: a.email, name: a.name })),
@@ -118,7 +118,7 @@ function Form({ onClose, draft, edit }: { onClose: () => void; draft: EventDraft
       allDay,
       timezone: tz,
       recurrence: recurrenceOf(repeat, start, tz),
-      meeting: video && kind === 'event' ? { provider, url: provider === 'kaori' ? null : link.trim() } : null,
+      meeting: video && kind === 'event' ? { provider, url: provider === 'office' ? null : link.trim() } : null,
       guests: kind === 'event' ? guests.map((g) => ({ email: g.email, name: g.name })) : [],
       attachments: files.map((f) => f.id),
       notify: notify && guests.length > 0,
@@ -229,13 +229,13 @@ function Form({ onClose, draft, edit }: { onClose: () => void; draft: EventDraft
                       {p.label}
                     </label>
                   ))}
-                  {provider !== 'kaori' && (
+                  {provider !== 'office' && (
                     <span className="col-span-2 flex items-center gap-2">
                       <Link2 size={14} className="text-subtle" />
                       <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" aria-label="Meeting link" className={cn(field, 'flex-1')} />
                     </span>
                   )}
-                  {provider === 'kaori' && <span className="col-span-2 text-[11.5px] text-muted">A link is created when you save.</span>}
+                  {provider === 'office' && <span className="col-span-2 text-[11.5px] text-muted">A link is created when you save.</span>}
                 </div>
               )}
             </div>

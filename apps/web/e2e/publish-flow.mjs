@@ -29,7 +29,7 @@ const step = async (name, page, fn) => {
     await page.screenshot({ path: join(tmpdir(), `mo-publish-fail-${name.replace(/\W+/g, '_')}.png`) });
   }
 };
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const find = async (q, type) => (await (await claudia.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource' && (!type || h.type === type) && h.title === q);
 const menu = async (top, item) => {
   await claudia.getByRole('button', { name: top, exact: true }).click();
@@ -97,7 +97,7 @@ await step('spreadsheet and presentation publish too', claudia, async () => {
 await step('activity dashboard: viewers, trends and sharing history', claudia, async () => {
   const doc = await find('Branch Operation Plan - October 2026');
   // Mika opens the document (a view).
-  const mika = await session('mika@kaori.jp');
+  const mika = await session('mika@hanami.example');
   await mika.goto(`${BASE}/docs/${doc.id}`);
   await mika.getByTestId('doc-editor').waitFor({ timeout: 60000 });
   await mika.context().close();

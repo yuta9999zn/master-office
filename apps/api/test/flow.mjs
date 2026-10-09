@@ -15,7 +15,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, ken] = ['claudia', 'ken'].map(uid);
 
 const blank = await call('POST', '/resources', { user: claudia, body: { name: 'Onboarding flow', type: 'flow' } });

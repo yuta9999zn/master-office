@@ -28,7 +28,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 const ed = (p) => p.getByTestId('note-editor');
 let noteUrl = '';
 let noteId = '';
@@ -46,9 +46,9 @@ await step('Quick Capture creates a note in Inbox and opens it', claudia, async 
   noteUrl = claudia.url().split('?')[0];
   noteId = noteUrl.split('/').pop();
   await claudia.getByTestId('note-title').getByText(/Quick note/).waitFor();
-  // Share it with the Natural Beauty space so Mika (editor there) can collaborate.
+  // Share it with the Sakura Beauty space so Mika (editor there) can collaborate.
   const spaces = await (await claudia.request.get(`${BASE}/api/spaces`)).json();
-  await claudia.request.patch(`${BASE}/api/resources/${noteId}`, { data: { spaceId: spaces.find((s) => s.name === 'Natural Beauty').id, parentId: null } });
+  await claudia.request.patch(`${BASE}/api/resources/${noteId}`, { data: { spaceId: spaces.find((s) => s.name === 'Sakura Beauty').id, parentId: null } });
 });
 
 await step('write with Markdown and the / menu (to-do list)', claudia, async () => {
@@ -100,7 +100,7 @@ await step('convert notes to mind map', claudia, async () => {
   await claudia.getByTestId('mindmap').locator('[data-testid="mind-node-topic"]').filter({ hasText: /^Plan$/ }).waitFor();
 });
 
-const mika = await session('mika@kaori.jp');
+const mika = await session('mika@hanami.example');
 await step('second person sees the map and new branches live', claudia, async () => {
   await mika.goto(`${noteUrl}?view=mindmap`);
   await mika.getByTestId('mindmap').locator('[data-testid="mind-node-topic"]').filter({ hasText: /^Plan$/ }).waitFor({ timeout: 15000 });

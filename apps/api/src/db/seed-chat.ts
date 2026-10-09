@@ -110,7 +110,7 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
   const day = 24 * 60;
 
   await conv(
-    { kind: 'channel', name: 'General', description: 'Company-wide chat for everyone at KAORI', visibility: 'public', color: '#f97316', owner: 'claudia', space: 'Natural Beauty', category: 'Text channels' },
+    { kind: 'channel', name: 'General', description: 'Company-wide chat for everyone at HANAMI', visibility: 'public', color: '#f97316', owner: 'claudia', space: 'Sakura Beauty', category: 'Text channels' },
     everyone,
     [
       { who: 'claudia', body: 'created the channel General', ago: 20 * day, system: true },
@@ -119,7 +119,7 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
     ],
   );
   await conv(
-    { kind: 'channel', name: 'Announcements', description: 'Official news from the leadership team', visibility: 'public', color: '#2563eb', owner: 'claudia', space: 'Natural Beauty', category: 'Information', announcements: true },
+    { kind: 'channel', name: 'Announcements', description: 'Official news from the leadership team', visibility: 'public', color: '#2563eb', owner: 'claudia', space: 'Sakura Beauty', category: 'Information', announcements: true },
     everyone,
     [
       { who: 'claudia', body: 'created the channel Announcements', ago: 20 * day, system: true },
@@ -150,10 +150,10 @@ export async function seedChat(db: Db, workspaceId: string, u: Record<string, Us
     { claudia: 2 },
   );
   await conv(
-    { kind: 'channel', name: 'ITM Japan - Project', description: 'Booking system and website with ITM Japan', visibility: 'private', space: 'ITM Japan', color: '#7c3aed', owner: 'fujita' },
+    { kind: 'channel', name: 'Mirai Systems - Project', description: 'Booking system and website with Mirai Systems', visibility: 'private', space: 'Mirai Systems', color: '#7c3aed', owner: 'fujita' },
     ['claudia', 'minh', 'mika'],
     [
-      { who: 'fujita', body: 'created the channel ITM Japan - Project', ago: 12 * day, system: true },
+      { who: 'fujita', body: 'created the channel Mirai Systems - Project', ago: 12 * day, system: true },
       { who: 'fujita', body: 'おはようございます。\n来週のミーティングについて、下記の時間で調整可能でしょうか？', ago: 70, files: ['Project Plan Sep.pptx'] },
       { who: 'claudia', body: 'はい、大丈夫です。\nこちらでカレンダーを作成します。', ago: 64, reactions: [['🙏', ['fujita']]] },
       { who: 'mika', body: 'Tôi sẽ chuẩn bị thêm báo cáo và gửi trước nhé.', ago: 60, files: ['Sales Report - September 2026'] },

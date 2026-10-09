@@ -212,7 +212,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
 
   // ── Access ────────────────────────────────────────────────────────────────
 
-  /** A room by its code. A Kaori Meet link from a calendar event gets its room the first time someone opens it. */
+  /** A room by its code. A Office Meet link from a calendar event gets its room the first time someone opens it. */
   private async load(actor: Actor, code: string): Promise<MeetingRow> {
     if (!MEETING_CODE.test(code)) throw new NotFoundException('Meeting not found');
     const [m] = await this.db.select().from(meetings).where(eq(meetings.code, code));
@@ -226,7 +226,7 @@ export class MeetingsService implements OnModuleInit, OnModuleDestroy {
       .select({ ev: calendarEvents, workspaceId: calendars.workspaceId })
       .from(calendarEvents)
       .innerJoin(calendars, eq(calendars.id, calendarEvents.calendarId))
-      .where(and(eq(calendarEvents.meetingProvider, 'kaori'), like(calendarEvents.meetingUrl, `%room=${code}`)))
+      .where(and(eq(calendarEvents.meetingProvider, 'office'), like(calendarEvents.meetingUrl, `%room=${code}`)))
       .limit(1);
     if (!hit || hit.workspaceId !== actor.workspaceId) return null;
     await this.db

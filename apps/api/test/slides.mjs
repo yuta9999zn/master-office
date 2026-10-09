@@ -25,7 +25,7 @@ async function call(method, path, { user, body, raw, form } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, mika, sora] = ['claudia', 'mika', 'sora'].map(uid);
 const find = async (q) => (await call('GET', '/search?q=' + encodeURIComponent(q), { user: claudia })).data.find((h) => h.kind === 'resource');
 const deckId = (await find('Q4 Marketing Strategy - October 2026')).id;
@@ -61,7 +61,7 @@ const zipOf = async (res) => JSZip.loadAsync(Buffer.from(await res.arrayBuffer()
 // ── Seeded deck over collab ──────────────────────────────────────────────────
 const a = await connect(deckId, claudia);
 check('seeded deck syncs with six slides', order(a.doc).length === 6, order(a.doc).length);
-check('deck keeps size and theme', a.doc.getMap('deck').get('size')?.w === 1280 && a.doc.getMap('deck').get('theme')?.id === 'natural-beauty');
+check('deck keeps size and theme', a.doc.getMap('deck').get('size')?.w === 1280 && a.doc.getMap('deck').get('theme')?.id === 'sakura-beauty');
 const s1 = elementsOf(slideAt(a.doc, 0));
 check('title slide has its title, chart and shapes', s1.some((e) => e.text.includes('Q4 Campaign')) && s1.some((e) => e.type === 'chart') && s1.filter((e) => e.type === 'shape').length > 10);
 check('speaker notes are stored per slide', slideAt(a.doc, 0).get('notes').toString().includes('biggest quarter'));
@@ -132,7 +132,7 @@ check('pptx keeps native charts', Object.keys(pz.files).some((f) => /^ppt\/chart
 check('pptx keeps the table as a table', (await pz.file('ppt/slides/slide4.xml').async('string')).includes('<a:tbl>'));
 check('pptx keeps speaker notes', Object.keys(pz.files).some((f) => f.startsWith('ppt/notesSlides/')));
 const theme = await pz.file('ppt/theme/theme1.xml').async('string');
-check('pptx carries the deck theme colours and fonts', theme.includes('Master Office: natural-beauty') && theme.includes('F28B9B'));
+check('pptx carries the deck theme colours and fonts', theme.includes('Master Office: sakura-beauty') && theme.includes('F28B9B'));
 check('pptx carries realtime edits', (await pz.file('ppt/slides/slide2.xml').async('string')).includes('prst="star5"'));
 
 const pdf = await call('GET', `/resources/${deckId}/export?format=pdf`, { user: claudia, raw: true });

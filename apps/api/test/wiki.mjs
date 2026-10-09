@@ -16,10 +16,10 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [fujita, hana, rina] = ['fujita', 'hana', 'rina'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: fujita })).data;
-const itm = spaces.find((s) => s.name === 'ITM Japan').id;
+const itm = spaces.find((s) => s.name === 'Mirai Systems').id;
 const n = Date.now() % 100000;
 
 // ── A space ─────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ check('template pages start as drafts', byTpl('pd-frs').status === 'draft' && sp
 const frsSection = sp.tree.find((x) => x.id === byTpl('pd-frs').parentId);
 check('… under their category', frsSection.title === 'Requirements');
 check('the space is listed with its pages', (await call('GET', '/wiki/spaces', { user: fujita })).data.some((s) => s.id === sp.id && s.pages === sp.tree.length));
-check('space viewers see it (ITM Japan is public)', (await call('GET', `/wiki/spaces/${sp.id}`, { user: hana })).status === 200);
+check('space viewers see it (Mirai Systems is public)', (await call('GET', `/wiki/spaces/${sp.id}`, { user: hana })).status === 200);
 check('… but only editors write pages', (await call('POST', `/wiki/spaces/${sp.id}/pages`, { user: hana, body: { title: 'Nope' } })).status === 403);
 check('keys are unique', (await call('POST', '/wiki/spaces', { user: fujita, body: { name: 'Other', key: `LN${n}` } })).status === 400);
 const items = (await call('GET', `/tasks/docs/${byTpl('pd-brainstorming').id}/items`, { user: fujita })).data;

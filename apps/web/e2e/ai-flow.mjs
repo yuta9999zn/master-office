@@ -31,8 +31,8 @@ const step = async (name, page, fn) => {
     await page.screenshot({ path: join(tmpdir(), `mo-ai-fail-${name.replace(/\W+/g, '_')}.png`), timeout: 10000 }).catch(() => undefined);
   }
 };
-const claudia = await session('claudia@kaori.jp');
-const claudiaId = users.find((u) => u.email === 'claudia@kaori.jp').id;
+const claudia = await session('claudia@hanami.example');
+const claudiaId = users.find((u) => u.email === 'claudia@hanami.example').id;
 let cardUrl = '';
 
 await step('the AI button opens the assistant beside the app, with the local model', claudia, async () => {
@@ -50,7 +50,7 @@ await step('the AI button opens the assistant beside the app, with the local mod
 await step('a business card from the panel: progress, then Open', claudia, async () => {
   await claudia.locator('[data-testid="ai-action"][data-action="card"]').click();
   await claudia.getByTestId('ai-format').waitFor();
-  await claudia.getByTestId('ai-request').fill('Card visit cho Lê Thu Hà, Kế toán trưởng, Kaori Office, 0987 111 222, ha@kaori.jp, kaori.jp, màu xanh dương');
+  await claudia.getByTestId('ai-request').fill('Card visit cho Lê Thu Hà, Kế toán trưởng, Hanami Office, 0987 111 222, ha@hanami.example, hanami.example, màu xanh dương');
   await claudia.getByTestId('ai-run').click();
   await claudia.locator('[data-testid="ai-job"]').waitFor();
   await claudia.locator('[data-testid="ai-job"][data-status="done"]').waitFor({ timeout: 300000 });
@@ -58,7 +58,7 @@ await step('a business card from the panel: progress, then Open', claudia, async
   await claudia.waitForURL(/\/slides\/[0-9a-f-]{36}/, { timeout: 60000 });
   cardUrl = claudia.url();
   await claudia.locator('[data-testid="slide-thumb"]').nth(1).waitFor({ timeout: 90000 });
-  if (!((await claudia.locator('[data-testid="slide-canvas"]').textContent()) ?? '').match(/KAORI|Kaori|LTH|KO/)) throw new Error('brand side');
+  if (!((await claudia.locator('[data-testid="slide-canvas"]').textContent()) ?? '').match(/HANAMI|Hanami|LTH|KO/)) throw new Error('brand side');
 });
 
 await step('inside a file the panel offers to work on it', claudia, async () => {

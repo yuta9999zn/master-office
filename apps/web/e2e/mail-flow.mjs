@@ -39,8 +39,8 @@ const folder = (page, address, f) => ({
   },
 });
 
-const claudia = await session('claudia@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const hana = await session('hana@hanami.example');
 
 await step('the inbox lists conversations; opening one marks it read', claudia, async () => {
   await claudia.goto(`${BASE}/mail`);
@@ -59,7 +59,7 @@ await step('compose with address suggestions and an attachment; the draft saves 
   await claudia.getByTestId('compose').click();
   const box = claudia.getByTestId('mail-compose');
   await box.getByLabel('To').fill('han');
-  await claudia.getByTestId('address-suggestions').getByText('hana@kaori.jp').waitFor();
+  await claudia.getByTestId('address-suggestions').getByText('hana@hanami.example').waitFor();
   await box.getByLabel('To').press('Enter');
   await box.getByTestId('address-chip').getByText('Hana Lee').waitFor();
   await box.getByLabel('Subject').fill('Launch checklist');
@@ -69,7 +69,7 @@ await step('compose with address suggestions and an attachment; the draft saves 
   await box.getByTestId('draft-saved').waitFor({ timeout: 15000 });
   await box.getByTestId('compose-send').click();
   await box.waitFor({ state: 'detached' });
-  await folder(claudia, 'claudia@kaori.jp', 'sent').click();
+  await folder(claudia, 'claudia@hanami.example', 'sent').click();
   await thread(claudia, 'Launch checklist').waitFor();
 });
 
@@ -97,7 +97,7 @@ await step('replying threads the answer for both people', hana, async () => {
   await box.getByTestId('compose-send').click();
   await box.waitFor({ state: 'detached' });
   await hana.getByTestId('mail-message').filter({ hasText: 'Thanks, all clear!' }).waitFor();
-  await folder(claudia, 'claudia@kaori.jp', 'inbox').click();
+  await folder(claudia, 'claudia@hanami.example', 'inbox').click();
   await thread(claudia, 'Launch checklist').locator('button').first().click();
   await claudia.getByTestId('mail-message').filter({ hasText: 'Thanks, all clear!' }).waitFor({ timeout: 15000 });
 });
@@ -107,16 +107,16 @@ await step('archive, trash, restore and delete forever', claudia, async () => {
   await row.hover();
   await row.getByRole('button', { name: 'Archive' }).click();
   await row.waitFor({ state: 'detached' });
-  await folder(claudia, 'claudia@kaori.jp', 'archive').click();
+  await folder(claudia, 'claudia@hanami.example', 'archive').click();
   await thread(claudia, 'Year-end holiday schedule').hover();
   await thread(claudia, 'Year-end holiday schedule').getByRole('button', { name: 'Delete' }).click();
-  await folder(claudia, 'claudia@kaori.jp', 'trash').click();
+  await folder(claudia, 'claudia@hanami.example', 'trash').click();
   await thread(claudia, 'Year-end holiday schedule').locator('button').first().click();
   await claudia.getByRole('button', { name: 'Restore' }).click();
-  await folder(claudia, 'claudia@kaori.jp', 'inbox').click();
+  await folder(claudia, 'claudia@hanami.example', 'inbox').click();
   await thread(claudia, 'Year-end holiday schedule').hover();
   await thread(claudia, 'Year-end holiday schedule').getByRole('button', { name: 'Delete' }).click();
-  await folder(claudia, 'claudia@kaori.jp', 'trash').click();
+  await folder(claudia, 'claudia@hanami.example', 'trash').click();
   await thread(claudia, 'Year-end holiday schedule').locator('button').first().click();
   await claudia.getByRole('button', { name: 'Delete forever' }).click();
   await thread(claudia, 'Year-end holiday schedule').waitFor({ state: 'detached' });
@@ -129,7 +129,7 @@ await step('closing the compose window keeps a draft that opens again; discard r
   await box.getByTestId('compose-body').fill('Some first thoughts');
   await box.getByTestId('draft-saved').waitFor({ timeout: 15000 });
   await box.getByRole('button', { name: 'Close (keeps the draft)' }).click();
-  await folder(claudia, 'claudia@kaori.jp', 'drafts').click();
+  await folder(claudia, 'claudia@hanami.example', 'drafts').click();
   await thread(claudia, 'Ideas for spring').locator('button').first().click();
   await box.waitFor();
   if ((await box.getByTestId('compose-body').inputValue()) !== 'Some first thoughts') throw new Error('draft text');
@@ -138,26 +138,26 @@ await step('closing the compose window keeps a draft that opens again; discard r
 });
 
 await step('a shared space mailbox: assign a conversation and answer from the shared address', hana, async () => {
-  await hana.locator('[data-testid="mailbox"][data-address="marketing@kaori.jp"] > button').click();
+  await hana.locator('[data-testid="mailbox"][data-address="marketing@hanami.example"] > button').click();
   await thread(hana, 'Collaboration proposal for the spring campaign').locator('button').first().click();
   await hana.getByTestId('assign').click();
   await hana.getByRole('menuitem', { name: 'Mika Tanaka' }).click();
   await hana.getByTestId('assign').getByText('Mika').waitFor();
   await hana.getByTestId('reply').click();
   const box = hana.getByTestId('mail-compose');
-  if (!(await box.getByLabel('From').locator('option:checked').innerText()).includes('marketing@kaori.jp')) throw new Error('from');
+  if (!(await box.getByLabel('From').locator('option:checked').innerText()).includes('marketing@hanami.example')) throw new Error('from');
   await box.getByTestId('compose-body').press('Control+Home');
   await box.getByTestId('compose-body').pressSequentially('Thank you Aiko, Thursday works.');
   await box.getByTestId('compose-send').click();
   await hana.getByText(/outside address/).waitFor();
   const answer = hana.getByTestId('mail-message').filter({ hasText: 'Thank you Aiko, Thursday works.' });
-  await answer.getByText('<marketing@kaori.jp>').waitFor();
+  await answer.getByText('<marketing@hanami.example>').waitFor();
 });
 
 await step('people who only read the space see the shared mailbox read-only', hana, async () => {
-  const yuki = await session('yuki@kaori.jp');
+  const yuki = await session('yuki@hanami.example');
   await yuki.goto(`${BASE}/mail`);
-  await yuki.locator('[data-testid="mailbox"][data-address="marketing@kaori.jp"] > button').click({ timeout: 60000 });
+  await yuki.locator('[data-testid="mailbox"][data-address="marketing@hanami.example"] > button').click({ timeout: 60000 });
   await yuki.getByText('Read only — your role in the space').waitFor();
   await thread(yuki, 'Collaboration proposal for the spring campaign').locator('button').first().click();
   await yuki.getByText('You can read this shared mailbox').waitFor();

@@ -25,7 +25,7 @@ export const SEED_DOCS: Record<string, JSONContent> = {
   'Branch Operation Plan - October 2026': {
     type: 'doc',
     content: [
-      p('This document outlines the key operation plan, targets, and action items for all Natural Beauty branches in October 2026.'),
+      p('This document outlines the key operation plan, targets, and action items for all Sakura Beauty branches in October 2026.'),
       h(2, '1. Overview'),
       p(
         'In October 2026, we will focus on improving customer experience, increasing repeat customers, and optimizing branch operations. Each branch will follow the unified guidelines while customizing activities based on local customer trends.',

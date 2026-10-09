@@ -11,7 +11,7 @@ const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 960 }, timezoneId: 'Asia/Tokyo' });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'sora@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'sora@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const step = async (name, fn) => {

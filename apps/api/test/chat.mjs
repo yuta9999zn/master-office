@@ -20,7 +20,7 @@ async function call(method, path, { user, body } = {}) {
 }
 
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, sora, ken, rina, yuki] = ['claudia', 'hana', 'mika', 'sora', 'ken', 'rina', 'yuki'].map(uid);
 const resByName = async (name, user = claudia) => (await call('GET', '/search?q=' + encodeURIComponent(name), { user })).data.find((h) => h.kind === 'resource' && h.title === name);
 const list = async (user) => (await call('GET', '/chat/conversations', { user })).data;
@@ -50,11 +50,11 @@ async function socket(user) {
 // ── Seeded conversations ────────────────────────────────────────────────────
 const mine = await list(claudia);
 const marketing = mine.find((c) => c.title === 'Marketing Team');
-const itm = mine.find((c) => c.title === 'ITM Japan - Project');
+const itm = mine.find((c) => c.title === 'Mirai Systems - Project');
 check('the seeded conversations are listed newest first', mine.length >= 8 && mine.every((c, i) => i === 0 || (mine[i - 1].lastMessageAt ?? '') >= (c.lastMessageAt ?? '')), mine.map((c) => c.title));
 check('unread counts come from the read marker', marketing?.unread === 2 && itm?.unread === 3, { marketing: marketing?.unread, itm: itm?.unread });
 check('a mention of the viewer is counted', itm?.mentions === 1, itm);
-const dm = mine.find((c) => c.kind === 'dm' && c.peer?.email === 'hana@kaori.jp');
+const dm = mine.find((c) => c.kind === 'dm' && c.peer?.email === 'hana@hanami.example');
 check('a direct message is titled with the other person', dm?.title === 'Hana Lee' && dm.lastMessage?.body === 'File đã gửi nhé', dm);
 const group = mine.find((c) => c.title === 'Design Review');
 check('a group shows its members as faces', group?.kind === 'group' && group.faces.length === 3 && group.memberCount === 4, group);

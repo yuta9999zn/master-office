@@ -68,7 +68,7 @@ export const TEMPLATES: DeckTemplate[] = [
     id: 'marketing',
     name: 'Marketing plan',
     description: 'Goals, channels, budget and calendar',
-    theme: 'natural-beauty',
+    theme: 'sakura-beauty',
     slides: (s, t, title) => [
       slide('title', s, t, { title, subtitle: 'Q4 2026' }),
       slide('bigNumber', s, t, { title: '+30%', body: 'Goal: new customers versus Q3' }),

@@ -7,7 +7,7 @@ import * as s from './schema';
 type User = typeof s.users.$inferSelect;
 
 /**
- * Tasks demo data after "over view.png" (§72, §76): "Website Revamp" (ITM Japan, Scrum — epics, stories with points,
+ * Tasks demo data after "over view.png" (§72, §76): "Website Revamp" (Mirai Systems, Scrum — epics, stories with points,
  * a request queue) and "Branch 625 System" (Waterfall — phases, tasks, a milestone, dependencies), plus personal tasks.
  */
 export async function seedTasks(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
@@ -61,7 +61,7 @@ export async function seedTasks(db: Db, workspaceId: string, u: Record<string, U
   }
 
   // Scrum: Website Revamp — epics, stories / tasks / bugs with points, requests waiting in triage (§76).
-  const web = await project('ITM Japan', 'Website Revamp', 'WEB', '#7c3aed', 'fujita', 'scrum', 'software');
+  const web = await project('Mirai Systems', 'Website Revamp', 'WEB', '#7c3aed', 'fujita', 'scrum', 'software');
   const brand = await task(web, { title: 'Brand refresh', type: 'epic', status: 'doing', by: 'fujita', who: 'minh', start: '2026-09-15', due: '2026-10-16', desc: 'New look for the site: homepage, logo, campaign assets.' });
   const bookingEpic = await task(web, { title: 'Online booking', type: 'epic', status: 'doing', by: 'fujita', who: 'fujita', start: '2026-09-21', due: '2026-10-20', desc: 'Customers book visits online at every branch.' });
   const platform = await task(web, { title: 'Platform', type: 'epic', status: 'doing', by: 'fujita', who: 'ken', start: '2026-09-15', due: '2026-10-15' });

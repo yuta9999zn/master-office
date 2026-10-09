@@ -20,7 +20,7 @@ async function call(method, path, { user, body, form } = {}) {
   return { status: res.status, data, type, name: decodeURIComponent((/filename\*=UTF-8''([^;]+)/.exec(res.headers.get('content-disposition') ?? '') ?? [])[1] ?? '') };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, ken] = ['claudia', 'ken'].map(uid);
 const waitJob = async (id, user) => {
   for (;;) {

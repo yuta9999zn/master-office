@@ -56,7 +56,7 @@ Cần Node 22+, pnpm 9, Docker (cho Postgres / Redis / S3).
 pnpm install
 pnpm infra:up        # Postgres :5440, Redis :6390, S3 :9000 (thêm --profile mail cho Mailpit)
 pnpm db:migrate
-pnpm db:seed         # dữ liệu mẫu: tổ chức KAORI, 10 người dùng, Natural Beauty Spa…
+pnpm db:seed         # dữ liệu mẫu: tổ chức HANAMI, 10 người dùng, Sakura Beauty Spa…
 pnpm dev             # API :4000 (+ cộng tác :4001) và web :3000
 ```
 

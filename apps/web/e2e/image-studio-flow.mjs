@@ -14,7 +14,7 @@ const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-const ken = users.find((u) => u.email === 'ken@kaori.jp').id;
+const ken = users.find((u) => u.email === 'ken@hanami.example').id;
 await ctx.addCookies([{ name: 'mo_uid', value: ken, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));

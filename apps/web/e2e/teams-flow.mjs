@@ -33,14 +33,14 @@ const step = async (name, page, fn) => {
 };
 const n = Date.now() % 100000;
 const dept = `Sales ${n}`;
-const claudia = await session('claudia@kaori.jp');
+const claudia = await session('claudia@hanami.example');
 
 await step('the organisation chart: departments with their teams', claudia, async () => {
   await claudia.goto(`${BASE}/admin?tab=teams`);
   await claudia.getByTestId('team-tree').waitFor({ timeout: 90000 });
   await claudia.locator('[data-testid="team-node"][data-name="Marketing"]').waitFor();
   const pad = await claudia.locator('[data-testid="team-node"][data-name="Marketing"]').evaluate((e) => parseInt(e.style.paddingLeft));
-  if (pad <= 8) throw new Error('Marketing is not nested under Natural Beauty');
+  if (pad <= 8) throw new Error('Marketing is not nested under Sakura Beauty');
 });
 
 await step('a new department with a lead and their position', claudia, async () => {
@@ -94,14 +94,14 @@ await step('Contacts: teams and positions, leads marked', claudia, async () => {
   await claudia.getByText(`${dept} · Senior sales rep`).first().waitFor();
 });
 
-const sora = await session('sora@kaori.jp');
-const yukiId = users.find((u) => u.email === 'yuki@kaori.jp').id;
+const sora = await session('sora@hanami.example');
+const yukiId = users.find((u) => u.email === 'yuki@hanami.example').id;
 await step('a colleague who doesn’t lead them can’t see the phone', sora, async () => {
   await sora.goto(`${BASE}/contacts/${yukiId}`);
   await sora.getByTestId('phone-hidden').waitFor({ timeout: 60000 });
 });
 
-const yuki = await session('yuki@kaori.jp');
+const yuki = await session('yuki@hanami.example');
 await step('people choose to share their phone with everyone', yuki, async () => {
   await yuki.goto(`${BASE}/contacts/${yukiId}`);
   await yuki.getByRole('button', { name: 'Edit profile' }).click({ timeout: 60000 });
@@ -116,29 +116,29 @@ await step('people choose to share their phone with everyone', yuki, async () =>
   await yuki.getByText('your team leads and admins see it').waitFor();
 });
 
-// Chat: Fujita writes in the ITM Japan project channel.
-const fujitaId = users.find((u) => u.email === 'fujita@kaori.jp').id;
+// Chat: Fujita writes in the Mirai Systems project channel.
+const fujitaId = users.find((u) => u.email === 'fujita@hanami.example').id;
 const convs = await (await claudia.context().request.get(`${BASE}/api/chat/conversations`, { headers: { 'x-user-id': fujitaId } })).json();
-const itm = convs.find((c) => c.spaceId && c.title.startsWith('ITM Japan'));
+const itm = convs.find((c) => c.spaceId && c.title.startsWith('Mirai Systems'));
 await claudia.context().request.post(`${BASE}/api/chat/conversations/${itm.id}/messages`, { headers: { 'x-user-id': fujitaId }, data: { body: `Status update ${n}` } });
 
 await step('Chat: the sender’s position in this team, next to the name', claudia, async () => {
   await claudia.goto(`${BASE}/chat/${itm.id}`);
   const msg = claudia.locator('[data-testid="message"]').filter({ hasText: `Status update ${n}` }).last();
   await msg.waitFor({ timeout: 60000 });
-  await msg.getByTestId('author-team').getByText('ITM Japan · Project Manager').waitFor();
+  await msg.getByTestId('author-team').getByText('Mirai Systems · Project Manager').waitFor();
 });
 
 await step('… and every team on hover', claudia, async () => {
   const msg = claudia.locator('[data-testid="message"]').filter({ hasText: `Status update ${n}` }).last();
   await msg.getByTestId('message-author').hover();
-  await claudia.getByTestId('person-summary').getByText('ITM Japan · Project Manager').waitFor();
+  await claudia.getByTestId('person-summary').getByText('Mirai Systems · Project Manager').waitFor();
 });
 
 await step('… and in the member list', claudia, async () => {
   await claudia.getByRole('button', { name: 'Members' }).click();
   const row = claudia.locator('[data-testid="member"][data-name="Mika Tanaka"]');
-  await row.getByText('ITM Japan · Business Analyst').waitFor({ timeout: 30000 });
+  await row.getByText('Mirai Systems · Business Analyst').waitFor({ timeout: 30000 });
 });
 
 await browser.close();

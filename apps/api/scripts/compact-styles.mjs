@@ -10,7 +10,7 @@ const Y = require('yjs');
 const { HocuspocusProvider } = require('@hocuspocus/provider');
 const { SHEETS_MAP, STYLES_MAP, toStoredCell, ySheet } = require('../dist/packages/sheet-model/src');
 const API = process.env.API_URL ?? 'http://localhost:4000';
-const [id, email = 'claudia@kaori.jp'] = process.argv.slice(2);
+const [id, email = 'claudia@hanami.example'] = process.argv.slice(2);
 if (!id) throw new Error('resource id?');
 const users = await (await fetch(`${API}/users`)).json();
 const me = users.find((u) => u.email === email)?.id;

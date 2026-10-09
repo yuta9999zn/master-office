@@ -18,7 +18,7 @@ const call = async (method, path, { user, body } = {}) => {
   return { status: res.status, data: text ? (text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : text) : null };
 };
 const users = (await call('GET', '/users')).data;
-const uid = (k) => users.find((u) => u.email === `${k}@kaori.jp`).id;
+const uid = (k) => users.find((u) => u.email === `${k}@hanami.example`).id;
 const hana = uid('hana');
 const find = async (q) => (await call('GET', `/search?q=${encodeURIComponent(q)}`)).data.find((h) => h.kind === 'resource');
 

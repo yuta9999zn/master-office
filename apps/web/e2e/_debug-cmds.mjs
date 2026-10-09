@@ -4,7 +4,7 @@ const BASE = process.env.WEB_URL ?? 'http://localhost:3010';
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@hanami.example').id, url: BASE }]);
 const p = await ctx.newPage();
 const id = (await (await ctx.request.get(`${BASE}/api/search?q=${encodeURIComponent('Budget 2027')}`)).json()).find((h) => h.kind === 'resource').id;
 await p.goto(`${BASE}/sheets/${id}`);

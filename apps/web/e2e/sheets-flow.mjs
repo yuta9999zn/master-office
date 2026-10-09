@@ -38,8 +38,8 @@ const value = (page, sheet, a1) =>
     return window.__moSheet.value(s, a);
   }, [sheet, a1]);
 
-const claudia = await session('claudia@kaori.jp');
-const mika = await session('mika@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const mika = await session('mika@hanami.example');
 const find = async (page, q) => (await (await page.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource');
 const sales = await find(claudia, 'Sales Report - September 2026');
 
@@ -161,7 +161,7 @@ await step('charts: insert from a selection, edit, follow the data, sync and del
 });
 
 await step('viewers get a read-only grid', claudia, async () => {
-  const sora = await session('sora@kaori.jp');
+  const sora = await session('sora@hanami.example');
   await sora.goto(`${BASE}/sheets/${sales.id}`);
   await ready(sora, sales.id);
   await sora.getByText('View only').waitFor();
@@ -200,7 +200,7 @@ await step('data tools: trim, remove duplicates, split text, column stats, check
 
 await step('pivot tables: build, filter, follow the source, sync and delete', claudia, async () => {
   const wbk = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Pivot ' + Date.now(), type: 'spreadsheet' } })).json();
-  const mikaId = (await (await claudia.request.get(`${BASE}/api/users`)).json()).find((u) => u.email === 'mika@kaori.jp').id;
+  const mikaId = (await (await claudia.request.get(`${BASE}/api/users`)).json()).find((u) => u.email === 'mika@hanami.example').id;
   await claudia.request.post(`${BASE}/api/resources/${wbk.id}/members`, { data: { userId: mikaId, role: 'editor' } });
   for (const p of [claudia, mika]) {
     await p.goto(`${BASE}/sheets/${wbk.id}`);
@@ -232,8 +232,8 @@ await step('cursors, named ranges, text rotation and protected ranges between ed
   const wbk = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: 'Collab ' + Date.now(), type: 'spreadsheet' } })).json();
   const people = await (await claudia.request.get(`${BASE}/api/users`)).json();
   const idOf = (email) => people.find((u) => u.email === email).id;
-  for (const email of ['mika@kaori.jp', 'sora@kaori.jp']) await claudia.request.post(`${BASE}/api/resources/${wbk.id}/members`, { data: { userId: idOf(email), role: 'editor' } });
-  const sora = await session('sora@kaori.jp');
+  for (const email of ['mika@hanami.example', 'sora@hanami.example']) await claudia.request.post(`${BASE}/api/resources/${wbk.id}/members`, { data: { userId: idOf(email), role: 'editor' } });
+  const sora = await session('sora@hanami.example');
   for (const p of [claudia, mika, sora]) {
     await p.goto(`${BASE}/sheets/${wbk.id}`);
     await ready(p, wbk.id);
@@ -248,7 +248,7 @@ await step('cursors, named ranges, text rotation and protected ranges between ed
     wb.insertDefinedName('Nums', 'Sheet1!$A$1:$A$3');
     await ws.getRange('A1:A3').getRangePermission().protect({ name: 'Locked numbers', allowedUsers: [mikaId] });
     ws.getRange('C3:D5').activate();
-  }, idOf('mika@kaori.jp'));
+  }, idOf('mika@hanami.example'));
   await mika.getByTestId('sheet-cursor').filter({ hasText: 'Claudia' }).waitFor();
   await until(mika, () => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('B1').getCellStyleData()?.tr?.a === 45);
   await mika.evaluate(() => window.__moSheet.api.getActiveWorkbook().getActiveSheet().getRange('E1').setFormula('=SUM(Nums)'));

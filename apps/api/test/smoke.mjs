@@ -20,8 +20,8 @@ function check(name, cond, extra) {
 const me = (await call('GET', '/me')).data.user;
 const users = (await call('GET', '/users')).data;
 const byEmail = (e) => users.find((u) => u.email === e).id;
-const mai = byEmail('mika@kaori.jp');
-const bao = byEmail('hana@kaori.jp');
+const mai = byEmail('mika@hanami.example');
+const bao = byEmail('hana@hanami.example');
 
 // Create & rename with optimistic concurrency
 const folder = (await call('POST', '/resources', { body: { name: 'Smoke Folder', type: 'folder' } })).data;

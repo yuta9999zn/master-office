@@ -1,6 +1,6 @@
 // Sprints integration test (§76, batch 2): planning issues into sprints and ordering them, creating sprints with the
 // project's length, one active sprint, starting with the Scrum ceremonies in Calendar (planning, daily 15 minutes
-// Monday–Friday, review, retrospective — Kaori Meet rooms, invitations), burndown, completing with carry-over,
+// Monday–Friday, review, retrospective — Office Meet rooms, invitations), burndown, completing with carry-over,
 // velocity, the retrospective board (votes, action → issue), sprint settings and WIP limits.
 // node apps/api/test/sprints.mjs   (fresh seed)
 const API = process.env.API_URL ?? 'http://localhost:4000';
@@ -19,7 +19,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [hana, mika, ken, fujita] = ['hana', 'mika', 'ken', 'fujita'].map(uid);
 const inbox = async (user) => (await call('GET', '/notifications?unread=1', { user })).data;
 const today = new Date().toISOString().slice(0, 10);
@@ -89,7 +89,7 @@ const tokyo = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo'
 check('Sprint Planning on the first day, about 2 hours, with a meeting room', planning.title === 'WEB Sprint 3 · Sprint Planning' && tokyo(planning.start) === `${s3.startDate} 10:00` && Date.parse(planning.end) - Date.parse(planning.start) === 2 * 3600_000 && planning.meetingUrl?.includes('/meetings?room='), [planning.title, tokyo(planning.start)]);
 check('Daily Scrum: 15 minutes at 09:15, Monday to Friday, until the last day', tokyo(daily.start) === `${addDays(s3.startDate, 1)} 09:15` && Date.parse(daily.end) - Date.parse(daily.start) === 15 * 60_000 && daily.recurrence?.byDay?.join() === '1,2,3,4,5' && daily.recurrence.until === s3.endDate, [tokyo(daily.start), daily.recurrence]);
 check('Review and Retrospective on the last day', tokyo(review.start) === `${s3.endDate} 13:30` && tokyo(retro.start) === `${s3.endDate} 16:00` && retro.description.includes('Retro board'), [tokyo(review.start), tokyo(retro.start)]);
-check('the lead and the people with issues are invited', ['ken@kaori.jp'].every((e) => planning.attendees.some((a) => a.email === e)), planning.attendees.map((a) => a.email));
+check('the lead and the people with issues are invited', ['ken@hanami.example'].every((e) => planning.attendees.some((a) => a.email === e)), planning.attendees.map((a) => a.email));
 await sleep(500);
 check('… and get an invitation', (await inbox(ken)).some((n) => n.kind === 'calendar.invite' && n.title.includes('Sprint Planning')));
 check('an empty sprint does not start', (await call('POST', `/tasks/sprints/${s4.data.id}/start`, { user: fujita, body: {} })).status === 400);

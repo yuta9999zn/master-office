@@ -31,14 +31,14 @@ const step = async (name, page, fn) => {
   }
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 // Its own Scrum project (the API tests change the seeded one): a closed sprint with a retro card, an active
 // sprint, a planned one and a backlog item.
 const req = fujita.context().request;
 const post = async (path, data) => (await req.post(`${BASE}/api${path}`, { data })).json();
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `SD${Date.now() % 100000}`;
-const web = await post('/tasks/projects', { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Sprint demo ${key}`, key, methodology: 'scrum' });
+const web = await post('/tasks/projects', { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Sprint demo ${key}`, key, methodology: 'scrum' });
 const P = (k) => `${key} Sprint ${k}`;
 const issue = (title, extra = {}) => post('/tasks', { projectId: web.id, title, type: 'story', storyPoints: 3, ...extra });
 const today = new Date().toISOString().slice(0, 10);

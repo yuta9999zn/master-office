@@ -31,11 +31,11 @@ const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn,
 /** Elements of the current (first) slide from the editor's store. */
 const els = (page) => page.evaluate(() => window.__moDeck.snapshot.slides[0].elements.map((e) => ({ id: e.id, type: e.type, x: e.x, y: e.y, w: e.w, h: e.h, group: e.group ?? null, anim: e.anim ?? null })));
 
-const claudia = await session('claudia@kaori.jp');
-const mika = await session('mika@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const mika = await session('mika@hanami.example');
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
 const created = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Motion ${Date.now()}`, type: 'presentation' } })).json();
-await claudia.request.post(`${BASE}/api/resources/${created.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+await claudia.request.post(`${BASE}/api/resources/${created.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
 for (const p of [claudia, mika]) {
   await p.goto(`${BASE}/slides/${created.id}`);
   await until(p, () => document.querySelectorAll('[data-testid="slide-thumb"]').length === 1 && !!window.__moDeck, null, 60000);
@@ -332,7 +332,7 @@ await step('template gallery → new deck; new layouts; theme builder synced', c
   await claudia.waitForURL(/\/slides\/[0-9a-f-]{36}/, { timeout: 60000 });
   await until(claudia, () => window.__moDeck?.snapshot.slides.length === 6 && window.__moDeck.snapshot.theme.id === 'forest', null, 60000);
   const id = claudia.url().split('/slides/')[1].split(/[?#]/)[0];
-  await claudia.request.post(`${BASE}/api/resources/${id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+  await claudia.request.post(`${BASE}/api/resources/${id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
   await mika.goto(`${BASE}/slides/${id}`);
   await until(mika, () => window.__moDeck?.snapshot.slides.length === 6, null, 60000);
   // Big number layout on the first slide.

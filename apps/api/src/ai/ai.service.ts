@@ -644,7 +644,7 @@ export class AiService {
     if (p.output === 'photodeck') {
       const { plan, details, fixes } = JSON.parse(text) as { plan: PhotoPlan; details: PhotoDetail[]; fixes: string[] };
       const slidesSvc = this.moduleRef.get(SlidesService, { strict: false });
-      const theme = themeById(/spa|beauty|làm đẹp|thẩm mỹ/i.test(input.request) ? 'natural-beauty' : /rừng|núi|nông|xanh lá|organic/i.test(input.request) ? 'forest' : 'master');
+      const theme = themeById(/spa|beauty|làm đẹp|thẩm mỹ/i.test(input.request) ? 'sakura-beauty' : /rừng|núi|nông|xanh lá|organic/i.test(input.request) ? 'forest' : 'master');
       const byNo = new Map(details.map((d) => [d.i, d]));
       if (input.targetId) {
         const deck = await slidesSvc.deck(input.targetId);
@@ -687,7 +687,7 @@ export class AiService {
         });
         return { resourceId: input.targetId, url: `/slides/${input.targetId}`, title: outline.title ?? '', slides: slides.length };
       }
-      const theme = themeById(outline.theme && outline.theme !== 'master' ? outline.theme : /spa|beauty|làm đẹp|thẩm mỹ|da|nail|salon|mỹ phẩm/i.test(input.request) ? 'natural-beauty' : /xanh lá|thiên nhiên|organic|nông/i.test(input.request) ? 'forest' : outline.theme);
+      const theme = themeById(outline.theme && outline.theme !== 'master' ? outline.theme : /spa|beauty|làm đẹp|thẩm mỹ|da|nail|salon|mỹ phẩm/i.test(input.request) ? 'sakura-beauty' : /xanh lá|thiên nhiên|organic|nông/i.test(input.request) ? 'forest' : outline.theme);
       const sz = DESIGN_FORMATS.deck.size;
       const slides = slidesFromOutline(outline, sz, theme);
       const name = String(outline.title ?? 'AI presentation').slice(0, 120);

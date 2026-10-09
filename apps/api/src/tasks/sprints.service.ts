@@ -19,7 +19,7 @@ const work = sql.join(WORK_TYPES.map((t) => sql`${t}`), sql`, `);
 
 /**
  * Scrum (docs/ARCHITECTURE.md §76, batch 2): sprints of a project — planned, one active, closed. Starting a sprint
- * snapshots what the team committed to and can put the ceremonies in Calendar with a Kaori Meet room: Sprint
+ * snapshots what the team committed to and can put the ceremonies in Calendar with a Office Meet room: Sprint
  * Planning on the first day, a 15-minute Daily Scrum every working day, Sprint Review and Retrospective on the last.
  * Completing one moves unfinished issues on. Reports: burndown and velocity. The retrospective board turns action
  * items into issues.
@@ -177,7 +177,7 @@ export class SprintsService {
 
   /**
    * The Scrum events of a sprint in Calendar — the project space's team calendar when you may add to it, else your
-   * own — each with a Kaori Meet room, inviting the lead and everyone with an issue in the sprint.
+   * own — each with a Office Meet room, inviting the lead and everyone with an issue in the sprint.
    */
   private async scheduleCeremonies(actor: Actor, p: Proj, sp: SprintRow, assignees: (string | null)[], plan: CeremonyPlan) {
     const cals = await this.calendar.list(actor);
@@ -205,7 +205,7 @@ export class SprintsService {
         end: plus(start, minutes),
         timezone: tz,
         recurrence,
-        meeting: { provider: 'kaori' },
+        meeting: { provider: 'office' },
         guests,
         notify: true,
         message: `${title} for ${sp.name} (${p.name}).`,

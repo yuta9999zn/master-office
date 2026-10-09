@@ -12,7 +12,7 @@ let fails = 0;
 
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@hanami.example').id, url: BASE }]);
 const show = await ctx.newPage();
 show.on('pageerror', (e) => errors.push(`show: ${e.message}`));
 let presenter;

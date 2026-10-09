@@ -17,7 +17,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, ken] = ['claudia', 'ken'].map(uid);
 const waitJob = async (id, user = claudia, ms = 600_000) => {
   const end = Date.now() + ms;

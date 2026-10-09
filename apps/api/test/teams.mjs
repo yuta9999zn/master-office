@@ -17,20 +17,20 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, ken, yuki, sora, fujita, minh, rina] = ['claudia', 'hana', 'mika', 'ken', 'yuki', 'sora', 'fujita', 'minh', 'rina'].map(uid);
 const spaces = (await call('GET', '/spaces', { user: claudia })).data;
 const byName = (n) => spaces.find((s) => s.name === n);
 const n = Date.now() % 100000;
 
 // ── Kinds, tree ─────────────────────────────────────────────────────────────
-check('spaces have a kind', byName('Marketing').kind === 'department' && byName('ITM Japan').kind === 'project' && byName('Branch 575').kind === 'team' && byName('Natural Beauty').kind === 'general');
+check('spaces have a kind', byName('Marketing').kind === 'department' && byName('Mirai Systems').kind === 'project' && byName('Branch 575').kind === 'team' && byName('Sakura Beauty').kind === 'general');
 const sales = (await call('POST', '/spaces', { user: claudia, body: { name: `Sales ${n}`, kind: 'department', visibility: 'public' } })).data;
 const north = (await call('POST', '/spaces', { user: claudia, body: { name: `Sales North ${n}`, kind: 'team', parentId: sales.id } })).data;
 check('a department with a team under it', sales.kind === 'department' && north.parentId === sales.id && north.kind === 'team');
 check('a team cannot go under its own sub-team', (await call('PATCH', `/spaces/${sales.id}`, { user: claudia, body: { parentId: north.id } })).status === 400);
-const moved = (await call('PATCH', `/spaces/${north.id}`, { user: claudia, body: { name: `North ${n}`, kind: 'project', parentId: byName('Natural Beauty').id } })).data;
-check('renaming, changing the kind, moving', moved.name === `North ${n}` && moved.kind === 'project' && moved.parentId === byName('Natural Beauty').id, moved);
+const moved = (await call('PATCH', `/spaces/${north.id}`, { user: claudia, body: { name: `North ${n}`, kind: 'project', parentId: byName('Sakura Beauty').id } })).data;
+check('renaming, changing the kind, moving', moved.name === `North ${n}` && moved.kind === 'project' && moved.parentId === byName('Sakura Beauty').id, moved);
 await call('PATCH', `/spaces/${north.id}`, { user: claudia, body: { parentId: sales.id, kind: 'team' } });
 check('members can’t edit a team they don’t lead', (await call('PATCH', `/spaces/${byName('Marketing').id}`, { user: ken, body: { name: 'Nope' } })).status === 403);
 
@@ -48,7 +48,7 @@ check('only people of the organisation', (await call('POST', `/spaces/${sales.id
 // ── Many teams, many positions ──────────────────────────────────────────────
 const mikaCard = (await call('GET', '/contacts', { user: claudia })).data.find((c) => c.id === mika);
 const pos = Object.fromEntries(mikaCard.projects.map((p) => [p.name, p.title]));
-check('one person, several teams and positions', pos.Operations === 'Head of Operations' && pos['Branch 575'] === 'Area Manager' && pos['ITM Japan'] === 'Business Analyst', pos);
+check('one person, several teams and positions', pos.Operations === 'Head of Operations' && pos['Branch 575'] === 'Area Manager' && pos['Mirai Systems'] === 'Business Analyst', pos);
 check('… teams she leads come first', mikaCard.projects[0].lead && mikaCard.projects.findIndex((p) => !p.lead) > 0, mikaCard.projects.map((p) => [p.name, p.lead]));
 check('teams carry their kind', mikaCard.projects.find((p) => p.name === 'Operations').kind === 'department');
 

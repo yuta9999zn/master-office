@@ -125,7 +125,7 @@ export const SHEET_TEMPLATES: SheetTemplate[] = [
             'Invoice',
             [
               [v('INVOICE', { bl: 1, fs: 20, cl: { rgb: '#7C3AED' } }), null, null, v('No. 2026-001', { ht: 3 })],
-              ['Natural Beauty Co., Ltd.', null, null, { ...date(2), s: { n: DATE, ht: 3 } }],
+              ['Sakura Beauty Co., Ltd.', null, null, { ...date(2), s: { n: DATE, ht: 3 } }],
               ['1-2-3 Shibuya, Tokyo'],
               [],
               [bold('Bill to')],

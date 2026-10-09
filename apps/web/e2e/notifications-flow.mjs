@@ -28,9 +28,9 @@ const step = async (name, page, fn) => {
   }
 };
 
-const { page: claudia, users } = await session('claudia@kaori.jp');
-const { page: hana } = await session('hana@kaori.jp');
-const id = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const { page: claudia, users } = await session('claudia@hanami.example');
+const { page: hana } = await session('hana@hanami.example');
+const id = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const asHana = (method, path, data) => hana.request.fetch(`${BASE}/api${path}`, { method, data }).then((r) => r.json());
 const conversations = await asHana('GET', '/chat/conversations');
 const marketing = conversations.find((c) => c.title === 'Marketing Team');

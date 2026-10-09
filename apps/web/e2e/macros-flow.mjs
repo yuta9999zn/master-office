@@ -55,13 +55,13 @@ const setCode = async (page, code) => {
   }, code);
 };
 
-const claudia = await session('claudia@kaori.jp');
-const mika = await session('mika@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const mika = await session('mika@hanami.example');
 const created = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Macro test ${Date.now()}`, type: 'spreadsheet', spaceId: null } })).json();
 // Share with Mika (editor) and Sora (viewer).
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
 const uid = (e) => users.find((u) => u.email === e).id;
-for (const [email, role] of [['mika@kaori.jp', 'editor'], ['sora@kaori.jp', 'viewer']]) {
+for (const [email, role] of [['mika@hanami.example', 'editor'], ['sora@hanami.example', 'viewer']]) {
   await claudia.request.post(`${BASE}/api/resources/${created.id}/members`, { data: { userId: uid(email), role } });
 }
 
@@ -148,7 +148,7 @@ await step('errors are reported with the changes made before them kept', claudia
 });
 
 await step('a viewer cannot record or run macros', claudia, async () => {
-  const sora = await session('sora@kaori.jp');
+  const sora = await session('sora@hanami.example');
   await sora.goto(`${BASE}/sheets/${created.id}`);
   await ready(sora, created.id);
   await sora.getByRole('button', { name: 'Extensions' }).click();

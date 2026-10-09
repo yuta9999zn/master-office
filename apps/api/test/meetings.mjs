@@ -20,7 +20,7 @@ async function call(method, path, { user, body } = {}) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, hana, mika, ken, sora, rina] = ['claudia', 'hana', 'mika', 'ken', 'sora', 'rina'].map(uid);
 const inbox = async (user) => (await call('GET', '/notifications?unread=1', { user })).data;
 
@@ -201,12 +201,12 @@ await call('POST', `/meetings/${callK.data.code}/end`, { user: ken });
 await sleep(400);
 check('an unanswered call is a missed call in the bell', (await inbox(sora)).some((n) => n.kind === 'meeting.call' && n.title === 'Missed video call from Ken Watanabe'));
 
-// ── Kaori Meet links from the calendar ──────────────────────────────────────
+// ── Office Meet links from the calendar ──────────────────────────────────────
 const myCal = (await call('GET', '/calendar/calendars', { user: claudia })).data.find((c) => c.kind === 'user');
 const t0 = new Date(Date.now() + 2 * 86400_000);
 const start = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate(), 3, 0)).toISOString();
 const end = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate(), 4, 0)).toISOString();
-const ev = (await call('POST', '/calendar/events', { user: claudia, body: { calendarId: myCal.id, title: 'Vendor review', start, end, timezone: 'Asia/Tokyo', meeting: { provider: 'kaori' }, guests: [{ email: 'hana@kaori.jp' }], notify: false } })).data;
+const ev = (await call('POST', '/calendar/events', { user: claudia, body: { calendarId: myCal.id, title: 'Vendor review', start, end, timezone: 'Asia/Tokyo', meeting: { provider: 'office' }, guests: [{ email: 'hana@hanami.example' }], notify: false } })).data;
 const evCode = ev.meetingUrl.split('room=')[1];
 check('calendar links use the meeting code format', /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(evCode), ev.meetingUrl);
 const fromEv = (await call('GET', `/meetings/${evCode}`, { user: hana })).data;

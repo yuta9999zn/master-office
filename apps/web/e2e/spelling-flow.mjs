@@ -11,7 +11,7 @@ let fails = 0;
 
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 } });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'claudia@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 
@@ -28,7 +28,7 @@ const step = async (name, fn) => {
 const until = (fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 200 });
 const editor = page.getByTestId('doc-editor');
 const card = page.getByTestId('spelling-card');
-const WORD = `Kaorix${String.fromCharCode(97 + (Date.now() % 26))}${String.fromCharCode(97 + ((Date.now() / 26) % 26 | 0))}`;
+const WORD = `Hanamix${String.fromCharCode(97 + (Date.now() % 26))}${String.fromCharCode(97 + ((Date.now() / 26) % 26 | 0))}`;
 
 const doc = await (await page.request.post(`${BASE}/api/resources`, { data: { type: 'document', name: 'Spelling test' } })).json();
 

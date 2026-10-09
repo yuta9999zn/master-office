@@ -28,7 +28,7 @@ async function waitFor(fn, ms = 8000) {
   }
 }
 const users = (await call('GET', '/users')).data;
-const uid = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const uid = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 const [claudia, ken, hana] = ['claudia', 'ken', 'hana'].map(uid);
 const n = Date.now() % 100000;
 

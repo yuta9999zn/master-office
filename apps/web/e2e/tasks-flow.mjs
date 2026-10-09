@@ -31,8 +31,8 @@ const step = async (name, page, fn) => {
 };
 const card = (page, title) => page.locator(`[data-testid="task-card"][data-title="${title}"]`);
 const column = (page, status) => page.locator(`[data-testid="board-column"][data-status="${status}"]`);
-const claudia = await session('claudia@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const hana = await session('hana@hanami.example');
 const projects = await (await claudia.context().request.get(`${BASE}/api/tasks/projects`)).json();
 const web = projects.find((p) => p.key === 'WEB');
 const sys = projects.find((p) => p.key === 'B625');

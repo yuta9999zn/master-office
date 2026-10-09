@@ -29,8 +29,8 @@ const step = async (name, page, fn) => {
 };
 const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 200 });
 
-const mika = await session('mika@kaori.jp');
-const claudia = await session('claudia@kaori.jp');
+const mika = await session('mika@hanami.example');
+const claudia = await session('claudia@hanami.example');
 // Exact title: other suites may have made copies ("… (Copy)").
 const find = async (page, q) => (await (await page.request.get(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json()).find((h) => h.kind === 'resource' && h.title === q);
 const survey = await find(mika, 'Customer Satisfaction Survey');
@@ -68,7 +68,7 @@ let respondent;
 let before = 0;
 await step('respond: required errors are shown, then the form submits', mika, async () => {
   before = (await (await mika.request.get(`${BASE}/api/forms/${survey.id}/responses`)).json()).length;
-  respondent = await session('ken@kaori.jp');
+  respondent = await session('ken@hanami.example');
   await respondent.goto(`${BASE}/f/${survey.id}`);
   await respondent.getByTestId('respond-title').waitFor({ timeout: 60000 });
   // The first page leads to a section, so the button is Next (as in Google Forms).
@@ -186,7 +186,7 @@ await step('the respondent sees the released score and feedback', claudia, async
 });
 
 await step('a viewer cannot edit the form', claudia, async () => {
-  const sora = await session('sora@kaori.jp');
+  const sora = await session('sora@hanami.example');
   await sora.goto(`${BASE}/forms/${survey.id}`);
   await sora.getByTestId('form-title').waitFor({ timeout: 60000 });
   if (await sora.getByTestId('form-title').isEnabled()) throw new Error('viewer can edit the title');

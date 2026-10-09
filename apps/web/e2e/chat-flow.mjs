@@ -33,8 +33,8 @@ const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn,
 const row = (page, title) => page.locator(`[data-testid="conversation-row"][data-title="${title}"]`);
 const lastMessage = (page) => page.getByTestId('timeline').getByTestId('message').last();
 
-const claudia = await session('claudia@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const hana = await session('hana@hanami.example');
 const space = async (page, name) => {
   await page.locator(`[data-testid="rail-space"][data-name="${name}"]`).click();
   await page.getByTestId('space-title').getByText(name, { exact: true }).waitFor({ timeout: 60000 });
@@ -50,9 +50,9 @@ const home = async (page) => {
 await step('the rail shows spaces with mention counts; channels sit in categories; the sidebar total adds up', claudia, async () => {
   await claudia.goto(`${BASE}/chat`);
   await claudia.getByTestId('space-rail').waitFor({ timeout: 60000 });
-  await claudia.locator('[data-testid="rail-space"][data-name="ITM Japan"] [data-testid="rail-badge"]').getByText('1').waitFor();
+  await claudia.locator('[data-testid="rail-space"][data-name="Mirai Systems"] [data-testid="rail-badge"]').getByText('1').waitFor();
   await until(claudia, () => document.querySelector('[data-testid="chat-unread"]')?.textContent === '5');
-  await space(claudia, 'Natural Beauty');
+  await space(claudia, 'Sakura Beauty');
   await claudia.locator('[data-testid="channel-category"][data-name="Information"] [data-title="Announcements"]').waitFor();
 });
 
@@ -163,7 +163,7 @@ await step('a direct message from Home, with "Seen" once read', claudia, async (
   await claudia.getByTestId('composer').fill('Hi Ken, quick question about inventory');
   await claudia.keyboard.press('Enter');
   await lastMessage(claudia).getByTestId('receipt').getByText('Sent').waitFor();
-  const ken = await session('ken@kaori.jp');
+  const ken = await session('ken@hanami.example');
   await ken.goto(`${BASE}/chat`);
   await row(ken, 'Claudia Chen').getByTestId('unread-badge').waitFor({ timeout: 60000 });
   await row(ken, 'Claudia Chen').click();
@@ -173,7 +173,7 @@ await step('a direct message from Home, with "Seen" once read', claudia, async (
 });
 
 await step('space admins create a channel in a category; everyone in the space has it at once', claudia, async () => {
-  await space(claudia, 'Natural Beauty');
+  await space(claudia, 'Sakura Beauty');
   await claudia.getByTestId('space-menu').click();
   await claudia.getByRole('menuitem', { name: 'Create channel' }).click();
   await claudia.getByLabel('Channel name').fill('Holiday party');
@@ -183,7 +183,7 @@ await step('space admins create a channel in a category; everyone in the space h
   await claudia.getByTestId('conversation-title').getByText('Holiday party').waitFor();
   await claudia.getByTestId('system-message').getByText('created the channel Holiday party').waitFor();
   await claudia.locator('[data-testid="channel-category"][data-name="Text channels"] [data-title="Holiday party"]').waitFor();
-  await space(hana, 'Natural Beauty');
+  await space(hana, 'Sakura Beauty');
   await row(hana, 'Holiday party').click();
   await hana.getByTestId('conversation-title').getByText('Holiday party').waitFor();
   await hana.getByTestId('composer').fill('Count me in!');
@@ -192,7 +192,7 @@ await step('space admins create a channel in a category; everyone in the space h
 });
 
 await step('members cannot create channels; read-only roles get no composer', hana, async () => {
-  await space(hana, 'Natural Beauty');
+  await space(hana, 'Sakura Beauty');
   await hana.getByTestId('space-menu').click();
   if (await hana.getByRole('menuitem', { name: 'Create channel' }).count()) throw new Error('a member can create channels');
   await hana.keyboard.press('Escape');
@@ -206,7 +206,7 @@ await step('members cannot create channels; read-only roles get no composer', ha
 });
 
 await step('announcement channels: only admins post', hana, async () => {
-  await space(hana, 'Natural Beauty');
+  await space(hana, 'Sakura Beauty');
   await row(hana, 'Announcements').click();
   await hana.getByTestId('conversation-title').getByText('Announcements').waitFor();
   await hana.getByTestId('read-only-banner').getByText(/announcement channel/).waitFor();
@@ -226,15 +226,15 @@ await step('pinning moves a direct message into Pinned', claudia, async () => {
 });
 
 await step('file cards show live metadata and open the right editor', claudia, async () => {
-  await space(claudia, 'ITM Japan');
-  await row(claudia, 'ITM Japan - Project').click();
+  await space(claudia, 'Mirai Systems');
+  await row(claudia, 'Mirai Systems - Project').click();
   const card = claudia.getByTestId('timeline').locator('[data-testid="file-card"][data-name="Project Plan Sep.pptx"]');
   await card.waitFor();
   if (!(await card.innerText()).includes('PPTX')) throw new Error(await card.innerText());
   await card.click();
   await claudia.waitForURL(/\/slides\//, { timeout: 30000 });
   await claudia.goBack();
-  await claudia.getByTestId('conversation-title').getByText('ITM Japan - Project').waitFor({ timeout: 30000 });
+  await claudia.getByTestId('conversation-title').getByText('Mirai Systems - Project').waitFor({ timeout: 30000 });
 });
 
 const shareFromDrive = async (page, name) => {

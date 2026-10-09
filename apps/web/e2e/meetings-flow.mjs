@@ -44,11 +44,11 @@ const videoPlaying = (page, userId) =>
   );
 const tile = (page, userId) => page.locator(`[data-testid="tile"][data-user="${userId}"]`).first();
 
-const claudia = await session('claudia@kaori.jp');
-const ken = await session('ken@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const ken = await session('ken@hanami.example');
+const hana = await session('hana@hanami.example');
 const users = await (await claudia.context().request.get(`${BASE}/api/users`)).json();
-const id = (key) => users.find((u) => u.email === `${key}@kaori.jp`).id;
+const id = (key) => users.find((u) => u.email === `${key}@hanami.example`).id;
 let room = '';
 
 await step('start an instant meeting and see yourself in the preview', claudia, async () => {

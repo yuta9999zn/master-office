@@ -8,11 +8,11 @@ type Box = typeof s.mailboxes.$inferSelect;
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /**
- * Mail demo data (§69): a mailbox per person on kaori.jp, a few internal conversations (with a reply and an
- * attachment), mail from an outside partner, a message sent outside, and the shared marketing@kaori.jp mailbox.
+ * Mail demo data (§69): a mailbox per person on hanami.example, a few internal conversations (with a reply and an
+ * attachment), mail from an outside partner, a message sent outside, and the shared marketing@hanami.example mailbox.
  */
 export async function seedMail(db: Db, storage: StorageService, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string) {
-  await db.update(s.workspaces).set({ mailDomain: 'kaori.jp' }).where(eq(s.workspaces.id, workspaceId));
+  await db.update(s.workspaces).set({ mailDomain: 'hanami.example' }).where(eq(s.workspaces.id, workspaceId));
   const box: Record<string, Box> = {};
   for (const [key, user] of Object.entries(u)) {
     const [row] = await db.insert(s.mailboxes).values({ workspaceId, kind: 'user', userId: user.id, address: user.email.toLowerCase(), name: user.name }).returning();
@@ -20,7 +20,7 @@ export async function seedMail(db: Db, storage: StorageService, workspaceId: str
   }
   const [marketing] = await db
     .insert(s.mailboxes)
-    .values({ workspaceId, kind: 'space', spaceId: spaceId('Marketing'), address: 'marketing@kaori.jp', name: 'Marketing', signature: 'Natural Beauty Marketing Team' })
+    .values({ workspaceId, kind: 'space', spaceId: spaceId('Marketing'), address: 'marketing@hanami.example', name: 'Marketing', signature: 'Sakura Beauty Marketing Team' })
     .returning();
   box.marketing = marketing;
 
@@ -62,7 +62,7 @@ export async function seedMail(db: Db, storage: StorageService, workspaceId: str
       .insert(s.mailMessages)
       .values({
         workspaceId,
-        messageId: `${id}@${external ? from.address.split('@')[1] : 'kaori.jp'}`,
+        messageId: `${id}@${external ? from.address.split('@')[1] : 'hanami.example'}`,
         fromAddress: from.address,
         fromName: from.name,
         to: to.map(({ address, name }) => ({ address, name })),
@@ -117,11 +117,11 @@ export async function seedMail(db: Db, storage: StorageService, workspaceId: str
     read: ['mika'],
   });
   await mail({ from: 'rina', to: ['claudia', 'hana', 'mika', 'yuki', 'sora', 'ken', 'fujita', 'huong', 'minh'], subject: 'Year-end holiday schedule', text: 'Dear all,\n\nThe office will be closed from Dec 29 to Jan 3. Please plan your leave accordingly.\n\nRina (HR)', ago: 3 * day, read: ['claudia', 'hana', 'mika'] });
-  await mail({ from: 'ITM Japan Legal <legal@itmjapan.com>', to: ['claudia'], subject: 'Contract renewal 2027', text: 'Dear Ms. Chen,\n\nPlease find the renewal terms for 2027 below. We would appreciate your confirmation by October 20.\n\nKind regards,\nITM Japan Legal', ago: 300 });
-  await mail({ from: 'claudia', to: ['Supplier Sales <sales@beauty-supplier.example>'], subject: 'Q4 price list request', text: 'Hello,\n\nCould you send us the Q4 price list and delivery windows?\n\nBest regards,\nClaudia Chen\nNatural Beauty', ago: day + 200 });
+  await mail({ from: 'Mirai Systems Legal <legal@itmjapan.com>', to: ['claudia'], subject: 'Contract renewal 2027', text: 'Dear Ms. Chen,\n\nPlease find the renewal terms for 2027 below. We would appreciate your confirmation by October 20.\n\nKind regards,\nMirai Systems Legal', ago: 300 });
+  await mail({ from: 'claudia', to: ['Supplier Sales <sales@beauty-supplier.example>'], subject: 'Q4 price list request', text: 'Hello,\n\nCould you send us the Q4 price list and delivery windows?\n\nBest regards,\nClaudia Chen\nSakura Beauty', ago: day + 200 });
 
   // The shared Marketing mailbox: outside mail anyone in the Marketing space can read; editors answer it.
-  const collab = await mail({ from: 'Aiko Mori <aiko@studio-mori.example>', to: ['marketing'], subject: 'Collaboration proposal for the spring campaign', text: 'Hello Natural Beauty team,\n\nWe are a design studio in Osaka and would love to collaborate on your spring campaign. Could we schedule a call?\n\nAiko Mori\nStudio Mori', ago: 240 });
+  const collab = await mail({ from: 'Aiko Mori <aiko@studio-mori.example>', to: ['marketing'], subject: 'Collaboration proposal for the spring campaign', text: 'Hello Sakura Beauty team,\n\nWe are a design studio in Osaka and would love to collaborate on your spring campaign. Could we schedule a call?\n\nAiko Mori\nStudio Mori', ago: 240 });
   void collab;
   await mail({ from: 'Press Desk <press@beauty-weekly.example>', to: ['marketing'], subject: 'Interview request — Beauty Weekly', text: 'Hi,\n\nBeauty Weekly would like to interview your marketing lead about the new product line.\n\nBest,\nPress Desk', ago: 2 * day, read: ['marketing'] });
   await db.execute(sql`SELECT 1`);

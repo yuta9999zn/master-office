@@ -30,13 +30,13 @@ const step = async (name, page, fn) => {
   }
 };
 
-const fujita = await session('fujita@kaori.jp');
+const fujita = await session('fujita@hanami.example');
 const req = fujita.context().request;
 const post = async (path, data) => (await req.post(`${BASE}/api${path}`, { data })).json();
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `WK${Date.now() % 100000}`;
 // Kanban so the board shows every issue (no sprint needed).
-const proj = await post('/tasks/projects', { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `Checkout ${key}`, key, methodology: 'kanban' });
+const proj = await post('/tasks/projects', { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `Checkout ${key}`, key, methodology: 'kanban' });
 const story = await post('/tasks', { projectId: proj.id, title: 'Pay with QR code', type: 'story', storyPoints: 5 });
 const card = (title) => fujita.locator(`[data-testid="task-card"][data-title="${title}"]`);
 const column = (status) => fujita.locator(`[data-testid="board-column"][data-status="${status}"]`);

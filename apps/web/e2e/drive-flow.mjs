@@ -119,7 +119,7 @@ await step('Ctrl+K search opens the right editor', async () => {
 
 await step('switch user: Hana cannot see private HR space', async () => {
   const users = await (await page.request.get(BASE + '/api/users')).json();
-  const hana = users.find((u) => u.email === 'hana@kaori.jp');
+  const hana = users.find((u) => u.email === 'hana@hanami.example');
   await page.context().addCookies([{ name: 'mo_uid', value: hana.id, url: BASE }]);
   await page.goto(BASE + '/spaces', { waitUntil: 'networkidle' });
   await page.getByText('Marketing', { exact: true }).first().waitFor();

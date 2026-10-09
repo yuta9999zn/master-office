@@ -20,7 +20,7 @@ function survey(): PlainForm {
   const contact: FormItem = { id: newId(), type: 'short', title: 'Phone number (optional — we may call you back)', validation: { kind: 'regex', op: 'matches', value: '^[0-9+\\- ]{6,20}$', message: 'Enter a phone number' } };
   return {
     title: 'Customer Satisfaction Survey',
-    description: 'Thank you for visiting Natural Beauty! This takes about 2 minutes.',
+    description: 'Thank you for visiting Sakura Beauty! This takes about 2 minutes.',
     theme: { ...DEFAULT_THEME, color: '#F28B9B', background: '#FDECEF' },
     settings: { ...DEFAULT_SETTINGS, collectEmail: 'off', access: 'public', showSummary: true },
     items: [visit, service, rating, recommend, grid, back, unhappy, what, contact],

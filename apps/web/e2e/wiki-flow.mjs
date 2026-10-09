@@ -30,7 +30,7 @@ const step = async (name, page, fn) => {
   }
 };
 
-const p = await session('fujita@kaori.jp');
+const p = await session('fujita@hanami.example');
 const n = Date.now() % 100000;
 const name = `Loan system ${n}`;
 const node = (title) => p.locator(`[data-testid="wiki-node"][data-title="${title}"]`);
@@ -46,7 +46,7 @@ await step('creating a space from the business-analysis toolkit', p, async () =>
   await p.getByTestId('create-space').click({ timeout: 90000 });
   await p.getByLabel('Space name').fill(name);
   await p.getByLabel('Space key').fill(`LN${n}`);
-  await p.getByLabel('Where').selectOption({ label: 'Members of ITM Japan' });
+  await p.getByLabel('Where').selectOption({ label: 'Members of Mirai Systems' });
   await p.getByTestId('starter-ba').click();
   await p.getByTestId('space-save').click();
   await p.getByTestId('space-name').filter({ hasText: name }).waitFor({ timeout: 60000 });

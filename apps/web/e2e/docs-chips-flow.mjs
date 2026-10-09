@@ -32,11 +32,11 @@ const step = async (name, page, fn) => {
 };
 
 const until = async (page, fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 200 });
-const claudia = await session('claudia@kaori.jp');
-const mika = await session('mika@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const mika = await session('mika@hanami.example');
 const users = await (await claudia.request.get(`${BASE}/api/users`)).json();
 const doc = await (await claudia.request.post(`${BASE}/api/resources`, { data: { name: `Chips ${Date.now()}`, type: 'document' } })).json();
-await claudia.request.post(`${BASE}/api/resources/${doc.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@kaori.jp').id, role: 'editor' } });
+await claudia.request.post(`${BASE}/api/resources/${doc.id}/members`, { data: { userId: users.find((u) => u.email === 'mika@hanami.example').id, role: 'editor' } });
 const editorOf = (p) => p.getByTestId('doc-editor');
 for (const p of [claudia, mika]) {
   await p.goto(`${BASE}/docs/${doc.id}`);

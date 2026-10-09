@@ -393,10 +393,10 @@ export class CalendarService {
 
   private meeting(m: EventInput['meeting']) {
     if (!m) return { meetingUrl: null, meetingProvider: null };
-    if (m.provider === 'kaori') {
+    if (m.provider === 'office') {
       // Video rooms open with the Meetings module; the link is stable from now on.
       const code = meetingCode(randomBytes(10));
-      return { meetingUrl: `${config.webOrigin}/meetings?room=${code}`, meetingProvider: 'kaori' as const };
+      return { meetingUrl: `${config.webOrigin}/meetings?room=${code}`, meetingProvider: 'office' as const };
     }
     if (!m.url || !/^https?:\/\/\S+$/.test(m.url)) throw new BadRequestException('Give the meeting link');
     return { meetingUrl: m.url, meetingProvider: m.provider };
@@ -464,7 +464,7 @@ export class CalendarService {
       Object.assign(set, this.times({ start: input.start ?? ev.startAt, end: input.end ?? ev.endAt, allDay: input.allDay ?? ev.allDay, timezone: input.timezone ?? ev.timezone }));
       if (input.allDay !== undefined) set.allDay = input.allDay;
     }
-    if (input.meeting !== undefined) Object.assign(set, input.meeting && ev.meetingProvider === input.meeting.provider && input.meeting.provider === 'kaori' ? {} : this.meeting(input.meeting));
+    if (input.meeting !== undefined) Object.assign(set, input.meeting && ev.meetingProvider === input.meeting.provider && input.meeting.provider === 'office' ? {} : this.meeting(input.meeting));
     const added: string[] = [];
     await this.db.transaction(async (tx) => {
       if (input.attachments) set.attachments = await this.checkFiles(actor, input.attachments, tx);

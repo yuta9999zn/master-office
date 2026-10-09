@@ -8,7 +8,7 @@ const TZ = 'Asia/Tokyo';
 
 /**
  * Calendar demo data after "giao diện calender.png" (§71): personal calendars, team calendars for spaces, and the
- * week around today — Team Meeting (weekly), ITM Japan Meeting with guests in every state, reviews, trainings.
+ * week around today — Team Meeting (weekly), Mirai Systems Meeting with guests in every state, reviews, trainings.
  */
 export async function seedCalendar(db: Db, workspaceId: string, u: Record<string, User>, spaceId: (name: string) => string, fileId: (name: string) => Promise<string>, origin: string) {
   const cal: Record<string, string> = {};
@@ -20,7 +20,7 @@ export async function seedCalendar(db: Db, workspaceId: string, u: Record<string
     const [row] = await db.insert(s.calendars).values({ workspaceId, kind: 'space', spaceId: spaceId(space), name, color }).returning();
     cal[key] = row.id;
   };
-  await team('all', 'Natural Beauty', 'Natural Beauty - All', '#2563eb');
+  await team('all', 'Sakura Beauty', 'Sakura Beauty - All', '#2563eb');
   await team('marketing', 'Marketing', 'Marketing', '#ec4899');
   await team('operations', 'Operations', 'Operations', '#f59e0b');
   await team('b575', 'Branch 575', 'Branch 575', '#10b981');
@@ -59,14 +59,14 @@ export async function seedCalendar(db: Db, workspaceId: string, u: Record<string
         kind: o.kind ?? 'event',
         title: o.title,
         description: o.description ?? null,
-        location: o.online ? 'Online (Kaori Meet)' : o.location ?? null,
+        location: o.online ? 'Online (Office Meet)' : o.location ?? null,
         startAt: o.allDay ? at(o.day, 0) : at(o.day, ...o.from),
         endAt: o.allDay ? at(o.day + 1, 0) : at(o.day, ...o.to),
         allDay: !!o.allDay,
         timezone: TZ,
         recurrence: o.weekly ? { freq: 'weekly', interval: 1, byDay: [o.day] } : null,
         meetingUrl: o.online ? `${origin}/meetings?room=${code}` : null,
-        meetingProvider: o.online ? 'kaori' : null,
+        meetingProvider: o.online ? 'office' : null,
         organizerId: u[o.organizer].id,
         attachments: o.files ? await Promise.all(o.files.map(fileId)) : [],
       })
@@ -81,7 +81,7 @@ export async function seedCalendar(db: Db, workspaceId: string, u: Record<string
   await event({
     cal: 'claudia',
     organizer: 'claudia',
-    title: 'ITM Japan Meeting',
+    title: 'Mirai Systems Meeting',
     day: 2,
     from: [10, 30],
     to: [11, 30],

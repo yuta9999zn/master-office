@@ -11,7 +11,7 @@ const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 }, timezoneId: 'Asia/Tokyo' });
 const users = await (await ctx.request.get(`${BASE}/api/users`)).json();
-await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@kaori.jp').id, url: BASE }]);
+await ctx.addCookies([{ name: 'mo_uid', value: users.find((u) => u.email === 'fujita@hanami.example').id, url: BASE }]);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const step = async (name, fn) => {
@@ -27,7 +27,7 @@ const step = async (name, fn) => {
 const req = ctx.request;
 const spaces = await (await req.get(`${BASE}/api/spaces`)).json();
 const key = `LS${Date.now() % 100000}`;
-const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'ITM Japan').id, name: `List ${key}`, key, methodology: 'waterfall' } })).json();
+const proj = await (await req.post(`${BASE}/api/tasks/projects`, { data: { spaceId: spaces.find((x) => x.name === 'Mirai Systems').id, name: `List ${key}`, key, methodology: 'waterfall' } })).json();
 await req.patch(`${BASE}/api/tasks/projects/${proj.id}`, { data: { strictWorkflow: false } });
 const mk = async (title) => (await req.post(`${BASE}/api/tasks`, { data: { projectId: proj.id, title, type: 'task' } })).json();
 const a = await mk('Install POS terminals');

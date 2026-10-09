@@ -30,18 +30,18 @@ const step = async (name, page, fn) => {
   }
 };
 const ev = (page, title) => page.locator(`[data-testid="event"][data-title="${title}"]`);
-const claudia = await session('claudia@kaori.jp');
-const hana = await session('hana@kaori.jp');
+const claudia = await session('claudia@hanami.example');
+const hana = await session('hana@hanami.example');
 
 await step('the week shows events; opening one shows guests, answers and the meeting link', claudia, async () => {
   await claudia.goto(`${BASE}/calendar`);
-  await ev(claudia, 'ITM Japan Meeting').waitFor({ timeout: 60000 });
-  await ev(claudia, 'ITM Japan Meeting').click();
+  await ev(claudia, 'Mirai Systems Meeting').waitFor({ timeout: 60000 });
+  await ev(claudia, 'Mirai Systems Meeting').click();
   const panel = claudia.getByTestId('event-panel');
-  await panel.getByTestId('event-title').getByText('ITM Japan Meeting').waitFor();
-  await panel.locator('[data-testid="guest"][data-email="mika@kaori.jp"]').getByText('Tentative').waitFor();
+  await panel.getByTestId('event-title').getByText('Mirai Systems Meeting').waitFor();
+  await panel.locator('[data-testid="guest"][data-email="mika@hanami.example"]').getByText('Tentative').waitFor();
   // test:calendar (which runs first in `pnpm test`) has Yuki answer "maybe".
-  await panel.locator('[data-testid="guest"][data-email="yuki@kaori.jp"]').getByText(/^(Pending|Tentative)$/).waitFor();
+  await panel.locator('[data-testid="guest"][data-email="yuki@hanami.example"]').getByText(/^(Pending|Tentative)$/).waitFor();
   if (!(await panel.getByTestId('join-meeting').getAttribute('href')).includes('/meetings?room=')) throw new Error('meeting link');
   await panel.getByText('Project Plan Sep.pptx').waitFor();
   await panel.getByRole('button', { name: 'Close' }).click();
@@ -76,7 +76,7 @@ await step('the guest answers from the bell link; the organizer sees it live', h
   await panel.getByTestId('event-title').getByText(createdTitle).waitFor({ timeout: 30000 });
   await panel.getByTestId('rsvp').getByRole('button', { name: 'Yes' }).click();
   await ev(claudia, createdTitle).click();
-  await claudia.getByTestId('event-panel').locator('[data-testid="guest"][data-email="hana@kaori.jp"]').getByText('Accepted').waitFor({ timeout: 15000 });
+  await claudia.getByTestId('event-panel').locator('[data-testid="guest"][data-email="hana@hanami.example"]').getByText('Accepted').waitFor({ timeout: 15000 });
 });
 
 await step('the invitation also arrives by mail with a calendar file', hana, async () => {
@@ -90,11 +90,11 @@ await step('the invitation also arrives by mail with a calendar file', hana, asy
 
 await step('month and agenda views', claudia, async () => {
   await claudia.getByRole('tab', { name: 'month' }).click();
-  await claudia.getByTestId('month-view').locator('[data-testid="event"][data-title="ITM Japan Meeting"]').waitFor();
+  await claudia.getByTestId('month-view').locator('[data-testid="event"][data-title="Mirai Systems Meeting"]').waitFor();
   await claudia.getByRole('tab', { name: 'agenda' }).click();
   await claudia.getByTestId('agenda-view').locator(`[data-testid="event"][data-title="${createdTitle}"]`).waitFor();
   await claudia.getByRole('tab', { name: 'week' }).click();
-  await ev(claudia, 'ITM Japan Meeting').waitFor();
+  await ev(claudia, 'Mirai Systems Meeting').waitFor();
 });
 
 await step('hiding a team calendar hides its events', claudia, async () => {
@@ -106,11 +106,11 @@ await step('hiding a team calendar hides its events', claudia, async () => {
 });
 
 await step('other people\'s time shows as busy', hana, async () => {
-  const ken = await session('ken@kaori.jp');
+  const ken = await session('ken@hanami.example');
   await ken.goto(`${BASE}/calendar`);
   await ken.getByTestId('calendar-people').locator('[data-name="Claudia Chen"]').click({ timeout: 60000 });
   await ken.locator('[data-testid="event"][data-busy="true"]').first().waitFor();
-  if (await ev(ken, 'ITM Japan Meeting').count()) throw new Error('details leaked');
+  if (await ev(ken, 'Mirai Systems Meeting').count()) throw new Error('details leaked');
   await ev(ken, 'Product Discussion').waitFor(); // Ken is invited to this one
   await ken.context().close();
 });
