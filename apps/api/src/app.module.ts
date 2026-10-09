@@ -1,3 +1,4 @@
+import { HealthController } from './health.controller';
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { CalendarController } from './calendar/calendar.controller';
 import { ApprovalsController } from './approvals/approvals.controller';
@@ -72,7 +73,7 @@ import { StorageController } from './storage/storage.controller';
 
 @Module({
   imports: [DbModule],
-  controllers: [UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController, FlowController, AiController],
+  controllers: [HealthController, UsersController, WorkspaceController, SpacesController, ResourcesController, DocsController, PublishController, CommentsController, SearchController, FormsController, SpellingController, MacroTriggersController, QaController, ChatController, NotificationsController, ContactsController, MailController, CalendarController, TasksController, SprintsController, ProjectDocsController, MeetingsController, ApprovalsController, BaseController, WikiController, AuthController, AdminController, StorageController, FlowController, AiController],
   providers: [
     SpellingService,
     RealtimeService,

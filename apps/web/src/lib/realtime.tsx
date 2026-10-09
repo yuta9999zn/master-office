@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import { api, API_ORIGIN } from './api';
+import { api, apiWsOrigin } from './api';
 import { applyChatEvent } from './chat';
 import { applyNotificationEvent } from './notifications';
 import { applyMailEvent } from './mail';
@@ -80,7 +80,7 @@ export function RealtimeBridge() {
       try {
         const { token } = await api<{ token: string }>('/realtime/token');
         if (stopped) return;
-        const ws = new WebSocket(`${API_ORIGIN.replace(/^http/, 'ws')}/realtime?token=${encodeURIComponent(token)}`);
+        const ws = new WebSocket(`${apiWsOrigin()}/realtime?token=${encodeURIComponent(token)}`);
         socket = ws;
         ws.onopen = () => {
           retry = 0;

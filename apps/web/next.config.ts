@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   turbopack: { root },
   devIndicators: false,
   outputFileTracingRoot: root,
+  // Docker image (apps/web/Dockerfile): a self-contained server with only the files it needs.
+  output: process.env.NEXT_OUTPUT_STANDALONE === '1' || process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
   // The browser talks to the API through this proxy: same origin, so the dev identity cookie and file downloads just work.
   async rewrites() {
     const api = process.env.API_URL ?? 'http://localhost:4000';

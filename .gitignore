@@ -8,3 +8,6 @@ test-results
 playwright-report
 .secrets
 .cache
+
+# Full-size screenshots for posts (docs/screenshots holds the README copies)
+/screenshots

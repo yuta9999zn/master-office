@@ -49,6 +49,9 @@ export async function api<T = void>(path: string, init: Init = {}): Promise<T> {
  */
 export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+/** The API origin for websockets: an absolute ws(s) URL even when API_ORIGIN is a path behind the site's proxy ("/api"). */
+export const apiWsOrigin = () => (/^https?:/.test(API_ORIGIN) ? API_ORIGIN.replace(/^http/, 'ws') : `${window.location.origin.replace(/^http/, 'ws')}${API_ORIGIN.replace(/\/$/, '')}`);
+
 export async function uploadFile<T>(path: string, body: FormData): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${path}`, { method: 'POST', body, credentials: 'include' });
   if (!res.ok) {

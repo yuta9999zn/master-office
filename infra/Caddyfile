@@ -1,0 +1,24 @@
+# Master Office reverse proxy (infra/docker-compose.prod.yml). PUBLIC_HOST is ":80" (plain HTTP, any host name) or
+# a domain such as "office.example.com" — then Caddy serves HTTPS with its own certificates.
+{$PUBLIC_HOST}
+
+encode gzip zstd
+
+# REST, uploads and the realtime websocket (/api/realtime) — the /api prefix is dropped before the API sees the path.
+handle_path /api/* {
+	reverse_proxy api:4000
+}
+
+# Collaborative editing (Hocuspocus) — one websocket per open document.
+handle_path /collab* {
+	reverse_proxy api:4001
+}
+
+# Published pages (File → Publish to web) are served by the API.
+handle /pub/* {
+	reverse_proxy api:4000
+}
+
+handle {
+	reverse_proxy web:3000
+}

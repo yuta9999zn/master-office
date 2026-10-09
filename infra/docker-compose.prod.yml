@@ -1,0 +1,127 @@
+# Master Office — everything on one machine, one command (docs/INSTALL.md):
+#   cp .env.production.example .env.production   # set PUBLIC_URL, passwords, SETTINGS_KEY
+#   docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build
+# Caddy is the only thing exposed: / → web, /api → API (REST, uploads, realtime websocket), /collab → collaborative editing.
+# With PUBLIC_HOST set to a domain that points at this machine, Caddy obtains HTTPS certificates by itself.
+name: master-office
+services:
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443"]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web, api]
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://workos:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/workos
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://s3:8333
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-workos}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env.production}
+      S3_BUCKET: workos
+      API_PORT: "4000"
+      COLLAB_PORT: "4001"
+      # Where browsers open the collaborative-editing websocket: through the proxy, same origin as the site.
+      COLLAB_PUBLIC_URL: ${PUBLIC_WS_URL:-ws://localhost}/collab
+      WEB_ORIGIN: ${PUBLIC_URL:-http://localhost}
+      COLLAB_SECRET: ${COLLAB_SECRET:?set COLLAB_SECRET in .env.production}
+      SETTINGS_KEY: ${SETTINGS_KEY:?set SETTINGS_KEY in .env.production}
+      # Optional: outgoing mail, mail from outside, video calls across the internet, local AI.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Master Office <no-reply@localhost>}
+      MAIL_INBOUND_PORT: ${MAIL_INBOUND_PORT:-0}
+      MAIL_INBOUND_SECRET: ${MAIL_INBOUND_SECRET:-}
+      MEETING_ICE_SERVERS: ${MEETING_ICE_SERVERS:-[]}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OCR_CACHE_DIR: /repo/apps/api/.cache/tessdata
+    volumes:
+      - api-cache:/repo/apps/api/.cache
+    # Mail arriving by SMTP from outside: set MAIL_INBOUND_PORT=2525 and uncomment.
+    # ports: ["25:2525"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: workos
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workos"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  # S3-compatible object storage for files and pictures. Any S3 (AWS, MinIO, …) works instead: point S3_* at it.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: server -s3 -dir=/data -master.volumeSizeLimitMB=1024 -volume.max=100
+    volumes: [s3data:/data]
+    healthcheck:
+      # The S3 gateway answers (any HTTP status) once the volume server is up; the API creates the bucket at start.
+      test: ["CMD-SHELL", "wget -q -S --spider http://localhost:8333/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 5s
+      retries: 30
+
+  # Local AI (optional): docker compose … --profile ai up -d, then `docker compose … exec ollama ollama pull qwen2.5:3b`.
+  # A GPU makes it usable; on a CPU a 3B model answers at ~10 tokens/s.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ai]
+    restart: unless-stopped
+    volumes: [ollama:/root/.ollama]
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:
+  api-cache:
+  caddy-data:
+  caddy-config:
+  ollama:
