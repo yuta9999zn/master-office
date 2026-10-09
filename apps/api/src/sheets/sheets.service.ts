@@ -52,18 +52,22 @@ export const sheetBaseName = (name: string) => name.replace(/\.(xlsx|xlsm|xls|cs
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+const safeColor = (v: unknown): v is string => typeof v === 'string' && /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|[a-z]{3,20})$/i.test(v);
+const px = (v: unknown, dflt: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(5000, Math.max(0, v)) : dflt);
+
 const BORDER_CSS: Record<number, string> = { 1: '1px solid', 2: '1px dotted', 3: '1px dotted', 4: '1px dashed', 7: '3px double', 8: '2px solid', 9: '2px dashed', 13: '3px solid' };
 
 function styleCss(s: CellStyle | null | undefined, v: unknown): string {
   const css: string[] = [];
-  if (s?.ff) css.push(`font-family:${JSON.stringify(s.ff)}`);
-  if (s?.fs) css.push(`font-size:${s.fs}pt`);
+  // Styles come straight from the workbook (imports, raw edits): names and colours are checked before they become CSS (§85 C).
+  if (s?.ff && /^[\w\s,'-]{1,80}$/.test(s.ff)) css.push(`font-family:'${s.ff.replace(/'/g, '')}'`);
+  if (typeof s?.fs === 'number' && Number.isFinite(s.fs)) css.push(`font-size:${Math.min(409, Math.max(1, s.fs))}pt`);
   if (s?.bl) css.push('font-weight:700');
   if (s?.it) css.push('font-style:italic');
   const deco = [s?.ul?.s ? 'underline' : '', s?.st?.s ? 'line-through' : ''].filter(Boolean).join(' ');
   if (deco) css.push(`text-decoration:${deco}`);
-  if (s?.cl?.rgb) css.push(`color:${s.cl.rgb}`);
-  if (s?.bg?.rgb) css.push(`background:${s.bg.rgb}`);
+  if (safeColor(s?.cl?.rgb)) css.push(`color:${s!.cl!.rgb}`);
+  if (safeColor(s?.bg?.rgb)) css.push(`background:${s!.bg!.rgb}`);
   // Excel default alignment: numbers right, booleans centre, text left.
   const ht = s?.ht || (typeof v === 'number' ? 3 : typeof v === 'boolean' ? 2 : 1);
   css.push(`text-align:${['left', 'left', 'center', 'right'][ht]}`);
@@ -71,7 +75,7 @@ function styleCss(s: CellStyle | null | undefined, v: unknown): string {
   if (s?.tb === 3) css.push('white-space:pre-wrap');
   for (const [k, side] of [['t', 'top'], ['b', 'bottom'], ['l', 'left'], ['r', 'right']] as const) {
     const b = s?.bd?.[k];
-    if (b) css.push(`border-${side}:${BORDER_CSS[b.s] ?? '1px solid'} ${b.cl?.rgb ?? '#000'}`);
+    if (b) css.push(`border-${side}:${BORDER_CSS[b.s] ?? '1px solid'} ${safeColor(b.cl?.rgb) ? b.cl!.rgb : '#000'}`);
   }
   return css.join(';');
 }
@@ -90,11 +94,11 @@ export function sheetToHtml(s: PlainSheet): string {
   for (let c = 0; c <= maxC; c++) if (!s.colMeta[c]?.hd) cols.push(c);
   const grid = s.meta.gridlines !== 0;
   let html = `<h2 class="sheet-name">${esc(s.meta.name)}</h2><table class="${grid ? 'grid' : ''}"><colgroup>`;
-  for (const c of cols) html += `<col style="width:${s.colMeta[c]?.w ?? s.meta.defaultColWidth ?? 88}px">`;
+  for (const c of cols) html += `<col style="width:${px(s.colMeta[c]?.w ?? s.meta.defaultColWidth, 88)}px">`;
   html += '</colgroup>';
   for (let r = 0; r <= maxR; r++) {
     if (s.rowMeta[r]?.hd) continue;
-    html += `<tr style="height:${s.rowMeta[r]?.h ?? s.meta.defaultRowHeight ?? 24}px">`;
+    html += `<tr style="height:${px(s.rowMeta[r]?.h ?? s.meta.defaultRowHeight, 24)}px">`;
     for (const c of cols) {
       if (covered.has(`${r}:${c}`)) continue;
       const cell = s.cells[r]?.[c];

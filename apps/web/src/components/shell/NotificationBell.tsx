@@ -5,6 +5,7 @@ import { AtSign, Bell, CalendarDays, CheckCheck, CircleCheck, FileText, ListChec
 import { useRouter } from 'next/navigation';
 import { Popover } from 'radix-ui';
 import { useState } from 'react';
+import { safePath } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { useNotificationActions, useNotifications, useUnreadNotifications } from '@/lib/notifications';
 import { Avatar, cn, EmptyState, Skeleton, Tip } from '../ui/primitives';
@@ -42,7 +43,7 @@ export function NotificationBell() {
   const go = (n: AppNotification) => {
     if (!n.readAt) read.mutate([n.id]);
     setOpen(false);
-    router.push(n.url);
+    router.push(safePath(n.url));
   };
 
   return (

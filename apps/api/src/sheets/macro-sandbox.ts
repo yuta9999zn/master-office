@@ -1,5 +1,8 @@
 import { macroWorker, type MacroRequest, type MacroResult } from '@workos/sheet-model';
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSWASMModule } from 'quickjs-emscripten';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 
 // Runs a macro on the server (docs/ARCHITECTURE.md §48) with the same runtime the browser runs in a Web Worker
 // (sheet-model/macro-runtime.ts), inside QuickJS compiled to WebAssembly: a separate JS engine with its own heap
@@ -27,6 +30,43 @@ globalThis.__run = (json) => {
 };`;
 
 let engine: Promise<QuickJSWASMModule> | null = null;
+
+/** How many macros may run at once; the rest wait (one API process, each run holds a QuickJS heap of up to 64 MB). */
+const MAX_PARALLEL = 2;
+let running = 0;
+const waiting: (() => void)[] = [];
+const acquire = () => new Promise<void>((resolve) => (running < MAX_PARALLEL ? (running++, resolve()) : waiting.push(() => (running++, resolve()))));
+const release = () => {
+  running--;
+  waiting.shift()?.();
+};
+
+/**
+ * The entry point for server-side runs (§85 C): in a built API the macro runs in a worker thread, so an endless
+ * loop costs one thread for `timeoutMs` and never the event loop; under tsx (dev) it runs inline as before.
+ */
+export async function runIsolated(req: MacroRequest, timeoutMs = SANDBOX_TIMEOUT_MS): Promise<MacroResult> {
+  const workerFile = join(__dirname, 'macro-sandbox-worker.js');
+  await acquire();
+  try {
+    if (!existsSync(workerFile)) return await runSandboxed(req, timeoutMs);
+    return await new Promise<MacroResult>((resolve) => {
+      const started = Date.now();
+      const w = new Worker(workerFile, { workerData: { req, timeoutMs }, resourceLimits: { maxOldGenerationSizeMb: 256 } });
+      const fail = (error: string) => resolve({ ok: false, ops: [], logs: [], error, ms: Date.now() - started });
+      // The interrupt inside QuickJS normally stops it at the deadline; this is the backstop if it does not.
+      const killer = setTimeout(() => void w.terminate().then(() => fail(`Exceeded maximum execution time (${timeoutMs / 1000} s) — the macro was stopped and nothing was changed`)), timeoutMs + 2000);
+      w.once('message', (m: { ok: true; result: MacroResult } | { ok: false; error: string }) => {
+        clearTimeout(killer);
+        resolve(m.ok ? m.result : { ok: false, ops: [], logs: [], error: m.error, ms: Date.now() - started });
+      });
+      w.once('error', (e) => (clearTimeout(killer), fail(e.message)));
+      w.once('exit', (code) => code !== 0 && (clearTimeout(killer), fail(`The macro runner stopped (code ${code})`)));
+    });
+  } finally {
+    release();
+  }
+}
 
 export async function runSandboxed(req: MacroRequest, timeoutMs = SANDBOX_TIMEOUT_MS): Promise<MacroResult> {
   const started = Date.now();

@@ -51,7 +51,7 @@ export class FormsController {
 
   @RateLimit(20, 60)
   @Post(':id/uploads')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   upload(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
     return this.forms.upload(req.actor, id, file);
   }

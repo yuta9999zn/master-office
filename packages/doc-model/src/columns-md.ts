@@ -121,8 +121,8 @@ function inlineHtml(s: string): string {
   const codes: string[] = [];
   let t = s.replace(/`([^`]+)`/g, (_m, c: string) => `\u0000${codes.push(c) - 1}\u0000`);
   t = esc(t)
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img alt="$1" src="$2">')
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt: string, src: string) => (/^(https?:|\/(?!\/)|data:image\/(png|jpeg|gif|webp);base64,)/i.test(src) ? `<img alt="${alt}" src="${src}">` : alt))
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, href: string) => (/^(https?:|mailto:|tel:|\/(?!\/)|#)/i.test(href) ? `<a href="${href}">${text}</a>` : text))
     .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_m, a, b) => `<strong>${a ?? b}</strong>`)
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
     .replace(/(^|[^_\w])_([^_\s][^_]*)_/g, '$1<em>$2</em>')

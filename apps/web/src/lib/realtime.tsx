@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import { api, apiWsOrigin } from './api';
+import { api, apiWsOrigin, safePath } from './api';
 import { applyChatEvent } from './chat';
 import { applyNotificationEvent } from './notifications';
 import { applyMailEvent } from './mail';
@@ -122,7 +122,7 @@ export function RealtimeBridge() {
             const n = e.notification;
             // A small heads-up, unless you are already looking at the place it points to.
             if (!window.location.pathname.startsWith(n.url.split('?')[0]))
-              toast(n.title, { description: n.body ?? undefined, action: { label: 'Open', onClick: () => routerRef.current.push(n.url) } });
+              toast(n.title, { description: n.body ?? undefined, action: { label: 'Open', onClick: () => routerRef.current.push(safePath(n.url)) } });
           }
           for (const l of listeners) {
             try {

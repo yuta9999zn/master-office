@@ -9,7 +9,7 @@ import { InjectDb } from '../db/db.module';
 import { macroTriggers, resources, users } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { applyMacroOps } from './macro-apply';
-import { runSandboxed } from './macro-sandbox';
+import { runIsolated } from './macro-sandbox';
 
 // Installable triggers that run on the server (docs/ARCHITECTURE.md §48): time-driven ("every hour", "every day
 // at 9") and on form submit. The macro runs in an isolated V8 (isolated-vm: own heap, no Node APIs, 64 MB,
@@ -212,7 +212,7 @@ export class MacroTriggersService implements OnModuleInit, OnModuleDestroy {
     const macro = doc.getMap<{ code: string; name: string }>('macros').get(t.macroId);
     if (!macro) return record('error', 'The macro of this trigger was deleted', []);
     const snapshot = snapshotOfDoc(doc);
-    const result = await runSandboxed({ code: macro.code, fn: t.fn, snapshot, event: { ...event, user: { email: creator.email, name: creator.name } } });
+    const result = await runIsolated({ code: macro.code, fn: t.fn, snapshot, event: { ...event, user: { email: creator.email, name: creator.name } } });
     let applyError: string | null = null;
     if (result.ops.length) {
       try {

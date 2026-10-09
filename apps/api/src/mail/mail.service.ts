@@ -37,7 +37,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 /** A small HTML wrapper in the Master Office style; `rows` become label/value lines. */
 export function mailHtml(o: { title: string; intro?: string; rows?: [string, string][]; button?: { label: string; url: string }; footer?: string; color?: string }) {
-  const c = o.color ?? '#2563EB';
+  const c = o.color && /^#[0-9a-f]{3,8}$/i.test(o.color) ? o.color : '#2563EB';
   const rows = (o.rows ?? [])
     .map(([k, v]) => `<tr><td style="padding:8px 0;border-top:1px solid #E2E8F0"><div style="color:#64748B;font-size:12px">${esc(k)}</div><div style="color:#0F172A;font-size:14px;white-space:pre-wrap">${esc(v) || '<span style="color:#94A3B8">(no answer)</span>'}</div></td></tr>`)
     .join('');

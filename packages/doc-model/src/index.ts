@@ -321,14 +321,14 @@ export type BorderSides = 'all' | 'left' | 'top' | 'bottom' | 'topBottom';
 export function borderShadingCss(a: Record<string, unknown>): string {
   const out: string[] = [];
   const sides = a.border as BorderSides | null;
-  const width = Number(a.borderWidth) || 1;
-  const color = (a.borderColor as string) || '#94a3b8';
+  const width = Math.min(12, Math.max(0.5, Number(a.borderWidth) || 1));
+  const color = cssColor(a.borderColor) ?? '#94a3b8';
   if (sides) {
     const line = `${width}px solid ${color}`;
     const map: Record<BorderSides, string[]> = { all: ['border'], left: ['border-left'], top: ['border-top'], bottom: ['border-bottom'], topBottom: ['border-top', 'border-bottom'] };
     for (const p of map[sides] ?? []) out.push(`${p}:${line}`);
   }
-  if (a.shading) out.push(`background-color:${a.shading}`);
+  if (cssColor(a.shading)) out.push(`background-color:${cssColor(a.shading)}`);
   if (sides || a.shading) out.push(sides === 'left' ? 'padding:2px 0 2px 10px' : 'padding:4px 8px');
   return out.join(';');
 }
@@ -522,6 +522,23 @@ export function docExtensions(opts: DocExtensionOptions = {}): Extensions {
 // ── Pure serializers (no DOM) ────────────────────────────────────────────────
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Node attributes come from the collaborative document, which any editor can write directly: only values that are
+// what they claim to be (a colour, a number, a keyword, a safe URL) are put into the HTML (§85 C).
+/** A CSS colour: #hex, rgb()/rgba()/hsl()/hsla() with plain numbers, or a colour name. */
+export const cssColor = (v: unknown): string | null =>
+  typeof v === 'string' && /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d.,%\s/]+\)|[a-z]{3,20})$/i.test(v.trim()) ? v.trim() : null;
+/** A finite number (strings with a unit suffix such as "12pt" / "1.5" are accepted when the unit is allowed). */
+export const cssNumber = (v: unknown, unit: '' | 'pt' | 'px' = ''): string | null => {
+  if (typeof v === 'number') return Number.isFinite(v) ? `${v}${unit}` : null;
+  if (typeof v === 'string' && /^-?\d+(\.\d+)?(pt|px|em|%)?$/.test(v.trim())) return /\d$/.test(v.trim()) ? `${v.trim()}${unit}` : v.trim();
+  return null;
+};
+const cssKeyword = (v: unknown, allowed: readonly string[]): string | null => (typeof v === 'string' && allowed.includes(v) ? v : null);
+/** A font family list: letters, digits, spaces, commas, quotes and dashes only. */
+const cssFont = (v: unknown): string | null => (typeof v === 'string' && /^[\w\s,'"-]{1,120}$/.test(v) ? v.replace(/"/g, "'") : null);
+/** Links may open web pages, mail and phone apps, or point inside the site; `javascript:` and `data:` never render. */
+export const safeHref = (h: unknown): string => (typeof h === 'string' && /^(https?:|mailto:|tel:|\/(?!\/)|#|\?)/i.test(h.trim()) ? h.trim() : '#');
 const isDeleted = (n: JSONContent) => !!n.marks?.some((m) => m.type === 'deletion');
 
 /** Plain text of the document as it reads with all suggestions accepted (suggested deletions excluded). */
@@ -615,16 +632,16 @@ function markStyle(marks: JSONContent['marks']): { open: string; close: string }
         wrap(`<del title="${esc(String(m.attrs?.authorName ?? ''))}">`, '</del>');
         break;
       case 'link':
-        wrap(`<a href="${esc(String(m.attrs?.href ?? '#'))}">`, '</a>');
+        wrap(`<a href="${esc(safeHref(m.attrs?.href))}" rel="noopener">`, '</a>');
         break;
       case 'highlight':
-        style.push(`background-color:${m.attrs?.color ?? '#fef08a'}`);
+        style.push(`background-color:${cssColor(m.attrs?.color) ?? '#fef08a'}`);
         break;
       case 'textStyle':
-        if (m.attrs?.color) style.push(`color:${m.attrs.color}`);
-        if (m.attrs?.fontFamily) style.push(`font-family:${m.attrs.fontFamily}`);
-        if (m.attrs?.fontSize) style.push(`font-size:${m.attrs.fontSize}`);
-        if (m.attrs?.backgroundColor) style.push(`background-color:${m.attrs.backgroundColor}`);
+        if (cssColor(m.attrs?.color)) style.push(`color:${cssColor(m.attrs?.color)}`);
+        if (cssFont(m.attrs?.fontFamily)) style.push(`font-family:${cssFont(m.attrs?.fontFamily)}`);
+        if (cssNumber(m.attrs?.fontSize, 'pt')) style.push(`font-size:${cssNumber(m.attrs?.fontSize, 'pt')}`);
+        if (cssColor(m.attrs?.backgroundColor)) style.push(`background-color:${cssColor(m.attrs?.backgroundColor)}`);
         break;
     }
   }
@@ -642,13 +659,15 @@ function blockAttrs(n: JSONContent): string {
   const a = n.attrs ?? {};
   const box = borderShadingCss(a);
   if (box) s.push(box);
-  if (a.textAlign && a.textAlign !== 'left') s.push(`text-align:${a.textAlign}`);
-  if (a.lineHeight) s.push(`line-height:${a.lineHeight}`);
-  if (a.spaceBefore != null) s.push(`margin-top:${a.spaceBefore}pt`);
-  if (a.spaceAfter != null) s.push(`margin-bottom:${a.spaceAfter}pt`);
-  if (a.indentLeft) s.push(`margin-left:${a.indentLeft}pt`);
-  if (a.indentRight) s.push(`margin-right:${a.indentRight}pt`);
-  if (a.firstLine) s.push(`text-indent:${a.firstLine}pt`, ...(a.firstLine < 0 && !a.indentLeft ? [`margin-left:${-a.firstLine}pt`] : []));
+  const align = cssKeyword(a.textAlign, ['center', 'right', 'justify']);
+  if (align) s.push(`text-align:${align}`);
+  if (cssNumber(a.lineHeight)) s.push(`line-height:${cssNumber(a.lineHeight)}`);
+  if (a.spaceBefore != null && cssNumber(a.spaceBefore, 'pt')) s.push(`margin-top:${cssNumber(a.spaceBefore, 'pt')}`);
+  if (a.spaceAfter != null && cssNumber(a.spaceAfter, 'pt')) s.push(`margin-bottom:${cssNumber(a.spaceAfter, 'pt')}`);
+  if (a.indentLeft && cssNumber(a.indentLeft, 'pt')) s.push(`margin-left:${cssNumber(a.indentLeft, 'pt')}`);
+  if (a.indentRight && cssNumber(a.indentRight, 'pt')) s.push(`margin-right:${cssNumber(a.indentRight, 'pt')}`);
+  const first = typeof a.firstLine === 'number' && Number.isFinite(a.firstLine) ? a.firstLine : 0;
+  if (first) s.push(`text-indent:${first}pt`, ...(first < 0 && !a.indentLeft ? [`margin-left:${-first}pt`] : []));
   const cls = a.docStyle === 'title' ? ' class="doc-style-title"' : a.docStyle === 'subtitle' ? ' class="doc-style-subtitle"' : '';
   return (s.length ? ` style="${s.join(';')}"` : '') + cls;
 }
@@ -671,13 +690,13 @@ export function toHTML(doc: JSONContent | null | undefined, opts: { resolveImage
       case 'paragraph':
         return `<p${blockAttrs(n)}>${inner() || '<br>'}</p>`;
       case 'heading': {
-        const lvl = n.attrs?.level ?? 1;
+        const lvl = Math.min(6, Math.max(1, Math.round(Number(n.attrs?.level) || 1)));
         return `<h${lvl} id="h-${headingIndex++}"${blockAttrs(n)}>${inner()}</h${lvl}>`;
       }
       case 'bulletList':
         return `<ul>${inner()}</ul>`;
       case 'orderedList':
-        return `<ol${n.attrs?.start && n.attrs.start !== 1 ? ` start="${n.attrs.start}"` : ''}>${inner()}</ol>`;
+        return `<ol${Number.isInteger(n.attrs?.start) && n.attrs?.start !== 1 ? ` start="${Number(n.attrs?.start)}"` : ''}>${inner()}</ol>`;
       case 'listItem':
         return `<li>${inner()}</li>`;
       case 'taskList':
@@ -842,7 +861,15 @@ export function toHTMLDocument(
   doc: JSONContent | null | undefined,
   opts: { resolveImage?: (src: string) => string; pageSetup?: PageSetup; renderChart?: ChartPainter; renderDrawing?: DrawingPainter } = {},
 ): string {
-  const p = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
+  const p0 = opts.pageSetup ?? DEFAULT_PAGE_SETUP;
+  // Page setup is stored in the document's settings (editable by anyone with write access): numbers only.
+  const mm = (v: unknown, dflt: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(200, Math.max(0, v)) : dflt);
+  const p: PageSetup = {
+    ...p0,
+    orientation: p0.orientation === 'landscape' ? 'landscape' : 'portrait',
+    margins: { top: mm(p0.margins?.top, DEFAULT_PAGE_SETUP.margins.top), right: mm(p0.margins?.right, DEFAULT_PAGE_SETUP.margins.right), bottom: mm(p0.margins?.bottom, DEFAULT_PAGE_SETUP.margins.bottom), left: mm(p0.margins?.left, DEFAULT_PAGE_SETUP.margins.left) },
+    watermark: p0.watermark ? { ...p0.watermark, opacity: typeof p0.watermark.opacity === 'number' && Number.isFinite(p0.watermark.opacity) ? Math.min(1, Math.max(0, p0.watermark.opacity)) : undefined } : p0.watermark,
+  };
   const { w, h } = paperSize(p);
   const m = p.margins;
   const margin = `margin: ${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm;`;

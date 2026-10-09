@@ -38,10 +38,13 @@ import { SheetsService } from '../sheets/sheets.service';
 import { MacroTriggersService } from '../sheets/macro-triggers.service';
 import { StorageService } from '../storage/storage.service';
 import { flowHooks } from '../flow/flow-hooks';
+import { takeHit } from '../common/ratelimit';
 import { QuotaService } from '../storage/quota.service';
 
 const csvCell = (v: string | number) => {
-  const s = String(v ?? '');
+  let s = String(v ?? '');
+  // A cell that starts like a formula would run in Excel when the CSV is opened: neutralised with a leading quote (§85 C).
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
@@ -287,6 +290,11 @@ export class FormsService {
     const s = form.settings;
     const showScore = s.quiz && r.score && (s.releaseScore === 'immediately' || r.released);
     const rows: [string, string][] = [...(showScore ? [['Score', `${r.score!.points} / ${r.score!.max}`] as [string, string]] : []), ...this.answerRows(form, r.answers)];
+    // A public form must not become a mail cannon: a few copies per address per hour.
+    if (!takeHit(`form-copy|${r.email.toLowerCase()}`, { max: 3, window: 3600 }).ok) {
+      this.log.warn(`form ${id}: copy to ${r.email} skipped (too many in an hour)`);
+      return;
+    }
     const edit = s.allowEdit ? this.webUrl(`/f/${id}?edit=${r.editToken}`) : null;
     await this.mail.send({
       kind: 'form.copy',
@@ -428,6 +436,7 @@ export class FormsService {
     if (!(await this.canRespond(actor, row, form.settings))) throw new ForbiddenException();
     if (this.closedReason(form.settings)) throw new ForbiddenException(this.closedReason(form.settings)!);
     if (!file) throw new BadRequestException('No file');
+    if (!form.items.some((i) => i.type === 'file')) throw new BadRequestException('This form does not take files');
     const limit = Math.max(...form.items.filter((i) => i.type === 'file').map((i) => i.file?.maxSizeMb ?? 10), 10);
     if (file.size > limit * 1024 * 1024) throw new BadRequestException(`File is larger than ${limit} MB`);
     await this.quota.assertRoom(row.workspaceId, { spaceId: row.spaceId, ownerId: row.ownerId }, file.size);

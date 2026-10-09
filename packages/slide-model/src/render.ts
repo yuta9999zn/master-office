@@ -473,7 +473,7 @@ export function tableHtml(t: NonNullable<PlainElement['table']>, theme: Theme): 
   const widths = Array.from({ length: cols }, (_, i) => (t.colW && total ? (t.colW[i] / total) * 100 : 100 / Math.max(1, cols)));
   const head = themeColor(t.headerFill, theme) ?? theme.colors.accents[0];
   const border = themeColor(t.border, theme) ?? alpha(theme.colors.muted, 0.45);
-  let html = `<table class="mo-table" style="font-size:${t.fontSize ?? 14}pt;font-family:${esc(fontStack(theme.fonts.body))};color:${esc(theme.colors.text)}"><colgroup>${widths.map((w) => `<col style="width:${f(w)}%">`).join('')}</colgroup>`;
+  let html = `<table class="mo-table" style="font-size:${f(Number(t.fontSize) || 14)}pt;font-family:${esc(fontStack(theme.fonts.body))};color:${esc(theme.colors.text)}"><colgroup>${widths.map((w) => `<col style="width:${f(w)}%">`).join('')}</colgroup>`;
   t.rows.forEach((row, r) => {
     const isHead = r === 0 && t.header !== false;
     const bg = isHead ? head : t.banded !== false && r % 2 === (t.header !== false ? 0 : 1) ? alpha(theme.colors.accents[0], 0.07) : 'transparent';
@@ -505,7 +505,7 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
   const s = el.style ?? {};
   const wrap = [`left:${f(el.x)}px`, `top:${f(el.y)}px`, `width:${f(el.w)}px`, `height:${f(el.h)}px`];
   if (el.rot) wrap.push(`transform:rotate(${f(el.rot)}deg)`);
-  if (s.opacity !== undefined && s.opacity < 1) wrap.push(`opacity:${s.opacity}`);
+  if (typeof s.opacity === 'number' && Number.isFinite(s.opacity) && s.opacity < 1) wrap.push(`opacity:${f(Math.max(0, s.opacity))}`);
   const extra = opts.elementCss?.[el.id];
   if (extra) wrap.push(extra);
   let inner = '';
@@ -518,9 +518,9 @@ export function elementHtml(el: PlainElement, theme: Theme, opts: RenderOptions 
       // The frame shows the uncropped part: the full picture is scaled up and shifted inside a clipping box.
       const kw = 1 / Math.max(0.01, 1 - c.l - c.r);
       const kh = 1 / Math.max(0.01, 1 - c.t - c.b);
-      inner = `<div style="width:100%;height:100%;overflow:hidden;position:relative${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}"><img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="position:absolute;max-width:none;left:${f(-c.l * kw * 100)}%;top:${f(-c.t * kh * 100)}%;width:${f(kw * 100)}%;height:${f(kh * 100)}%;display:block${filter}"></div>`;
+      inner = `<div style="width:100%;height:100%;overflow:hidden;position:relative${s.radius ? `;border-radius:${f(Number(s.radius) || 0)}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}"><img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="position:absolute;max-width:none;left:${f(-c.l * kw * 100)}%;top:${f(-c.t * kh * 100)}%;width:${f(kw * 100)}%;height:${f(kh * 100)}%;display:block${filter}"></div>`;
     } else
-      inner = `<img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="width:100%;height:100%;object-fit:fill;display:block${s.radius ? `;border-radius:${s.radius}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}${filter}">`;
+      inner = `<img src="${esc(src)}" alt="${esc(el.alt ?? '')}" draggable="false" style="width:100%;height:100%;object-fit:fill;display:block${s.radius ? `;border-radius:${f(Number(s.radius) || 0)}px` : ''}${s.shadow ? ';box-shadow:0 8px 24px -6px rgba(15,23,42,0.3)' : ''}${flip}${filter}">`;
   } else if ((el.type === 'video' || el.type === 'audio') && el.src) {
     inner = mediaHtml(el, opts);
   } else if (el.type === 'chart' && el.chart) {
@@ -553,7 +553,7 @@ export function mediaHtml(el: PlainElement, opts: RenderOptions): string {
     const icon = `<div style="width:100%;height:100%;border-radius:50%;background:#2563EB;display:flex;align-items:center;justify-content:center">${SPEAKER}</div>`;
     if (!opts.live) return icon;
     // The player sits under the icon; it starts on its own when "autoplay" is set, else on a click on the icon.
-    return `${icon}<audio data-mo-media src="${esc(src)}${m.start || m.end ? `#t=${m.start ?? 0}${m.end ? `,${m.end}` : ''}` : ''}"${m.autoplay ? ' autoplay' : ''}${m.loop ? ' loop' : ''} preload="auto" style="position:absolute;left:0;top:100%;width:max(240px,100%);height:36px" controls></audio>`;
+    return `${icon}<audio data-mo-media src="${esc(src)}${m.start || m.end ? `#t=${f(Number(m.start) || 0)}${m.end ? `,${f(Number(m.end) || 0)}` : ''}` : ''}"${m.autoplay ? ' autoplay' : ''}${m.loop ? ' loop' : ''} preload="auto" style="position:absolute;left:0;top:100%;width:max(240px,100%);height:36px" controls></audio>`;
   }
   const yt = youtubeId(el.src);
   if (yt) {
@@ -568,7 +568,7 @@ export function mediaHtml(el: PlainElement, opts: RenderOptions): string {
     }
     return `<div style="width:100%;height:100%;background:#000 url('https://i.ytimg.com/vi/${yt}/hqdefault.jpg') center/cover no-repeat;position:relative">${PLAY_BADGE}</div>`;
   }
-  const frag = m.start || m.end ? `#t=${m.start ?? 0}${m.end ? `,${m.end}` : ''}` : '#t=0.1';
+  const frag = m.start || m.end ? `#t=${f(Number(m.start) || 0)}${m.end ? `,${f(Number(m.end) || 0)}` : ''}` : '#t=0.1';
   if (opts.live) {
     return `<video data-mo-media src="${esc(src)}${frag}" style="width:100%;height:100%;display:block;background:#000;object-fit:contain"${m.autoplay ? ' autoplay' : ''}${m.muted ? ' muted' : ''}${m.loop ? ' loop' : ''} playsinline controls preload="auto"></video>`;
   }

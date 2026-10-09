@@ -69,6 +69,9 @@ export async function uploadFile<T>(path: string, body: FormData): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** A link from a notification or a flow must stay inside the site: an absolute URL to elsewhere becomes the home page. */
+export const safePath = (url: string | null | undefined) => (typeof url === 'string' && /^\/(?!\/)/.test(url) ? url : '/home');
+
 export const downloadUrl = (id: string, inline = false) => `/api/resources/${id}/download${inline ? '?inline=1' : ''}`;
 
 export function setDevUser(id: string) {
